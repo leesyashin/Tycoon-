@@ -29,7 +29,7 @@ export const STAFF_ROLES: readonly StaffRoleDef[] = [
     maxLevel: 20,
     speed: { perLevel: 0.1, stations: ['merchShelf'] },
   },
-  { id: 'cleaner', unlockCafeLevel: 2, baseCost: 5000, growth: 1.5, maxLevel: 10 },
+  { id: 'cleaner', unlockCafeLevel: 2, baseCost: 3_500, growth: 1.5, maxLevel: 10 },
   { id: 'manager', unlockCafeLevel: 4, baseCost: 10_000, growth: 1.5, maxLevel: 5 },
   {
     id: 'baker',
