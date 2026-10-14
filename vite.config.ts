@@ -1,11 +1,14 @@
 import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vitest/config';
+import { readFileSync } from 'node:fs';
 import { VitePWA } from 'vite-plugin-pwa';
 
 const r = (p: string): string => fileURLToPath(new URL(p, import.meta.url));
+const pkg = JSON.parse(readFileSync(r('./package.json'), 'utf8')) as { version: string };
 
 export default defineConfig({
   base: '/Tycoon-/',
+  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   resolve: {
     alias: {
       '@core': r('./src/core'),
