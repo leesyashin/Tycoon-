@@ -59,6 +59,11 @@ a {
   color: var(--accent);
 }
 
+/* Klassen mit eigenem `display` (Flex-Zeilen, Pillen) sollen das `hidden`-Attribut nicht überstimmen. */
+[hidden] {
+  display: none !important;
+}
+
 /* Nur für Screenreader sichtbar. */
 .sr-only {
   position: absolute;
