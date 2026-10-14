@@ -1,11 +1,11 @@
 # STATUS
 ## Loop
-state: running
-current: S2
-branch: session/s2-scene
-started: 2026-10-14T19:44:29Z
-next: S2
-## Letzte Session: S2 – Iso-Szene und Kunden (2026-10-14)
+state: idle
+current: -
+branch: -
+started: -
+next: S3
+## Letzte Session: S2 – Iso-Szene und Kunden (2026-10-14, PR #4)
 ## Fertig
 - `data/layouts.ts`: Grundriss 12×12 (Eingang, 8 Stationen mit Kachel/Zugang/Schlangenrichtung/Laufweg, Ambiente-Plätze), `CROWD`- und `CAMERA`-Parameter; alle 6 Standorte nutzen vorerst denselben Grundriss
 - `data/customerTypes.ts` + `core/customers/types.ts`: 5 Kundentypen (§ 7.5) mit Anteilen und Standort-Verschiebung (Kyoto Touristen, Tokio Influencer …), eigenes Platzhalter-Sprite je Typ
