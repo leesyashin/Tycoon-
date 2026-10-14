@@ -26,6 +26,8 @@ export interface LocationRates {
   satisfaction: SatisfactionBreakdown;
   /** Kunden/s pro Verkaufsstation. */
   perStation: Record<string, number>;
+  /** Einnahmen/s pro Verkaufsstation (inkl. Trinkgeld und Boosts); Summe = `incomePerSec`. */
+  perStationIncome: Record<string, Decimal>;
 }
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
@@ -97,6 +99,7 @@ export function computeLocationRates(state: GameState, locationId: string): Loca
   );
 
   const perStation: Record<string, number> = {};
+  const perStationIncome: Record<string, Decimal> = {};
   let income = ZERO;
   const tips = tipRate(loc);
   const priceMult = (1 + tips) * mods.incomeMult;
@@ -105,11 +108,11 @@ export function computeLocationRates(state: GameState, locationId: string): Loca
     if (cap === undefined || sumThroughput <= 0) continue;
     const customers = served * (cap / sumThroughput);
     perStation[def.id] = customers;
-    if (customers > 0) {
-      income = income.add(
-        getStationPrice(def, loc.stations[def.id]?.level ?? 0, locationId).mul(customers),
-      );
-    }
+    const revenue = getStationPrice(def, loc.stations[def.id]?.level ?? 0, locationId).mul(
+      customers,
+    );
+    perStationIncome[def.id] = revenue.mul(priceMult);
+    if (customers > 0) income = income.add(revenue);
   }
   return {
     spawnRate,
@@ -121,6 +124,7 @@ export function computeLocationRates(state: GameState, locationId: string): Loca
     tipRate: tips,
     satisfaction: computeSatisfactionTarget(loc, waitPressure),
     perStation,
+    perStationIncome,
   };
 }
 

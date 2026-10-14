@@ -40,6 +40,11 @@ export function loadWithOffline(
   return { state: { ...offline.state, lastSavedAt: now }, offline };
 }
 
+/** Entfernt alle Spielstände (auch alte Schlüssel), damit ein Neustart nicht wieder migriert. */
+export function clearSave(storage: StorageLike): void {
+  for (const key of [SAVE_KEY, ...LEGACY_KEYS]) storage.removeItem(key);
+}
+
 export function exportSave(state: GameState): string {
   return serialize(state);
 }
