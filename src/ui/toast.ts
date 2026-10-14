@@ -1,5 +1,12 @@
 import { UI_CONFIG } from '@data/ui';
 import { h } from './dom';
+import { icon, type IconName } from './icons';
+
+const TOAST_ICON: Record<ToastKind, IconName> = {
+  info: 'bell',
+  success: 'tick',
+  error: 'warning-circle',
+};
 
 export type ToastKind = 'info' | 'success' | 'error';
 
@@ -18,11 +25,13 @@ export function createToaster(): Toaster {
   return {
     el,
     show(text, kind = 'info') {
-      const item = h('div', {
-        class: `toast toast-${kind}`,
-        role: kind === 'error' ? 'alert' : 'status',
-        text,
-      });
+      // Weiße Pille mit farbigem Icon (UI_STYLE § 3.12); Text bleibt ein eigener Knoten für Screenreader.
+      const item = h(
+        'div',
+        { class: `toast toast-${kind}`, role: kind === 'error' ? 'alert' : 'status' },
+        h('span', { class: 'toast-icon' }, icon(TOAST_ICON[kind])),
+        h('span', { text }),
+      );
       el.append(item);
       window.setTimeout(() => item.remove(), UI_CONFIG.toastMs);
     },

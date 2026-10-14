@@ -62,6 +62,20 @@ export function createSettingsPanel(
   );
   const sfx = toggle('settings-sfx', t('settings.sfx'), (v) => set({ sfx: v }));
   const music = toggle('settings-music', t('settings.music'), (v) => set({ music: v }));
+  const range = (id: string, label: string, onChange: (v: number) => void) => {
+    const el = h('input', { type: 'range', id, min: 0, max: 100, step: 5, 'data-testid': id });
+    on(el, 'input', () => onChange(Number(el.value) / 100));
+    return {
+      row: h('div', { class: 'field field-range' }, h('label', { for: id, text: label }), el),
+      el,
+    };
+  };
+  const sfxVolume = range('settings-sfx-volume', t('settings.sfxVolume'), (v) =>
+    set({ sfxVolume: v }),
+  );
+  const musicVolume = range('settings-music-volume', t('settings.musicVolume'), (v) =>
+    set({ musicVolume: v }),
+  );
 
   const exportBtn = h('button', {
     class: 'btn',
@@ -102,7 +116,15 @@ export function createSettingsPanel(
     { class: 'settings' },
     lang.row,
     numberFormat.row,
-    h('fieldset', {}, h('legend', { text: t('settings.audio') }), sfx.row, music.row),
+    h(
+      'fieldset',
+      {},
+      h('legend', { text: t('settings.audio') }),
+      sfx.row,
+      sfxVolume.row,
+      music.row,
+      musicVolume.row,
+    ),
     h(
       'fieldset',
       {},
@@ -132,6 +154,15 @@ export function createSettingsPanel(
         numberFormat.el.value = s.settings.numberFormat;
       if (sfx.el.checked !== s.settings.sfx) sfx.el.checked = s.settings.sfx;
       if (music.el.checked !== s.settings.music) music.el.checked = s.settings.music;
+      // Während des Ziehens nicht zurücksetzen (Fokus = Spieler bedient den Regler).
+      for (const [r, v] of [
+        [sfxVolume.el, s.settings.sfxVolume],
+        [musicVolume.el, s.settings.musicVolume],
+      ] as const) {
+        const want = String(Math.round(v * 100));
+        if (document.activeElement !== r && r.value !== want) r.value = want;
+        r.setAttribute('aria-valuetext', `${want} %`);
+      }
     },
   };
   return { title: t('settings.title'), view };

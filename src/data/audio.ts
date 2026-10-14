@@ -5,15 +5,7 @@
 export const AUDIO_DEFAULTS = { sfxVolume: 0.7, musicVolume: 0.4 } as const;
 
 export type SfxId =
-  | 'buy'
-  | 'coin'
-  | 'tap'
-  | 'unlock'
-  | 'error'
-  | 'eventStart'
-  | 'eventEnd'
-  | 'leaf'
-  | 'boost';
+  'buy' | 'coin' | 'tap' | 'unlock' | 'error' | 'eventStart' | 'eventEnd' | 'leaf' | 'boost';
 
 export interface ToneStep {
   /** Frequenz in Hz. */
@@ -26,7 +18,13 @@ export interface ToneStep {
   wave: OscillatorType;
 }
 
-const tone = (f: number, at: number, dur: number, gain = 0.6, wave: OscillatorType = 'triangle') => ({
+const tone = (
+  f: number,
+  at: number,
+  dur: number,
+  gain = 0.6,
+  wave: OscillatorType = 'triangle',
+) => ({
   f,
   at,
   dur,

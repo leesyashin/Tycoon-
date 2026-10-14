@@ -14,7 +14,8 @@
     "coverage": "vitest run --coverage",
     "check": "pnpm lint && pnpm typecheck && pnpm test",
     "e2e": "playwright test",
-    "sim": "tsx scripts/balance-sim.ts"
+    "sim": "tsx scripts/balance-sim.ts",
+    "art": "tsx scripts/build-art.ts"
   },
   "dependencies": {
     "break_infinity.js": "^2.2.0",

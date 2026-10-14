@@ -19,6 +19,8 @@ export interface Agent {
   /** Restliche Waypoints (walkIn/leave). */
   path: GridPos[];
   timer: number;
+  /** Gesamte Bedienzeit (für den Fortschrittsring), 0 außerhalb von „serve“. */
+  serveTotal: number;
   /** Versatz im Gedränge hinter der sichtbaren Schlange. */
   jx: number;
   jy: number;
@@ -56,6 +58,7 @@ export class CustomerCrowd {
         y: 0,
         path: [],
         timer: 0,
+        serveTotal: 0,
         jx: 0,
         jy: 0,
       });
@@ -71,6 +74,13 @@ export class CustomerCrowd {
     const active = this.activeCount;
     if (active < CROWD.maxAgents) return 0;
     return Math.max(0, Math.round(this.totalRate * CROWD.avgVisitSec) - active);
+  }
+
+  /** Wartende über alle Stationen (Warteschlangen-Tafel, UI_STYLE § 3.10). */
+  get waitingCount(): number {
+    let n = 0;
+    for (const a of this.agents) if (a.active && a.phase === 'queue') n++;
+    return n;
   }
 
   queueLength(stationId: string): number {
@@ -164,6 +174,7 @@ export class CustomerCrowd {
         if (arrived && idx === 0) {
           a.phase = 'serve';
           a.timer = serveDuration(stationRate);
+          a.serveTotal = a.timer;
         }
         return false;
       }

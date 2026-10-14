@@ -5,7 +5,12 @@ import type { Store } from '@core/store';
 export const REGISTRY = { store: 'store', debugSpawn: 'debugSpawn' } as const;
 
 /** Event-Namen zwischen Szene und DOM-UI. */
-export const UI_EVENTS = { openStation: 'ui:openStation', langChanged: 'ui:langChanged' } as const;
+export const UI_EVENTS = {
+  openStation: 'ui:openStation',
+  langChanged: 'ui:langChanged',
+  /** Szene meldet einen Klang (Münze, Tap); die Audio-Schicht spielt ihn ab. */
+  sfx: 'scene:sfx',
+} as const;
 
 export function getStore(scene: Phaser.Scene): Store {
   const store = scene.registry.get(REGISTRY.store) as Store | undefined;
