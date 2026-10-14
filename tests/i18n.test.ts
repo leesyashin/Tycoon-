@@ -34,9 +34,12 @@ describe('i18n-Abdeckung der Spieldaten', () => {
     const need = (k: string): void => {
       if (!keys.has(k)) missing.push(k);
     };
-    for (const s of STATIONS) {
-      need(`station.berlin.${s.id}.name`);
-      need(`station.berlin.${s.id}.desc`);
+    // Jeder Standort hat eigene Stations-Namen (GAME_DESIGN § 3).
+    for (const l of LOCATIONS) {
+      for (const s of STATIONS) {
+        need(`station.${l.id}.${s.id}.name`);
+        need(`station.${l.id}.${s.id}.desc`);
+      }
     }
     for (const a of AMBIENCE) {
       need(`ambience.${a.id}.name`);
@@ -46,7 +49,17 @@ describe('i18n-Abdeckung der Spieldaten', () => {
       need(`staff.${r.id}.name`);
       need(`staff.${r.id}.effect`);
     }
-    for (const l of LOCATIONS) need(`location.${l.id}.name`);
+    for (const l of LOCATIONS) {
+      need(`location.${l.id}.name`);
+      need(`location.${l.id}.theme`);
+    }
+    expect(missing).toEqual([]);
+  });
+  it('jedes Meta-Upgrade hat Name und Beschreibung', async () => {
+    const { META_UPGRADES } = await import('../src/data/prestige');
+    const missing = META_UPGRADES.flatMap((m) => [`zen.${m.id}.name`, `zen.${m.id}.desc`]).filter(
+      (k) => !keys.has(k),
+    );
     expect(missing).toEqual([]);
   });
 

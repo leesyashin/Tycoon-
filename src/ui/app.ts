@@ -6,10 +6,12 @@ import { getAchievementDef } from '@data/achievements';
 import { getQuestDef } from '@data/quests';
 import { getUnlocksAt } from '@data/unlocks';
 import { isQuestComplete } from '@core/progression';
+import { affordableMetaLevels, canReset, computeZenGain, franchiseReset } from '@core/prestige';
+import { getMetaUpgradeDef } from '@data/prestige';
 import { h, mount } from './dom';
 import { confirmTwice, showDialog } from './dialog';
 import { createHud } from './hud';
-import { createLocationsPanel } from './infoPanels';
+import { createLocationsPanel } from './locationsPanel';
 import { achievementName, claimableQuests, createProgressPanel } from './progressPanel';
 import { createMarketingPanel } from './marketingPanel';
 import { createSatisfactionPanel } from './satisfactionPanel';
@@ -86,7 +88,10 @@ export function startApp(o: AppOptions): App {
       create: () =>
         createMarketingPanel(store, () => toaster.show(t('toast.campaignStarted'), 'success')),
     },
-    locations: { key: 'locations', create: createLocationsPanel },
+    locations: {
+      key: 'locations',
+      create: () => createLocationsPanel(store, (id) => void doReset(id)),
+    },
     achievements: { key: 'achievements', create: () => createProgressPanel(store) },
     settings: settingsReq,
   };
@@ -139,6 +144,36 @@ export function startApp(o: AppOptions): App {
     toaster.show(t('toast.imported'), 'success');
   }
 
+  /** Franchise-Reset mit Vorschau (GAME_DESIGN § 11): was verloren geht, wie viel Zen, was es bringt. */
+  async function doReset(locId: string): Promise<void> {
+    const s = store.getState();
+    if (!canReset(s, locId)) return;
+    const gain = computeZenGain(s, locId);
+    const total = s.meta.zen.add(gain);
+    const levels = affordableMetaLevels(s, 'globalIncome', total);
+    const pct = levels * getMetaUpgradeDef('globalIncome').perLevel * 100;
+    const name = t(`location.${locId}.name`);
+    const yes = await showDialog(root, {
+      title: t('dialog.reset.title', { name }),
+      body: [
+        t('dialog.reset.lose', { name }),
+        t('dialog.reset.gain', { zen: fmt(s, gain), total: fmt(s, total) }),
+        pct > 0 ? t('dialog.reset.worth', { pct: fmt(s, pct) }) : t('dialog.reset.worthNone'),
+        t('dialog.reset.keep'),
+      ],
+      confirm: t('dialog.reset.confirm', { zen: fmt(s, gain) }),
+      cancel: t('ui.cancel'),
+      danger: true,
+      testId: 'dialog-reset',
+    });
+    if (!yes) return;
+    const before = store.getState();
+    const after = store.dispatch((x) => franchiseReset(x, locId));
+    if (after === before) return;
+    persistence.save();
+    toaster.show(t('toast.reset', { name, zen: fmt(after, gain) }), 'success');
+  }
+
   async function doDelete(): Promise<void> {
     const yes = await confirmTwice(
       root,
@@ -178,9 +213,26 @@ export function startApp(o: AppOptions): App {
       o.onLangChange(s.settings.lang);
     }
     nav?.setBadge('achievements', claimableQuests(s));
+    notifyLocations(before, s);
     if (s.createdAt !== before.createdAt || s.activeLocationId !== before.activeLocationId) return;
     notifyProgress(before, s);
   });
+
+  /** Standort eröffnet oder gewechselt: Toast, und Panels mit festem Standort schließen. */
+  function notifyLocations(before: GameState, s: GameState): void {
+    if (s.createdAt !== before.createdAt) return;
+    for (const id of s.meta.unlockedLocations) {
+      if (before.meta.unlockedLocations.includes(id)) continue;
+      toaster.show(t('toast.locationOpened', { name: t(`location.${id}.name`) }), 'success');
+    }
+    if (s.activeLocationId === before.activeLocationId) return;
+    // Alle anderen Panels haben ihren Standort beim Öffnen festgehalten.
+    if (panels.current()?.key !== requests.locations.key) panels.close();
+    toaster.show(
+      t('toast.locationSwitched', { name: t(`location.${s.activeLocationId}.name`) }),
+      'success',
+    );
+  }
 
   /** Toasts für Café-Level, Freischaltungen, Erfolge, Tagesaufgaben – aus dem Zustandsvergleich. */
   function notifyProgress(before: GameState, s: GameState): void {
