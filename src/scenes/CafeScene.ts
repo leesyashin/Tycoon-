@@ -7,6 +7,7 @@ import {
   type CafeLayout,
   type GridPos,
 } from '@data/layouts';
+import { getTheme } from '@data/themes';
 import { STATIONS, getStationDef } from '@data/stations';
 import { getLocation, type GameState } from '@core/GameState';
 import type { Store } from '@core/store';
@@ -223,6 +224,7 @@ export class CafeScene extends Phaser.Scene {
 
   private drawRoom(): void {
     const n = this.layout.gridSize;
+    const theme = getTheme(this.locationId);
     for (let gy = 0; gy < n; gy++) {
       for (let gx = 0; gx < n; gx++) {
         const p = toScreen(gx, gy);
@@ -230,14 +232,15 @@ export class CafeScene extends Phaser.Scene {
         this.add
           .image(p.x, p.y, isEntrance ? TEX.entrance : (gx + gy) % 2 ? TEX.tileA : TEX.tileB)
           .setOrigin(0.5, 0)
-          .setDepth(DEPTH.floor);
+          .setDepth(DEPTH.floor)
+          .setTint(isEntrance ? 0xffffff : theme.floorTint);
       }
     }
     const g = this.add.graphics().setDepth(DEPTH.wall);
     const o = toScreen(0, 0);
     const r = toScreen(n, 0);
     const l = toScreen(0, n);
-    g.fillStyle(0xe8dcc0, 1);
+    g.fillStyle(theme.wallLeft, 1);
     g.fillPoints(
       [
         new Phaser.Geom.Point(o.x, o.y - WALL_H),
@@ -247,7 +250,7 @@ export class CafeScene extends Phaser.Scene {
       ],
       true,
     );
-    g.fillStyle(0xd4c6a6, 1);
+    g.fillStyle(theme.wallRight, 1);
     g.fillPoints(
       [
         new Phaser.Geom.Point(o.x, o.y - WALL_H),

@@ -19,3 +19,16 @@ describe('iso', () => {
     expect(depth(1, 1)).toBeLessThan(depth(2, 1));
   });
 });
+
+describe('Standort-Skins', () => {
+  it('jeder Standort hat Layout und Theme', async () => {
+    const { LOCATIONS } = await import('../src/data/locations');
+    const { getLayout } = await import('../src/data/layouts');
+    const { getTheme } = await import('../src/data/themes');
+    for (const l of LOCATIONS) {
+      expect(getLayout(l.id).gridSize).toBeGreaterThan(0);
+      expect(getTheme(l.id).floorTint).toBeGreaterThan(0);
+    }
+    expect(() => getTheme('nowhere')).toThrow();
+  });
+});
