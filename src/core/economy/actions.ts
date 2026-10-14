@@ -1,8 +1,10 @@
-import { getStationDef } from '@data/stations';
+import { STATIONS, getStationDef } from '@data/stations';
 import { getLocation, withLocation, type GameState } from '../GameState';
 import { collectModifiers } from './modifiers';
 import { computeCafeLevel } from './cafeLevel';
 import { getMaxAffordable, getStationCost } from './stations';
+import type { Decimal } from '../math/bignum';
+import { canAutoBuy } from '../staff/effects';
 
 export type BulkAmount = 1 | 10 | 100 | 'max';
 
@@ -70,4 +72,27 @@ export function buyStation(
     }
   }
   return withLocation(state, locationId, next);
+}
+
+/** Günstigste freigeschaltete Station (+1 Level) und ihr Preis, unabhängig vom Kontostand. */
+export function getCheapestStation(
+  state: GameState,
+  locationId: string,
+): { id: string; cost: Decimal } | null {
+  let best: { id: string; cost: Decimal } | null = null;
+  for (const def of STATIONS) {
+    if (!isStationUnlocked(state, locationId, def.id)) continue;
+    const cost = getBulkCost(state, locationId, def.id, 1);
+    if (!best || cost.lt(best.cost)) best = { id: def.id, cost };
+  }
+  return best;
+}
+
+/** Filialleiter-Auto-Kauf: höchstens ein Level pro Aufruf, nur wenn der Spieler ihn aktiviert hat. */
+export function autoBuyStep(state: GameState, locationId: string): GameState {
+  const loc = getLocation(state, locationId);
+  if (!loc.autoBuy || !canAutoBuy(loc)) return state;
+  const pick = getCheapestStation(state, locationId);
+  if (!pick || loc.coins.lt(pick.cost)) return state;
+  return buyStation(state, locationId, pick.id, 1);
 }

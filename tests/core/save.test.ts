@@ -116,7 +116,7 @@ describe('Migration', () => {
     delete v1['tap'];
     (v1['locations'] as { berlin: { coins: string } }).berlin.coins = '42';
     const s = deserialize(JSON.stringify(v1));
-    expect(s.schemaVersion).toBe(2);
+    expect(s.schemaVersion).toBe(SCHEMA_VERSION);
     expect(s.tap).toEqual({ hype: 0, windowStart: 0, windowTaps: 0 });
     expect(getLocation(s, 'berlin').coins.toNumber()).toBe(42);
   });
@@ -159,7 +159,7 @@ describe('Storage und Export', () => {
     delete v1['tap'];
     st.setItem('mce.save.v1', JSON.stringify(v1));
     expect(loadGame(st)?.tap.hype).toBe(0);
-    expect(SAVE_KEY).toBe('mce.save.v2');
+    expect(SAVE_KEY).toBe('mce.save.v3');
   });
   it('Laden bringt Offline-Einnahmen und setzt lastSavedAt', () => {
     const st = new MemStorage();

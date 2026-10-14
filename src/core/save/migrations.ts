@@ -1,3 +1,4 @@
+import { BALANCE } from '@data/balance';
 import { SCHEMA_VERSION } from '../GameState';
 
 type Json = Record<string, unknown>;
@@ -51,6 +52,15 @@ export const migrations: ((raw: Json) => Json)[] = [
     schemaVersion: 2,
     tap: { hype: 0, windowStart: 0, windowTaps: 0 },
   }),
+  // v2 → v3: Sauberkeit und Auto-Kauf je Standort (Personal-System S4).
+  (raw) => {
+    const locations = (raw['locations'] as Record<string, Json> | undefined) ?? {};
+    const next: Record<string, Json> = {};
+    for (const [id, loc] of Object.entries(locations)) {
+      next[id] = { ...loc, cleanliness: BALANCE.cleanliness.start, autoBuy: false };
+    }
+    return { ...raw, schemaVersion: 3, locations: next };
+  },
 ];
 
 export class SaveError extends Error {}

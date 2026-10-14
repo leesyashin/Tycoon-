@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BALANCE } from '@data/balance';
-import { createInitialState, getLocation } from '@core/GameState';
+import { createInitialState, getLocation, withLocation } from '@core/GameState';
 import { runFrame, tick } from '@core/GameLoop';
 import {
   computeLocationRates,
@@ -101,10 +101,20 @@ describe('tick', () => {
     expect(n.activeEvents).toHaveLength(0);
     expect(n.boosts).toHaveLength(1);
   });
-  it('ein 10-s-Tick entspricht 100 × 100 ms (Einkommen)', () => {
-    let a = fresh();
+  it('ein 10-s-Tick entspricht 100 × 100 ms (Einkommen, eingeschwungener Zustand)', () => {
+    // Sauberkeit 100 bleibt mit Reinigung ≥ 3 konstant, Zufriedenheit steht auf ihrem Ziel (59):
+    // nur dann ist das Einkommen über den Schritt konstant und die Schrittweite egal.
+    const s = fresh();
+    const steady = withLocation(s, 'berlin', {
+      ...getLocation(s, 'berlin'),
+      cleanliness: 100,
+      satisfaction: 59,
+      staff: { cleaner: 3 },
+    });
+    let a = steady;
     for (let i = 0; i < 100; i++) a = tick(a, 100);
-    const b = tick(fresh(), 10_000);
+    const b = tick(steady, 10_000);
+    expect(getLocation(a, 'berlin').satisfaction).toBeCloseTo(59, 6);
     expect(getLocation(a, 'berlin').coins.toNumber()).toBeCloseTo(
       getLocation(b, 'berlin').coins.toNumber(),
       6,
