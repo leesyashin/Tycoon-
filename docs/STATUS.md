@@ -1,11 +1,11 @@
 # STATUS
 ## Loop
-state: running
-current: S4
-branch: session/s4-staff
-started: 2026-10-14T20:26:47Z
-next: S4
-## Letzte Session: S4 – Personal, Zufriedenheit, Marketing (2026-10-14)
+state: idle
+current: -
+branch: -
+started: -
+next: S5
+## Letzte Session: S4 – Personal, Zufriedenheit, Marketing (2026-10-14, PR #6)
 ## Fertig
 - `data/staff.ts`: alle 7 Rollen nach GAME_DESIGN § 6 (Kosten, Wachstum 1.5, Max, Tempo-Effekte je Station)
 - `core/staff`: Einstellen (`hireStaff`), Kosten, Freischaltung, Tempo-Multiplikatoren je Station, Sauberkeit (Verfall, Untergrenze 60, Aufwischen ab Stufe 3, Gleichgewicht), Auto-Kauf-Schalter (Filialleiter), `previewStaffHire` für die Panel-Erklärung
