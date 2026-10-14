@@ -1,9 +1,9 @@
 # STATUS
 ## Loop
-state: idle
-current: -
-branch: -
-started: -
+state: running
+current: S5
+branch: session/s5-progression
+started: 2026-10-14T20:46:39Z
 next: S5
 ## Letzte Session: S4 – Personal, Zufriedenheit, Marketing (2026-10-14, PR #6)
 ## Fertig
