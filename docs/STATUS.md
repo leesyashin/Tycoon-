@@ -1,9 +1,9 @@
 # STATUS
 ## Loop
-state: idle
-current: -
-branch: -
-started: -
+state: running
+current: S2
+branch: session/s2-scene
+started: 2026-10-14T19:44:29Z
 next: S2
 ## Letzte Session: S1 – Core-Ökonomie (2026-10-14)
 ## Fertig
