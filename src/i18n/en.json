@@ -20,5 +20,14 @@
   "station.berlin.ceremonyCorner.name": "Ceremony corner",
   "station.berlin.ceremonyCorner.desc": "A tea ceremony for connoisseurs.",
   "station.berlin.workshopRoom.name": "Workshop room",
-  "station.berlin.workshopRoom.desc": "Matcha classes at premium prices."
+  "station.berlin.workshopRoom.desc": "Matcha classes at premium prices.",
+  "hud.income": "per sec",
+  "hud.hype": "Hype",
+  "hud.hypeActive": "Hype! {sec} s",
+  "scene.station.buy": "Buy",
+  "scene.station.locked": "from café lv {level}",
+  "scene.station.level": "Lv {level}",
+  "scene.crowd.more": "+{count}",
+  "scene.coinPopup": "+{amount}",
+  "scene.debugHint": "Debug: B = buy cheapest station"
 }

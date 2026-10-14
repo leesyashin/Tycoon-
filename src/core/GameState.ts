@@ -3,7 +3,7 @@ import { BALANCE } from '@data/balance';
 import { STATIONS } from '@data/stations';
 import { START_LOCATION_ID } from '@data/locations';
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export interface Settings {
   lang: 'de' | 'en';
@@ -31,6 +31,15 @@ export interface ActiveBoost {
 export interface QuestState {
   date: string;
   items: { id: string; progress: number; claimed: boolean }[];
+}
+
+/** Tap-Bonus-Zustand (GAME_DESIGN § 7.4). Zeitfenster in `playtimeSec`. */
+export interface TapState {
+  /** Hype-Balken 0..hypeMax. */
+  hype: number;
+  /** Ganze Spielsekunde, in der `windowTaps` gezählt werden (Deckel pro Sekunde). */
+  windowStart: number;
+  windowTaps: number;
 }
 
 export interface StationState {
@@ -72,6 +81,7 @@ export interface GameState {
   activeEvents: ActiveEvent[];
   boosts: ActiveBoost[];
   quests: QuestState;
+  tap: TapState;
 }
 
 export function createLocationState(): LocationState {
@@ -91,6 +101,10 @@ export function createLocationState(): LocationState {
     marketing: { level: 0 },
     prestigeCount: 0,
   };
+}
+
+export function createTapState(): TapState {
+  return { hype: 0, windowStart: 0, windowTaps: 0 };
 }
 
 export function createInitialState(now: number, lang: 'de' | 'en' = 'en'): GameState {
@@ -113,6 +127,7 @@ export function createInitialState(now: number, lang: 'de' | 'en' = 'en'): GameS
     activeEvents: [],
     boosts: [],
     quests: { date: '', items: [] },
+    tap: createTapState(),
   };
 }
 

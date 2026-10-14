@@ -40,6 +40,37 @@
         padding: 6px 12px;
         background: rgba(0, 0, 0, 0.45);
         border-radius: 8px;
+        pointer-events: none;
+        font-size: 14px;
+      }
+      .hud-hype {
+        position: relative;
+        margin-top: 4px;
+        height: 14px;
+        min-width: 140px;
+        background: rgba(255, 255, 255, 0.15);
+        border-radius: 7px;
+        overflow: hidden;
+        font-size: 10px;
+        line-height: 14px;
+        text-align: center;
+      }
+      .hud-hype-fill {
+        position: absolute;
+        inset: 0 auto 0 0;
+        background: #7dc34a;
+        transition: width 0.2s;
+      }
+      .hud-hype.active .hud-hype-fill {
+        background: #f5c542;
+      }
+      .hud-hype span {
+        position: relative;
+      }
+      .hud-hint {
+        margin-top: 4px;
+        font-size: 10px;
+        opacity: 0.7;
       }
     </style>
   </head>

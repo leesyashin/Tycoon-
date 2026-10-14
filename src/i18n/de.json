@@ -20,5 +20,14 @@
   "station.berlin.ceremonyCorner.name": "Zeremonie-Ecke",
   "station.berlin.ceremonyCorner.desc": "Teezeremonie für Genießer.",
   "station.berlin.workshopRoom.name": "Workshop-Raum",
-  "station.berlin.workshopRoom.desc": "Matcha-Kurse mit Premiumpreis."
+  "station.berlin.workshopRoom.desc": "Matcha-Kurse mit Premiumpreis.",
+  "hud.income": "pro Sek.",
+  "hud.hype": "Hype",
+  "hud.hypeActive": "Hype! {sec} s",
+  "scene.station.buy": "Kaufen",
+  "scene.station.locked": "ab Café-Lv {level}",
+  "scene.station.level": "Lv {level}",
+  "scene.crowd.more": "+{count}",
+  "scene.coinPopup": "+{amount}",
+  "scene.debugHint": "Debug: B = günstigste Station kaufen"
 }

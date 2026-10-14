@@ -110,6 +110,25 @@ describe('Migration', () => {
     expect(getLocation(s, 'berlin').coins.toNumber()).toBe(0);
     expect(s.createdAt).toBe(0);
   });
+  it('v1 → v2 ergänzt den Tap-Zustand und behält alles andere', () => {
+    const v1 = JSON.parse(serialize(createInitialState(0))) as Record<string, unknown>;
+    v1['schemaVersion'] = 1;
+    delete v1['tap'];
+    (v1['locations'] as { berlin: { coins: string } }).berlin.coins = '42';
+    const s = deserialize(JSON.stringify(v1));
+    expect(s.schemaVersion).toBe(2);
+    expect(s.tap).toEqual({ hype: 0, windowStart: 0, windowTaps: 0 });
+    expect(getLocation(s, 'berlin').coins.toNumber()).toBe(42);
+  });
+  it('kaputter Tap-Zustand wird auf gültige Werte gesetzt', () => {
+    const raw = JSON.parse(serialize(createInitialState(0))) as Record<string, unknown>;
+    raw['tap'] = { hype: -3, windowStart: 'x' };
+    expect(deserialize(JSON.stringify(raw)).tap).toEqual({
+      hype: 0,
+      windowStart: 0,
+      windowTaps: 0,
+    });
+  });
   it('Saves aus der Zukunft werden abgelehnt', () => {
     expect(() => migrate({ schemaVersion: SCHEMA_VERSION + 1 })).toThrow(SaveError);
   });
@@ -132,6 +151,15 @@ describe('Storage und Export', () => {
     const st = new MemStorage();
     st.setItem('mce.save.v0', JSON.stringify({ coins: '10', stationLevels: { matchaBar: 2 } }));
     expect(loadGame(st)?.schemaVersion).toBe(SCHEMA_VERSION);
+  });
+  it('liest den alten v1-Schlüssel und migriert', () => {
+    const st = new MemStorage();
+    const v1 = JSON.parse(serialize(createInitialState(0))) as Record<string, unknown>;
+    v1['schemaVersion'] = 1;
+    delete v1['tap'];
+    st.setItem('mce.save.v1', JSON.stringify(v1));
+    expect(loadGame(st)?.tap.hype).toBe(0);
+    expect(SAVE_KEY).toBe('mce.save.v2');
   });
   it('Laden bringt Offline-Einnahmen und setzt lastSavedAt', () => {
     const st = new MemStorage();
