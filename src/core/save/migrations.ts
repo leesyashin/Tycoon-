@@ -1,5 +1,5 @@
 import { BALANCE } from '@data/balance';
-import { SCHEMA_VERSION } from '../GameState';
+import { SCHEMA_VERSION, createStats } from '../GameState';
 
 type Json = Record<string, unknown>;
 
@@ -61,6 +61,13 @@ export const migrations: ((raw: Json) => Json)[] = [
     }
     return { ...raw, schemaVersion: 3, locations: next };
   },
+  // v3 → v4: Statistik-Zähler und Daily Quests mit Basiswert (Progression S5). Alte Quests waren nie befüllt.
+  (raw) => ({
+    ...raw,
+    schemaVersion: 4,
+    stats: createStats(),
+    quests: { date: '', items: [], bonusClaimed: false },
+  }),
 ];
 
 export class SaveError extends Error {}

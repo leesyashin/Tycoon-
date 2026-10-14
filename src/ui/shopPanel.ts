@@ -9,12 +9,21 @@ import {
   isAmbienceUnlocked,
   isStationUnlocked,
 } from '@core/economy';
+import {
+  buyQuality,
+  getNextQualityCost,
+  isNextQualityUnlocked,
+  qualityPriceMult,
+} from '@core/progression';
+import { BALANCE } from '@data/balance';
+import { QUALITY_PRICE_MULT_PER_TIER, getNextQualityTier } from '@data/quality';
 import { AMBIENCE } from '@data/ambience';
 import { STATIONS } from '@data/stations';
 import { h, on, setDisabled, setText, type View } from './dom';
-import { fmt } from './format';
+import { fmt, fmtSmall } from './format';
 import type { PanelContent } from './panel';
-import { stationName } from './stationPanel';
+import { createTabs } from './tabs';
+import { lockedReason, productName, stationName } from './labels';
 
 type Tab = 'stations' | 'ambience' | 'quality';
 const TABS: Tab[] = ['stations', 'ambience', 'quality'];
@@ -53,10 +62,95 @@ function stationRow(locId: string, id: string, openStation: (id: string) => void
         status,
         unlocked
           ? `${t('station.panel.level', { level: lvl })}${affordable ? ` · ${t('ui.affordable')}` : ''}`
-          : t('ui.unlockAt', { level: def?.unlockCafeLevel ?? 0 }),
+          : lockedReason(s, locId, id, def?.unlockCafeLevel ?? 0),
       );
       setText(btn, unlocked ? `🪙 ${fmt(s, cost)}` : t('shop.open'));
       btn.setAttribute('aria-label', `${stationName(locId, id)}: ${t('shop.open')}`);
+    },
+  };
+}
+
+/** Qualitäts-Tab (GAME_DESIGN § 8): aktuelle Stufe, Angebot, nächste Stufe kaufen. */
+function qualityView(store: Store, locId: string): Row {
+  const current = h('strong', { 'data-testid': 'quality-current' });
+  const effect = h('span', { class: 'muted' });
+  const menu = h('ul', { class: 'product-list', 'aria-label': t('quality.menu') });
+  const next = h('strong');
+  const nextEffect = h('span', { class: 'muted' });
+  const status = h('span', { class: 'row-status' });
+  const btn = h('button', { class: 'btn btn-row', type: 'button', 'data-testid': 'quality-buy' });
+  on(btn, 'click', () => store.dispatch((s) => buyQuality(s, locId)));
+  const nextRow = h(
+    'li',
+    { class: 'shop-row' },
+    h('div', { class: 'row-text' }, next, nextEffect, status),
+    btn,
+  );
+  const el = h(
+    'div',
+    { class: 'quality' },
+    h('p', { class: 'row-text' }, current, effect),
+    h('p', { class: 'muted', text: t('quality.menu') }),
+    menu,
+    h('ul', { class: 'shop-list' }, nextRow),
+  );
+  let shownQuality = -1;
+  return {
+    el,
+    update(s) {
+      const loc = getLocation(s, locId);
+      const q = loc.quality;
+      if (q !== shownQuality) {
+        shownQuality = q;
+        setText(current, t('quality.current', { name: t(`quality.tier.${String(q)}.name`) }));
+        menu.replaceChildren(
+          ...STATIONS.filter((d) => d.basePrice > 0).map((d) =>
+            h('li', { text: `${stationName(locId, d.id)}: ${productName(d.id, q)}` }),
+          ),
+        );
+      }
+      setText(
+        effect,
+        t('quality.effectNow', {
+          mult: fmtSmall(qualityPriceMult(loc)),
+          sat: q * BALANCE.satisfaction.perQuality,
+        }),
+      );
+      const tier = getNextQualityTier(q);
+      const cost = getNextQualityCost(s, locId);
+      if (!tier || !cost) {
+        setText(next, t('quality.maxed'));
+        setText(nextEffect, '');
+        setText(status, '');
+        btn.hidden = true;
+        nextRow.classList.remove('affordable', 'locked');
+        return;
+      }
+      btn.hidden = false;
+      const unlocked = isNextQualityUnlocked(s, locId);
+      const affordable = unlocked && cost.lte(loc.coins);
+      nextRow.classList.toggle('affordable', affordable);
+      nextRow.classList.toggle('locked', !unlocked);
+      setText(next, t('quality.next', { name: t(`quality.tier.${String(tier.tier)}.name`) }));
+      setText(
+        nextEffect,
+        t('quality.nextEffect', {
+          mult: fmtSmall(QUALITY_PRICE_MULT_PER_TIER),
+          sat: BALANCE.satisfaction.perQuality,
+        }),
+      );
+      setText(
+        status,
+        unlocked
+          ? affordable
+            ? t('ui.affordable')
+            : ''
+          : t('ui.unlockAt', { level: tier.unlockCafeLevel }),
+      );
+      const label = t('quality.buy', { cost: fmt(s, cost) });
+      setText(btn, label);
+      btn.setAttribute('aria-label', `${t(`quality.tier.${String(tier.tier)}.name`)}: ${label}`);
+      setDisabled(btn, !affordable);
     },
   };
 }
@@ -117,62 +211,25 @@ export function createShopPanel(
   const lists: Record<Tab, { el: HTMLElement; rows: Row[] }> = {
     stations: { el: h('ul', { class: 'shop-list' }), rows: [] },
     ambience: { el: h('ul', { class: 'shop-list' }), rows: [] },
-    quality: { el: h('div', { class: 'muted', text: t('ui.comingSoon') }), rows: [] },
+    quality: { el: h('div'), rows: [] },
   };
   lists.stations.rows = STATIONS.map((d) => stationRow(locId, d.id, openStation));
   lists.ambience.rows = AMBIENCE.map((a) => ambienceRow(store, locId, a.id));
+  lists.quality.rows = [qualityView(store, locId)];
   for (const tab of TABS) lists[tab].el.append(...lists[tab].rows.map((r) => r.el));
 
-  const tablist = h('div', { class: 'tabs', role: 'tablist' });
-  const panels = h('div');
-  let active: Tab = initialTab;
-  const tabButtons = TABS.map((tab) => {
-    const btn = h('button', {
-      class: 'tab',
-      type: 'button',
-      role: 'tab',
-      id: `shop-tab-${tab}`,
-      'aria-controls': `shop-tabpanel-${tab}`,
-      'data-testid': `shop-tab-${tab}`,
-      text: t(`shop.tab.${tab}`),
-    });
-    const panel = h(
-      'div',
-      { role: 'tabpanel', id: `shop-tabpanel-${tab}`, 'aria-labelledby': `shop-tab-${tab}` },
-      lists[tab].el,
-    );
-    panels.append(panel);
-    on(btn, 'click', () => select(tab));
-    tablist.append(btn);
-    return { tab, btn, panel };
-  });
-  const select = (tab: Tab): void => {
-    active = tab;
-    for (const b of tabButtons) {
-      const sel = b.tab === tab;
-      b.btn.setAttribute('aria-selected', String(sel));
-      b.btn.tabIndex = sel ? 0 : -1;
-      b.panel.hidden = !sel;
-    }
-  };
-  // Pfeiltasten wechseln Tabs (WAI-ARIA Tabs-Muster).
-  on(tablist, 'keydown', (e) => {
-    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
-    const i = TABS.indexOf(active);
-    const next =
-      TABS[(i + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length] ?? 'stations';
-    select(next);
-    tabButtons.find((b) => b.tab === next)?.btn.focus();
-  });
-  select(initialTab);
-
-  const view: View = {
-    el: h('div', { class: 'shop' }, tablist, panels),
+  let view: View | null = null;
+  const tabs = createTabs(
+    'shop',
+    TABS.map((tab) => ({ id: tab, label: t(`shop.tab.${tab}`), content: lists[tab].el })),
+    initialTab,
+    () => view?.update(store.getState()),
+  );
+  view = {
+    el: h('div', { class: 'shop' }, tabs.el),
     update(s) {
-      for (const r of lists[active].rows) r.update(s);
+      for (const r of lists[tabs.active()].rows) r.update(s);
     },
   };
-  // Beim Tab-Wechsel sofort aktualisieren, nicht erst beim nächsten Tick.
-  on(tablist, 'click', () => view.update(store.getState()));
   return { title: t('shop.title'), view };
 }

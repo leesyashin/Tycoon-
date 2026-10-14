@@ -27,8 +27,17 @@ export interface AmbiencePlacement {
   minLevel: number;
 }
 
+/** Terrassen-Fläche (GAME_DESIGN § 5.2): Kacheln außerhalb des Raums, sichtbar ab Terrassen-Level. */
+export interface TerraceArea {
+  minLevel: number;
+  /** Rechteck inklusive beider Ecken. */
+  from: GridPos;
+  to: GridPos;
+}
+
 export interface CafeLayout {
   gridSize: number;
+  terrace: TerraceArea[];
   entrance: GridPos;
   stations: StationPlacement[];
   ambience: AmbiencePlacement[];
@@ -79,6 +88,12 @@ function place(stationId: string, tile: GridPos, access: GridPos, queueDir: Grid
 
 const DEFAULT_LAYOUT: CafeLayout = {
   gridSize: 12,
+  // 12×12 → 12×14 → 14×14 (vorne links, vorne rechts, Ecke); der Raum bleibt, die Terrasse liegt davor.
+  terrace: [
+    { minLevel: 1, from: { x: 0, y: 12 }, to: { x: 11, y: 13 } },
+    { minLevel: 2, from: { x: 12, y: 0 }, to: { x: 13, y: 11 } },
+    { minLevel: 3, from: { x: 12, y: 12 }, to: { x: 13, y: 13 } },
+  ],
   entrance: ENTRANCE,
   stations: [
     place('matchaBar', { x: 2, y: 0 }, { x: 2, y: 1 }, { x: 0, y: 1 }),
@@ -99,6 +114,11 @@ const DEFAULT_LAYOUT: CafeLayout = {
     { id: 'decor', tile: { x: 0, y: 1 }, minLevel: 1 },
     { id: 'music', tile: { x: 7, y: 0 }, minLevel: 1 },
     { id: 'wifi', tile: { x: 0, y: 2 }, minLevel: 1 },
+    { id: 'terrace', tile: { x: 3, y: 12 }, minLevel: 1 },
+    { id: 'terrace', tile: { x: 8, y: 13 }, minLevel: 1 },
+    { id: 'terrace', tile: { x: 12, y: 4 }, minLevel: 2 },
+    { id: 'terrace', tile: { x: 13, y: 9 }, minLevel: 2 },
+    { id: 'terrace', tile: { x: 12, y: 12 }, minLevel: 3 },
   ],
 };
 
@@ -110,6 +130,18 @@ export const LAYOUTS: Readonly<Record<string, CafeLayout>> = {
   newyork: DEFAULT_LAYOUT,
   bali: DEFAULT_LAYOUT,
 };
+
+/** Belegte Fläche (Raum + sichtbare Terrasse) als Kachel-Ausdehnung in x und y. */
+export function layoutExtent(layout: CafeLayout, terraceLevel: number): { w: number; h: number } {
+  let w = layout.gridSize;
+  let h = layout.gridSize;
+  for (const a of layout.terrace) {
+    if (terraceLevel < a.minLevel) continue;
+    w = Math.max(w, a.to.x + 1);
+    h = Math.max(h, a.to.y + 1);
+  }
+  return { w, h };
+}
 
 export function getLayout(locationId: string): CafeLayout {
   const l = LAYOUTS[locationId];

@@ -3,7 +3,7 @@ import { BALANCE } from '@data/balance';
 import { STATIONS } from '@data/stations';
 import { START_LOCATION_ID } from '@data/locations';
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export interface Settings {
   lang: 'de' | 'en';
@@ -28,9 +28,37 @@ export interface ActiveBoost {
   speedMult: number;
 }
 
+export interface QuestItem {
+  id: string;
+  /** Zählerstand der zugehörigen Statistik beim Ziehen; Fortschritt = aktuell − base. */
+  base: number;
+  progress: number;
+  claimed: boolean;
+}
+
+/** Daily Quests (GAME_DESIGN § 13.2); `date` ist der lokale Kalendertag `YYYY-MM-DD`. */
 export interface QuestState {
   date: string;
-  items: { id: string; progress: number; claimed: boolean }[];
+  items: QuestItem[];
+  bonusClaimed: boolean;
+}
+
+/** Lebenslange Zähler für Statistik, Achievements und Quests (überleben später auch Prestige). */
+export interface Stats {
+  customersServed: number;
+  /** Gekaufte Stations-Level (inkl. Auto-Kauf). */
+  levelsBought: number;
+  taps: number;
+  hypeFills: number;
+  campaigns: number;
+  resets: number;
+  events: number;
+  questsCompleted: number;
+  /** Laufende Spielsekunden am Stück mit Zufriedenheit ≥ Schwelle (aktiver Standort). */
+  highSatisfactionSec: number;
+  /** Bestwert von `highSatisfactionSec`. */
+  highSatisfactionBestSec: number;
+  leavesEarned: number;
 }
 
 /** Tap-Bonus-Zustand (GAME_DESIGN § 7.4). Zeitfenster in `playtimeSec`. */
@@ -93,6 +121,7 @@ export interface GameState {
   boosts: ActiveBoost[];
   quests: QuestState;
   tap: TapState;
+  stats: Stats;
 }
 
 export function createLocationState(): LocationState {
@@ -113,6 +142,22 @@ export function createLocationState(): LocationState {
     marketing: { level: 0 },
     autoBuy: false,
     prestigeCount: 0,
+  };
+}
+
+export function createStats(): Stats {
+  return {
+    customersServed: 0,
+    levelsBought: 0,
+    taps: 0,
+    hypeFills: 0,
+    campaigns: 0,
+    resets: 0,
+    events: 0,
+    questsCompleted: 0,
+    highSatisfactionSec: 0,
+    highSatisfactionBestSec: 0,
+    leavesEarned: 0,
   };
 }
 
@@ -139,8 +184,9 @@ export function createInitialState(now: number, lang: 'de' | 'en' = 'en'): GameS
     locations: { [START_LOCATION_ID]: createLocationState() },
     activeEvents: [],
     boosts: [],
-    quests: { date: '', items: [] },
+    quests: { date: '', items: [], bonusClaimed: false },
     tap: createTapState(),
+    stats: createStats(),
   };
 }
 
@@ -148,6 +194,16 @@ export function getLocation(state: GameState, id: string): LocationState {
   const loc = state.locations[id];
   if (!loc) throw new Error(`Location not in state: ${id}`);
   return loc;
+}
+
+/** Goldene Blätter gutschreiben (Statistik zählt mit). */
+export function grantLeaves(state: GameState, amount: number): GameState {
+  if (amount <= 0) return state;
+  return {
+    ...state,
+    meta: { ...state.meta, goldenLeaves: state.meta.goldenLeaves.add(amount) },
+    stats: { ...state.stats, leavesEarned: state.stats.leavesEarned + amount },
+  };
 }
 
 export function withLocation(state: GameState, id: string, loc: LocationState): GameState {

@@ -1,12 +1,15 @@
 import { getLocation, type GameState } from '../GameState';
 import { campaignSpawnMult } from '../marketing/effects';
 import { staffSpeedMults } from '../staff/effects';
+import { qualityPriceMult } from '../progression/quality';
 
 /** Alle Multiplikatoren an einer Stelle (GAME_DESIGN § 14), damit nichts verstreut multipliziert wird. */
 export interface Modifiers {
   /** Events, Boosts und aktive Marketing-Kampagne des Standorts. */
   spawnMult: number;
   incomeMult: number;
+  /** Dauerhafter Preis-Multiplikator (Matcha-Qualität, GAME_DESIGN § 8). */
+  priceMult: number;
   /** Tempo-Boosts auf Kasse und Stationen. */
   speedMult: number;
   /** Kostenrabatt 0..1. */
@@ -36,5 +39,12 @@ export function collectModifiers(
       speedMult *= b.speedMult;
     }
   }
-  return { spawnMult, incomeMult, speedMult, discount: 0, staffSpeedMult: staffSpeedMults(loc) };
+  return {
+    spawnMult,
+    incomeMult,
+    priceMult: qualityPriceMult(loc),
+    speedMult,
+    discount: 0,
+    staffSpeedMult: staffSpeedMults(loc),
+  };
 }

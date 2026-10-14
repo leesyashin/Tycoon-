@@ -4,6 +4,7 @@ import { computeLocationRates } from './customers/rates';
 import { applyOffline } from './economy/offline';
 import { autoBuyStep } from './economy/actions';
 import { advanceCleanliness } from './staff/effects';
+import { HIGH_SATISFACTION } from '@data/achievements';
 
 /**
  * Ein Simulationsschritt beliebiger Länge; die Rate-Formeln sind linear, die Zufriedenheit nähert sich exakt.
@@ -15,6 +16,7 @@ export function tick(state: GameState, dtMs: number): GameState {
 
   const locations: Record<string, LocationState> = {};
   let earnedTotal = state.meta.lifetimeEarned;
+  let served = 0;
   const keep = 1 - BALANCE.satisfaction.approachPerSec;
   for (const id of Object.keys(state.locations)) {
     const loc = getLocation(state, id);
@@ -30,13 +32,23 @@ export function tick(state: GameState, dtMs: number): GameState {
       cleanliness: advanceCleanliness(loc, dt),
     };
     earnedTotal = earnedTotal.add(gain);
+    served += rates.served * dt;
   }
+  const activeSat = getLocation(state, state.activeLocationId).satisfaction;
+  const highSec =
+    activeSat >= HIGH_SATISFACTION.threshold ? state.stats.highSatisfactionSec + dt : 0;
   const playtimeSec = state.playtimeSec + dt;
   let next: GameState = {
     ...state,
     playtimeSec,
     locations,
     meta: { ...state.meta, lifetimeEarned: earnedTotal },
+    stats: {
+      ...state.stats,
+      customersServed: state.stats.customersServed + served,
+      highSatisfactionSec: highSec,
+      highSatisfactionBestSec: Math.max(state.stats.highSatisfactionBestSec, highSec),
+    },
     activeEvents: state.activeEvents.filter((e) => e.until > playtimeSec),
     boosts: state.boosts.filter((b) => b.until > playtimeSec),
     tap: { ...state.tap, hype: Math.max(0, state.tap.hype - BALANCE.tap.hypeDecayPerSec * dt) },

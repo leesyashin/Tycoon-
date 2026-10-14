@@ -49,4 +49,26 @@ describe('i18n-Abdeckung der Spieldaten', () => {
     for (const l of LOCATIONS) need(`location.${l.id}.name`);
     expect(missing).toEqual([]);
   });
+
+  it('Qualitätsstufen, Produkte, Erfolge und Tagesaufgaben haben Texte', async () => {
+    const { MAX_QUALITY } = await import('../src/data/quality');
+    const { STATIONS } = await import('../src/data/stations');
+    const { ACHIEVEMENTS } = await import('../src/data/achievements');
+    const { QUESTS } = await import('../src/data/quests');
+    const missing: string[] = [];
+    const need = (k: string): void => {
+      if (!keys.has(k)) missing.push(k);
+    };
+    for (let q = 0; q <= MAX_QUALITY; q++) {
+      need(`quality.tier.${String(q)}.name`);
+      need(`quality.tier.${String(q)}.prefix`);
+    }
+    for (const s of STATIONS) if (s.basePrice > 0) need(`product.${s.id}`);
+    for (const a of ACHIEVEMENTS) {
+      need(`achievement.${a.kind}.name`);
+      need(`achievement.${a.kind}.desc`);
+    }
+    for (const q of QUESTS) need(`quest.${q.kind}`);
+    expect(missing).toEqual([]);
+  });
 });

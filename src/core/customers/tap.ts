@@ -60,6 +60,11 @@ export function tapCafe(state: GameState, locationId: string): TapResult {
     meta: { ...next.meta, lifetimeEarned: next.meta.lifetimeEarned.add(gained) },
     boosts,
     tap: { hype, windowStart: second, windowTaps: windowTaps + 1 },
+    stats: {
+      ...next.stats,
+      taps: next.stats.taps + 1,
+      hypeFills: next.stats.hypeFills + (hypeTriggered ? 1 : 0),
+    },
   };
   return { state: next, gained, accepted: true, hypeTriggered };
 }

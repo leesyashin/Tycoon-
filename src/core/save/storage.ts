@@ -13,7 +13,7 @@ export interface StorageLike {
 
 export const SAVE_KEY = `mce.save.v${String(SCHEMA_VERSION)}`;
 /** Frühere Schlüssel, aus denen noch gelesen (und migriert) wird. */
-const LEGACY_KEYS = ['mce.save.v2', 'mce.save.v1', 'mce.save.v0'];
+const LEGACY_KEYS = ['mce.save.v3', 'mce.save.v2', 'mce.save.v1', 'mce.save.v0'];
 
 export function saveGame(storage: StorageLike, state: GameState, now: number): GameState {
   const stamped = { ...state, lastSavedAt: now };

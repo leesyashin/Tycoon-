@@ -1,6 +1,14 @@
 import { BALANCE } from '@data/balance';
 import { D, Decimal, isDecimalNaN } from '../math/bignum';
-import { SCHEMA_VERSION, type GameState, type LocationState } from '../GameState';
+import {
+  SCHEMA_VERSION,
+  createStats,
+  type GameState,
+  type LocationState,
+  type QuestItem,
+  type QuestState,
+  type Stats,
+} from '../GameState';
 import { migrate, SaveError } from './migrations';
 
 type Json = Record<string, unknown>;
@@ -55,6 +63,35 @@ function reviveTap(raw: unknown): GameState['tap'] {
   };
 }
 
+/** Unbekannte oder kaputte Zähler werden 0, damit ein beschädigter Save nicht Achievements verschenkt. */
+function reviveStats(raw: unknown): Stats {
+  const r = isObj(raw) ? raw : {};
+  const out = createStats();
+  for (const k of Object.keys(out) as (keyof Stats)[]) out[k] = Math.max(0, num(r[k], 0));
+  return out;
+}
+
+function reviveQuests(raw: unknown): QuestState {
+  const r = isObj(raw) ? raw : {};
+  const items: QuestItem[] = [];
+  if (Array.isArray(r['items'])) {
+    for (const it of r['items'] as unknown[]) {
+      if (!isObj(it) || typeof it['id'] !== 'string') continue;
+      items.push({
+        id: it['id'],
+        base: num(it['base'], 0),
+        progress: Math.max(0, num(it['progress'], 0)),
+        claimed: it['claimed'] === true,
+      });
+    }
+  }
+  return {
+    date: typeof r['date'] === 'string' ? r['date'] : '',
+    items,
+    bonusClaimed: r['bonusClaimed'] === true,
+  };
+}
+
 export function deserialize(text: string): GameState {
   let parsed: unknown;
   try {
@@ -88,5 +125,7 @@ export function deserialize(text: string): GameState {
     },
     locations: revived,
     tap: reviveTap(raw['tap']),
+    stats: reviveStats(raw['stats']),
+    quests: reviveQuests(raw['quests']),
   };
 }

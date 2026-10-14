@@ -5,7 +5,8 @@ import { AMBIENCE } from '@data/ambience';
 import { BALANCE } from '@data/balance';
 import { createInitialState, getLocation, withLocation, type GameState } from '@core/GameState';
 import { tick } from '@core/GameLoop';
-import { buyStation, getBulkCost, isStationUnlocked } from '@core/economy/actions';
+import { buyStation, getBulkCost, isStationUnlocked, needsTerrace } from '@core/economy/actions';
+import { buyQuality, getNextQualityCost, isNextQualityUnlocked } from '@core/progression';
 import {
   buyAmbience,
   getNextAmbienceCost,
@@ -30,13 +31,15 @@ import {
   startCampaign,
 } from '@core/marketing';
 import { formatDuration, formatNumber } from '@core/math/format';
-import type { Decimal } from '@core/math/bignum';
+import { D, type Decimal } from '@core/math/bignum';
 
 const LOC = 'berlin';
 const STEP_MS = 1000;
 const MAX_BUYS_PER_STEP = 200;
 /** Iterationen, bis Zufriedenheit ↔ Wartezeit ↔ Spawnrate eingeschwungen sind. */
 const SETTLE_ITERATIONS = 6;
+/** Café-Level-Jagd: so viele Sekunden Einkommen ist dem Greedy-Spieler das nächste Café-Level wert. */
+const LEVEL_CHASE_SEC = 60;
 
 function arg(name: string, fallback: number): number {
   const i = process.argv.indexOf(`--${name}`);
@@ -60,7 +63,7 @@ function settledIncome(state: GameState): number {
 }
 
 interface Candidate {
-  kind: 'station' | 'staff' | 'ambience' | 'marketing';
+  kind: 'station' | 'staff' | 'ambience' | 'marketing' | 'quality';
   id: string;
   cost: Decimal;
   apply(s: GameState): GameState;
@@ -95,6 +98,15 @@ function candidates(state: GameState): Candidate[] {
       apply: (s) => buyAmbience(s, LOC, a.id),
     });
   }
+  const qualityCost = getNextQualityCost(state, LOC);
+  if (qualityCost && isNextQualityUnlocked(state, LOC)) {
+    out.push({
+      kind: 'quality',
+      id: String(getLocation(state, LOC).quality + 1),
+      cost: qualityCost,
+      apply: (s) => buyQuality(s, LOC),
+    });
+  }
   if (isMarketingUnlocked(state, LOC) && !isMarketingMaxed(state, LOC)) {
     out.push({
       kind: 'marketing',
@@ -111,7 +123,12 @@ function pickPurchase(state: GameState): Candidate | null {
   const loc = getLocation(state, LOC);
   const base = settledIncome(state);
   let best: { c: Candidate; payback: number } | null = null;
+  // Terrasse schaltet Stationen frei (Platz); das sieht die Einkommens-Bewertung nicht, also Vorrang.
+  const blocked = STATIONS.some(
+    (d) => loc.level >= d.unlockCafeLevel && needsTerrace(state, LOC, d.id),
+  );
   for (const c of candidates(state)) {
+    if (blocked && c.kind === 'ambience' && c.id === 'terrace') return c;
     const rich = withLocation(state, LOC, { ...loc, coins: c.cost });
     const gain = settledIncome(c.apply(rich)) - base;
     // Ohne Zuwachs (z. B. Nachfrage-limitiert) bleibt nur der Preis als Tiebreaker.
@@ -121,6 +138,37 @@ function pickPurchase(state: GameState): Candidate | null {
     }
   }
   return best?.c ?? null;
+}
+
+/**
+ * Café-Level-Jagd: Spieler kaufen günstige Level breit, um das nächste Café-Level (Freischaltungen,
+ * Belohnung) zu erreichen. Die reine Amortisation sieht das nicht, weil neue Stationen auf Level 1
+ * kaum Kunden abbekommen. Lohnt sich, wenn der restliche Weg höchstens `LEVEL_CHASE_SEC` Einkommen kostet.
+ */
+function levelChase(state: GameState): Candidate | null {
+  const loc = getLocation(state, LOC);
+  const total = Object.values(loc.stations).reduce((a, x) => a + x.level, 0);
+  const missing =
+    BALANCE.cafeLevel.stationLevelsPerCafeLevel -
+    (total % BALANCE.cafeLevel.stationLevelsPerCafeLevel);
+  let s = withLocation(state, LOC, { ...loc, coins: D(1e300) });
+  let pathCost = 0;
+  let first: Candidate | null = null;
+  for (let i = 0; i < missing; i++) {
+    let cheapest: { id: string; cost: Decimal } | null = null;
+    for (const def of STATIONS) {
+      if (!isStationUnlocked(s, LOC, def.id)) continue;
+      const cost = getBulkCost(s, LOC, def.id, 1);
+      if (!cheapest || cost.lt(cheapest.cost)) cheapest = { id: def.id, cost };
+    }
+    if (!cheapest) return null;
+    const id = cheapest.id;
+    first ??= { kind: 'station', id, cost: cheapest.cost, apply: (x) => buyStation(x, LOC, id, 1) };
+    pathCost += cheapest.cost.toNumber();
+    s = buyStation(s, LOC, id, 1);
+  }
+  const budget = getIncomePerSec(state, LOC).toNumber() * LEVEL_CHASE_SEC;
+  return pathCost <= budget ? first : null;
 }
 
 /** Kampagne nur, wenn sich die 10 Minuten ×2-Nachfrage rechnen. */
@@ -154,13 +202,14 @@ for (let t = 0; t < hours * 3600; t += STEP_MS / 1000) {
     mark('campaign', t);
   }
   for (let i = 0; i < MAX_BUYS_PER_STEP; i++) {
-    const pick = pickPurchase(state);
+    const pick = levelChase(state) ?? pickPurchase(state);
     if (!pick || getLocation(state, LOC).coins.lt(pick.cost)) break;
     state = pick.apply(state);
     const loc = getLocation(state, LOC);
     mark('firstUpgrade', t);
     if (pick.kind === 'staff') mark('firstStaff', t);
     if (pick.kind === 'staff' && pick.id === 'cleaner') mark('cleaner', t);
+    if (pick.kind === 'quality') mark(`quality${pick.id}`, t);
     if ((loc.stations['checkout']?.level ?? 0) > 0) mark('checkout', t);
     for (const lv of [3, 5, 10, 15, 20]) if (loc.level >= lv) mark(`cafe${String(lv)}`, t);
   }
@@ -180,9 +229,12 @@ const rows: [string, string, string][] = [
   ['Bäckerei (Café-Level 5)', '~30 min', fmt('cafe5')],
   ['Café-Level 10', '~90 min', fmt('cafe10')],
   ['Café-Level 15', '–', fmt('cafe15')],
+  ['Qualität Stufe 1 (Café Grade)', '–', fmt('quality1')],
+  ['Qualität Stufe 2 (Premium Grade)', '–', fmt('quality2')],
+  ['Qualität Stufe 3 (Ceremonial Grade)', '–', fmt('quality3')],
 ];
 console.log(
-  `Balance-Sim: ${String(hours)} h, Greedy-Spieler (Stationen, Personal, Ambiente, Marketing), Berlin`,
+  `Balance-Sim: ${String(hours)} h, Greedy-Spieler (Stationen, Personal, Ambiente, Qualität, Marketing), Berlin`,
 );
 console.log('| Meilenstein | Zielzeit | Ist |');
 console.log('|---|---|---|');
@@ -192,7 +244,7 @@ console.log(
   `Ende: Café-Level ${String(loc.level)}, Münzen ${formatNumber(loc.coins)}, Einkommen/s ${formatNumber(getIncomePerSec(state, LOC))}`,
 );
 console.log(
-  `Zufriedenheit ${loc.satisfaction.toFixed(1)}, Sauberkeit ${loc.cleanliness.toFixed(1)}, Kampagnen ${String(campaigns)}, Marketing-Level ${String(loc.marketing.level)}`,
+  `Qualität ${String(loc.quality)}, Goldene Blätter (Café-Level) ${state.meta.goldenLeaves.toString()}, Zufriedenheit ${loc.satisfaction.toFixed(1)}, Sauberkeit ${loc.cleanliness.toFixed(1)}, Kampagnen ${String(campaigns)}, Marketing-Level ${String(loc.marketing.level)}`,
 );
 console.log(
   `Personal: ${

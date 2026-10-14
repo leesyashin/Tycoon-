@@ -103,7 +103,7 @@ export function computeLocationRates(state: GameState, locationId: string): Loca
   const perStationIncome: Record<string, Decimal> = {};
   let income = ZERO;
   const tips = tipRate(loc);
-  const priceMult = (1 + tips) * mods.incomeMult;
+  const priceMult = (1 + tips) * mods.incomeMult * mods.priceMult;
   for (const def of STATIONS) {
     const cap = perStationCap[def.id];
     if (cap === undefined || sumThroughput <= 0) continue;

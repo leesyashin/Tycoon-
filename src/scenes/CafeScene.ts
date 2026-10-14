@@ -1,10 +1,17 @@
 import Phaser from 'phaser';
-import { CLEANER_AREA, getLayout, staffSpot, type CafeLayout, type GridPos } from '@data/layouts';
+import {
+  CLEANER_AREA,
+  getLayout,
+  layoutExtent,
+  staffSpot,
+  type CafeLayout,
+  type GridPos,
+} from '@data/layouts';
 import { STATIONS, getStationDef } from '@data/stations';
 import { getLocation, type GameState } from '@core/GameState';
 import type { Store } from '@core/store';
 import { computeLocationRates, mood, tapCafe, type LocationRates } from '@core/customers';
-import { buyStation, getBulkCost, isStationUnlocked } from '@core/economy';
+import { buyStation, getBulkCost, isStationUnlocked, needsTerrace } from '@core/economy';
 import { formatNumber } from '@core/math/format';
 import { Decimal } from '@core/math/bignum';
 import { getLang, t } from '@i18n/index';
@@ -25,7 +32,8 @@ interface StationView {
   sprite: Phaser.GameObjects.Image;
   label: Phaser.GameObjects.Text;
   shownLevel: number;
-  shownUnlocked: boolean;
+  /** Gezeigter Sperrzustand: frei, Café-Level fehlt oder Terrasse fehlt. */
+  shownLock: 'open' | 'level' | 'terrace' | '';
 }
 
 /** Tiefe nach Grid-Position; Feinsortierung innerhalb einer Diagonale über `bias`. */
@@ -49,6 +57,8 @@ export class CafeScene extends Phaser.Scene {
   private labelZoom = 0;
   private ambienceImages: Phaser.GameObjects.Image[] = [];
   private ambienceKey = '';
+  /** −1 bis zum ersten Zeichnen; danach löst eine Änderung ein Kamera-Refit aus. */
+  private terraceLevel = -1;
   private moodSprites: Phaser.GameObjects.Image[] = [];
   private staffViews: { stationId: string; sprite: Phaser.GameObjects.Image }[] = [];
   private cleaner!: Phaser.GameObjects.Image;
@@ -95,11 +105,8 @@ export class CafeScene extends Phaser.Scene {
     });
     this.leaves.setDepth(DEPTH.overlay);
 
-    const n = this.layout.gridSize;
-    const left = toScreen(0, n).x;
-    const right = toScreen(n, 0).x;
-    const bottom = toScreen(n, n).y;
-    this.room = new Phaser.Geom.Rectangle(left, -WALL_H, right - left, bottom + WALL_H);
+    this.room = new Phaser.Geom.Rectangle();
+    this.updateRoomBounds(getLocation(state, this.locationId).ambience['terrace'] ?? 0);
     this.controls = new CameraControls(this, this.room);
     this.fitCamera();
     this.scale.on('resize', () => this.fitCamera());
@@ -235,18 +242,45 @@ export class CafeScene extends Phaser.Scene {
       const label = this.makeText(13, '#ffffff')
         .setPosition(w.x, w.y - STATION_BOX_H + TILE_H / 2 - 2)
         .setDepth(DEPTH.label);
-      this.stations.push({ id: p.stationId, sprite, label, shownLevel: -1, shownUnlocked: false });
+      this.stations.push({ id: p.stationId, sprite, label, shownLevel: -1, shownLock: '' });
     }
   }
 
   /** Zeichnet Ambiente neu, sobald sich ein Level ändert (Kauf im Shop, Import, Löschen). */
+  /** Kamera-Grenzen = Raum plus sichtbare Terrasse (Grid-Erweiterung, GAME_DESIGN § 5.2). */
+  private updateRoomBounds(terraceLevel: number): void {
+    const { w, h } = layoutExtent(this.layout, terraceLevel);
+    const left = toScreen(0, h).x;
+    const right = toScreen(w, 0).x;
+    const bottom = toScreen(w, h).y;
+    this.room.setTo(left, -WALL_H, right - left, bottom + WALL_H);
+  }
+
   private createAmbience(state: GameState): void {
     const loc = getLocation(state, this.locationId);
     const key = this.layout.ambience.map((a) => loc.ambience[a.id] ?? 0).join(',');
     if (key === this.ambienceKey) return;
+    const terraceLevel = loc.ambience['terrace'] ?? 0;
+    const terraceChanged = this.terraceLevel !== terraceLevel;
     this.ambienceKey = key;
     for (const img of this.ambienceImages) img.destroy();
     this.ambienceImages = [];
+    for (const area of this.layout.terrace) {
+      if (terraceLevel < area.minLevel) continue;
+      for (let gy = area.from.y; gy <= area.to.y; gy++) {
+        for (let gx = area.from.x; gx <= area.to.x; gx++) {
+          const p = toScreen(gx, gy);
+          this.ambienceImages.push(
+            this.add.image(p.x, p.y, TEX.terrace).setOrigin(0.5, 0).setDepth(DEPTH.floor),
+          );
+        }
+      }
+    }
+    if (terraceChanged && this.terraceLevel >= 0) {
+      this.updateRoomBounds(terraceLevel);
+      this.fitCamera();
+    }
+    this.terraceLevel = terraceLevel;
     for (const a of this.layout.ambience) {
       if ((loc.ambience[a.id] ?? 0) < a.minLevel) continue;
       const w = this.world(a.tile);
@@ -271,18 +305,26 @@ export class CafeScene extends Phaser.Scene {
     for (const v of this.stations) {
       const level = loc.stations[v.id]?.level ?? 0;
       const unlocked = isStationUnlocked(state, this.locationId, v.id);
-      if (level === v.shownLevel && unlocked === v.shownUnlocked) continue;
+      const lock = unlocked
+        ? 'open'
+        : needsTerrace(state, this.locationId, v.id) &&
+            loc.level >= getStationDef(v.id).unlockCafeLevel
+          ? 'terrace'
+          : 'level';
+      if (level === v.shownLevel && lock === v.shownLock) continue;
       v.shownLevel = level;
-      v.shownUnlocked = unlocked;
+      v.shownLock = lock;
       if (level > 0) {
         v.sprite.setTexture(TEX.station(v.id)).setAlpha(1);
         v.label.setText(t('scene.station.level', { level }));
       } else {
         v.sprite.setTexture(TEX.ghost).setAlpha(unlocked ? 1 : 0.45);
         v.label.setText(
-          unlocked
+          lock === 'open'
             ? t('scene.station.buy')
-            : t('scene.station.locked', { level: getStationDef(v.id).unlockCafeLevel }),
+            : lock === 'terrace'
+              ? t('scene.station.needsTerrace')
+              : t('scene.station.locked', { level: getStationDef(v.id).unlockCafeLevel }),
         );
       }
     }
@@ -408,8 +450,8 @@ export class CafeScene extends Phaser.Scene {
       return;
     }
     const g = toGrid(p.worldX, p.worldY);
-    const n = this.layout.gridSize;
-    if (g.x < 0 || g.y < 0 || g.x >= n || g.y >= n) return;
+    const ext = layoutExtent(this.layout, this.terraceLevel);
+    if (g.x < 0 || g.y < 0 || g.x >= ext.w || g.y >= ext.h) return;
     let accepted = false;
     this.store.dispatch((s) => {
       const r = tapCafe(s, this.locationId);
