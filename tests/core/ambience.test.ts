@@ -34,7 +34,9 @@ describe('Ambiente', () => {
   });
 
   it('Max-Level wird nicht überschritten', () => {
+    // Terrasse ist erst ab Café-Level 8 kaufbar (data/unlocks).
     let s = rich(1e12);
+    s = withLocation(s, 'berlin', { ...getLocation(s, 'berlin'), level: 8 });
     for (let i = 0; i < 5; i++) s = buyAmbience(s, 'berlin', 'terrace');
     expect(getLocation(s, 'berlin').ambience['terrace']).toBe(getAmbienceDef('terrace').maxLevel);
     expect(isAmbienceMaxed(s, 'berlin', 'terrace')).toBe(true);

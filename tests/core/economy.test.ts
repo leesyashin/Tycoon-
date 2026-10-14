@@ -175,6 +175,7 @@ describe('Modifiers', () => {
     expect(collectModifiers(fresh())).toEqual({
       spawnMult: 1,
       incomeMult: 1,
+      priceMult: 1,
       speedMult: 1,
       discount: 0,
       staffSpeedMult: Object.fromEntries(STATIONS.map((d) => [d.id, 1])),

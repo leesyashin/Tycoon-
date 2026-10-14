@@ -50,10 +50,13 @@ export function applyOffline(state: GameState, elapsedMs: number): OfflineResult
 
   const rateState = withoutTemporaryBoosts(state);
   let total = D(0);
+  let served = 0;
   const locations = { ...state.locations };
   for (const id of Object.keys(state.locations)) {
     const loc = getLocation(state, id);
-    const gain = computeLocationRates(rateState, id).incomePerSec.mul(seconds);
+    const rates = computeLocationRates(rateState, id);
+    const gain = rates.incomePerSec.mul(seconds);
+    served += rates.served * seconds;
     total = total.add(gain);
     locations[id] = {
       ...loc,
@@ -66,6 +69,7 @@ export function applyOffline(state: GameState, elapsedMs: number): OfflineResult
       ...state,
       locations,
       meta: { ...state.meta, lifetimeEarned: state.meta.lifetimeEarned.add(total) },
+      stats: { ...state.stats, customersServed: state.stats.customersServed + served },
     },
     elapsedMs: elapsed,
     creditedMs: credited,

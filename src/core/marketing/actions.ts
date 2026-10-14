@@ -50,7 +50,8 @@ export function startCampaign(state: GameState, locationId: string): GameState {
   const cost = getCampaignCost(state, locationId);
   if (loc.coins.lt(cost)) return state;
   const until = state.playtimeSec + BALANCE.marketing.campaignDurationSec;
-  return withLocation(state, locationId, {
+  const counted = { ...state, stats: { ...state.stats, campaigns: state.stats.campaigns + 1 } };
+  return withLocation(counted, locationId, {
     ...loc,
     coins: loc.coins.sub(cost),
     marketing: {

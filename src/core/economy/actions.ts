@@ -5,6 +5,8 @@ import { computeCafeLevel } from './cafeLevel';
 import { getMaxAffordable, getStationCost } from './stations';
 import type { Decimal } from '../math/bignum';
 import { canAutoBuy } from '../staff/effects';
+import { applyCafeLevelUp } from '../progression/cafeLevel';
+import { TERRACE_REQUIREMENT } from '@data/unlocks';
 
 export type BulkAmount = 1 | 10 | 100 | 'max';
 
@@ -14,7 +16,17 @@ export function isStationUnlocked(
   stationId: string,
 ): boolean {
   const loc = getLocation(state, locationId);
-  return loc.level >= getStationDef(stationId).unlockCafeLevel;
+  return (
+    loc.level >= getStationDef(stationId).unlockCafeLevel &&
+    !needsTerrace(state, locationId, stationId)
+  );
+}
+
+/** Stationen ab Café-Level 9 brauchen Platz auf der Terrasse (GAME_DESIGN § 5.2). */
+export function needsTerrace(state: GameState, locationId: string, stationId: string): boolean {
+  const r = TERRACE_REQUIREMENT;
+  if (getStationDef(stationId).unlockCafeLevel < r.fromCafeLevel) return false;
+  return (getLocation(state, locationId).ambience[r.ambienceId] ?? 0) < r.minLevel;
 }
 
 /** Wie viele Level ein Kauf mit `amount` tatsächlich bringt (bei `max`: so viele wie bezahlbar). */
@@ -71,7 +83,12 @@ export function buyStation(
       next.stations = { ...next.stations, [id]: { ...st, unlocked: true } };
     }
   }
-  return withLocation(state, locationId, next);
+  const bought = withLocation(state, locationId, next);
+  return applyCafeLevelUp(
+    { ...bought, stats: { ...bought.stats, levelsBought: bought.stats.levelsBought + n } },
+    locationId,
+    loc.level,
+  );
 }
 
 /** Günstigste freigeschaltete Station (+1 Level) und ihr Preis, unabhängig vom Kontostand. */
