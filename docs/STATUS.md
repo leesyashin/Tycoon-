@@ -1,9 +1,9 @@
 ## Loop
-state: running
-current: S8
-branch: session/s8-art
-started: 2026-10-14T22:12:48Z
-next: S8
+state: idle
+current: -
+branch: -
+started: -
+next: S9
 ## Letzte Session: S8 – Grafik und Audio (2026-10-14, PR #11)
 ## Fertig
 - UI-Skin 1:1 nach UI_STYLE (Checkliste § 7 vollständig abgehakt): Tokens § 2 in `src/ui/style.css`, Spiegel `UI_THEME` in `src/data/ui.ts`; Schriften Poppins/Didact Gothic lokal (WOFF2, OFL); Icon-Sprite `public/assets/ui/icons.svg` (Phosphor Fill, MIT) mit Helper `src/ui/icons.ts`
