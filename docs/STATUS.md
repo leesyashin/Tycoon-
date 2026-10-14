@@ -4,22 +4,21 @@ current: S8
 branch: session/s8-art
 started: 2026-10-14T22:12:48Z
 next: S8
-## Letzte Session: S7 – Events, Boosts, Premium-Währung, Monetarisierungs-Interface (2026-10-14, PR #10)
+## Letzte Session: S8 – Grafik und Audio (2026-10-14, PR folgt)
 ## Fertig
-- `data/events.ts`: 5 Zufalls-Events (§ 12.1: Hitzewelle, Influencer-Besuch, Lieferengpass, Food-Blogger, Regentag) mit Wirkung, Belohnung, Szene-Overlay; 3 Kalender-Events (§ 12.2: Hanami, Sommer-Eis, Neujahr); Intervall/Dauer-Konstanten
-- `core/events/`: deterministischer Scheduler (`drawEvent(seed, n)`, `stepEvents` im Tick, ein Event zur Zeit), Abschluss mit Blättern/Statistik/Nachwirkung (`settleEvents`), Lieferengpass beheben (`resolveEvent`, 5 min Einkommen), Offline-Fortschritt (`advanceEventsOffline` in `applyOffline`), Kalender aus lokalem Datum (`refreshCalendarEvents` in `progressionStep`), Effekte je Standort (`collectEventEffects`: Spawn, Preise je Station, Trinkgeld, Zufriedenheit, Qualitäts-Abzug), Szene-Overlay (`getEventOverlay`)
-- Boost-System (§ 12.3): `addBoost` (gleiche Quelle verlängert, verschiedene multiplizieren), Deckel ×12 je Typ in `collectModifiers`; Gratis-Boost-Timer (`freeBoostAt`, `claimFreeBoost`)
-- Goldene Blätter (§ 10): neue Quellen Events (3–8 🍃) und Influencer-Drops (Erwartungswert, 10/Tag); `spendLeaves` (nie negativ) für alle Ausgaben; `core/leaves/`: Zeitsprung 1/4/8 h (5/15/25 🍃, 100 %, alle Standorte, `creditIncome` aus Offline herausgelöst), Boost ×2 30 min (8 🍃), Quest sofort erledigen (4 🍃), Kampagnen-Abklingzeit (3 🍃, schon S4), 2 Skins (Sakura-Bar, Neon-Kasse, 30 🍃)
-- `core/monetization/`: `MonetizationProvider` (isAvailable/showRewarded/purchase), `NoopProvider`, `createMonetizationProvider()`; `MONETIZATION_ENABLED = false` in `data/monetization.ts`. „Gratis-Boost“-Knopf ruft `provider.showRewarded('freeBoost')`, `core` bucht den Boost
-- HUD: „+“-Kreis am Blätter-Stand öffnet den Blätter-Shop (UI_STYLE § 3.1), Boost-Pillen mit Restzeit (§ 3.2/3.5), Gratis-Boost-Knopf, Kalender-Event-Chip; Event-Karte rechts über der Szene (§ 3.7, wippt), öffnet das Event-Panel (Wirkung, Ort, Restzeit, Belohnung, „Beheben“)
-- Blätter-Shop-Panel (§ 16.8): Zeitsprung mit Münz-Vorschau, Boosts, Abkürzungen (Abklingzeit, offene Quests), Skins (kaufen/an/ab); Premium-Zeilen mit Gold-Kante
-- Toasts: Event-Start (Ankündigung mit Wirkung), Event-Ende (+🍃), Influencer-Blatt, Gratis-Boost
-- Szene: Farbfilter je Event, Partikel (Regen, Kirschblüten, Funkeln; aus bei reduzierter Bewegung), Skin-Tönung der Stationen
-- Quest „Beende ein Event“ aktiv; Event-Achievements erreichbar; Zufriedenheits-Detail hat den Posten „Events“
-- Save-Schema v6 + Migration v5→v6 + Härtung
-- Tests: 250 Unit-Tests (neu `tests/core/events.test.ts` 24 Tests: Scheduler deterministisch per Seed, gleiche Folge über 3 h, Intervalle/Dauern, jedes Event in Wirkung und Abschluss, Standort-Bindung, Offline-Abschluss, Kalender inkl. Jahreswechsel/Zeitzone, Boost-Stacking und ×12-Deckel, Gratis-Boost; `tests/core/leaves.test.ts` 21 Tests: Blätter-Buchhaltung inkl. 200 zufälliger Käufe ohne negativen Stand, Zeitsprung, Boost, Quest, Skins, Drops mit Tagesdeckel, No-op-Provider, Save v6 inkl. Härtung), i18n-Test für Events/Skins/Boosts; Coverage core 99,7 % Zeilen (events 100 %, leaves 98,6 %); e2e 21 grün (neu `tests/e2e/events.spec.ts`: Blätter-Shop, Skin, Event beheben, Offline-Abschluss, Gratis-Boost + kein Request an fremde Hosts; axe prüft Blätter-Shop, Event-Panel und HUD mit Boost-Pillen)
-- `pnpm sim`: spielt Events mit (behebt Lieferengpässe), meldet „Erstes Zufalls-Event“, Event-Zählung je Art und Blätter je Stunde
-- Abnahme: kein Netzwerk-Call und kein SDK im Bundle (e2e prüft Requests; Bundle enthält kein AdMob/Stripe), Flag `false`; Events laufen offline weiter bzw. werden beim Laden abgeschlossen (Unit + e2e)
+- UI-Skin 1:1 nach UI_STYLE (Checkliste § 7 vollständig abgehakt): Tokens § 2 in `src/ui/style.css`, Spiegel `UI_THEME` in `src/data/ui.ts`; Schriften Poppins/Didact Gothic lokal (WOFF2, OFL); Icon-Sprite `public/assets/ui/icons.svg` (Phosphor Fill, MIT) mit Helper `src/ui/icons.ts`
+- HUD (§ 3.1–3.3): Währungs-Pille mit orangem „+“, Status-Pille (Café-Uhr, Einkommen/s, Standort), Chips Zufriedenheit/Sauberkeit (< 70), Boost-Pillen, Qualitäts-Pille rechts (6 Blätter = 6 Stufen, öffnet Shop-Tab Qualität)
+- Rechte Spalte (Personal, Statistik, Erfolge mit Badge), Bottom-Bar `.actionbar` (Shop-Kreis 72 px mit „!“-Badge, Hype-Pille, Marketing, Standorte, Bauen), Zahnrad, Filialleiter-Avatar mit Auto-Kauf-Pille. Labels nur als `aria-label`/`title`; `nav-*`-Testids stabil, neu `nav-stats`, `nav-build`
+- Stations-Bottom-Sheet (§ 3.8): Kopf-Chip, weiße Detailkarte mit Sprite-Icon und LEVEL-Badge, Kauf-Pillen ×1/×10/×100/Max, Icon-Grid (8 Stationen + 5 Ambiente, Level-Badge, gesperrt, kaufbar-Punkt) mit ‹ › – Ambiente-Elemente haben eine eigene Detailkarte mit Kauf im selben Sheet
+- Verwaltungs-Screen (§ 3.9): Vollbild mit Karten-Tabs Stationen/Marketing/Personal/Statistik (`manage-tab-*`); neue Statistik (`statsPanel.ts`): Einnahmen je Station und Trinkgeld pro Café-Tag als Balken, Auslastung, Tagesbilanz-Pille. Standorte, Fortschritt, Settings ebenfalls als Vollbild-Screen; Dialoge und Toasts weiß
+- Szene: `pixelArt: false`, `antialias: true`; alle Platzhalter (`scenes/placeholders.ts`, `data/themes.ts`) entfernt. Sprite-Pipeline `pnpm art` (`scripts/art/*`, `scripts/build-art.ts`): Sprites als Code (SVG, Flat-Shaded, 3 Helligkeitsstufen) → PNG 2× → eigener Shelf-Packer → Phaser-JSON-Atlas `common` + `theme-<ort>` (Lazy-Loading in `CafeScene.preload`), DOM-Icons, PWA-Icons 192/512
+- Sprites: 8 Stationen × 3 Ausbaustufen (Level 1/25/100) × 2 Blickrichtungen, 5 Ambiente, 5 Kundentypen und 7 Personal-Rollen (Schürze) mit 2 Richtungen × 2 Lauf-Frames (+ Spiegeln = 4 Richtungen), Boden/Wände mit Fenstern/niedrige Vorderwände (Dollhouse) je Standort-Thema
+- Effekte: Tag/Nacht (24 min = 1 Tag, `core/time/dayCycle.ts`, Indigo-Multiply + warme Fenster), Fortschrittsringe über bedienten Kunden, Warteschlangen-Tafel (rote LED) über der Kasse, Kauf-Plopp, Shine bei neuer Ausbaustufe, Dampf über der Matcha-Bar, Münz-Flug Richtung HUD, Kunden-Emotes; bei `prefers-reduced-motion` aus
+- Audio (`src/audio/audio.ts`): Web-Audio-Synthese (keine Dateien), SFX Kauf/Münze/Tap/Freischaltung/Fehler/Event-Start/-Ende/Blatt/Boost, Lo-fi-Loop; AudioContext erst nach erster Interaktion; Lautstärke-Regler in den Settings
+- Save-Schema v7 (`settings.sfxVolume/musicVolume`) + Migration v6→v7 + Härtung der Settings
+- Tests: 260 Unit (neu: dayCycle, Atlas-Vollständigkeit, Stations-Optik, Save v7); e2e 27 grün (neu `tests/e2e/art.spec.ts`: Assets lokal ohne 404/fehlende Frames, Lazy-Loading, Touch-Ziele ≥ 44 px, Icon-Grid/Pfeile/Ambiente-Kauf, Verwaltungs-Tabs, Lautstärke persistiert, reduced motion ohne Animationen; axe zusätzlich für Ambiente-Karte und Statistik)
+- Screenshots DE/EN 390×844 und 1280×720 in `docs/screenshots/s8/`
+- Bundle: JS 402 KB gzip, Sprites 356 KB, Schriften 41 KB – weit unter 2 MB
 
 ## Monetarisierung: wie ein echter Provider eingehängt würde
 - Einziger Einstiegspunkt ist `MonetizationProvider` (`src/core/monetization/provider.ts`). Spielcode ruft nur `isAvailable()`, `showRewarded(placement)` und `purchase(sku)`; Belohnungen bucht immer `core` (z. B. `claimFreeBoost`), nie der Provider.
@@ -28,17 +27,24 @@ next: S8
 - Käufe: `purchase(sku)` → Zahlungsdialog des Anbieters; erst nach Server-Bestätigung (Webhook/Receipt-Prüfung, nicht im Client) `{ ok: true }`. Gutschrift über eine neue `core`-Action (z. B. `grantLeaves`) mit Idempotenz-Schlüssel im Save. Erstattungen/Abstürze sind laut GAME_DESIGN § 10 nicht Teil von v1.
 - Vor dem Einschalten: Datenschutz/Consent (DSGVO), Lizenz des SDK in `docs/ASSETS.md`/STATUS „Entscheidungen“, e2e „keine fremden Requests“ anpassen.
 ## Offen / bekannte Bugs
+- HUD zeigt Zen weiter nicht (nur Standorte-Panel); UI_STYLE § 5 sieht im HUD nur Münzen/⚡/Blätter vor. ⚡ Kapazität bleibt ausgeblendet (§ 6.4, S9).
+- Skins (Sakura-Bar, Neon-Kasse) sind weiter eine Tönung der neuen Stations-Sprites, keine eigenen Sprites; global statt je Standort.
+- Alle Standorte nutzen weiter `DEFAULT_LAYOUT`; S8 gibt jedem Standort eigene Böden/Wände/Fenster (Themen-Atlas), aber keinen eigenen Grundriss.
+- Emoji stecken noch in i18n-Texten (Toasts „+2 🍃“, Zen „☯“, Kalender-Pille, Event-Panel-Liste) und als Fallback-`icon` in `data/events.ts`. Alle Bedienelemente (HUD, Leiste, Panels-Kopf, Event-Karte) nutzen SVG-Glyphen. Texte umzubauen hätte e2e-Erwartungen geändert – Kandidat für S9.
+- Statistik: Kosten-Balken (Gehalt, Werbung) aus UI_STYLE § 3.9 fehlen, weil das Spiel keine laufenden Kosten hat (Personal/Marketing sind Einmalkäufe). Tagesbilanz ist daher immer grün.
+- Stations-Bottom-Sheet: Antippen einer Station zoomt die Kamera nicht auf 1.3 (UI_STYLE § 4 „Kamera“); das Panel deckt im Hochformat ~55 % ab, die Station kann darunter liegen.
+- 60 fps auf Mittelklasse-Android nicht auf echtem Gerät gemessen (keine Hardware in der Session); Headless-Chromium (SwiftShader) wie bisher. Bitte mit `?debugSpawn=100` auf einem Handy prüfen. Die neuen Effekte sind gepoolt (Popups, Emotes, max. 6 Münz-Flüge) und die Ringe ein einziges `Graphics`.
+- Musik ist ein synthetischer 4-Takt-Loop (16 s); auf Dauer eintönig. Echte CC0-Musikdatei wäre eine Option (Lizenz in ASSETS.md).
+- Audio wird in e2e nur indirekt geprüft (Settings persistieren); ob Töne hörbar sind, lässt sich headless nicht testen.
+- Screenshots in `docs/screenshots/s8/` zeigen den Dev-Server (Debug-Hinweis „B = …“ sichtbar).
 - Kundentypen: nur der Influencer-Blätter-Drop ist im Rate-Modell (Erwartungswert, S7). Merch-Chance (Tourist), Trinkgeld (Stammgast), Influencer-Hype ×1.5 und Kritiker fehlen weiter → S9 (Balancing).
-- HUD zeigt Zen weiter nicht (nur Standorte-Panel). Kandidat für den UI-Skin in S8 (HUD-Pille § 3.1 hat Platz für drei Währungen).
-- Event-Karte zeigt nur ein Event (das am aktiven Standort, sonst irgendeins); das Event-Panel listet alle. Banner zum Event-Start ist ein Info-Toast – ein eigenes Banner-Element kommt mit dem UI-Skin (S8).
+- Event-Karte zeigt nur ein Event (das am aktiven Standort, sonst irgendeins); das Event-Panel listet alle. Banner zum Event-Start ist weiter ein (weißer) Info-Toast; ein eigenes Banner-Element hat S8 nicht gebaut.
 - Offline beendete Events werden still abgeschlossen (Blätter sind da, aber der Offline-Dialog nennt sie nicht). Idee: Zeile „Während du weg warst: Hitzewelle (+5 🍃)“ im Offline-Dialog.
-- Skins sind nur eine Tönung des Platzhalter-Sprites; echte Skin-Sprites mit S8. Skins sind global (alle Standorte), nicht je Standort.
 - Balance-Sim spielt Events mit (inkl. Beheben des Lieferengpasses), gibt aber keine Blätter aus (kein Zeitsprung/Boost) und kennt weder Erfolge noch Quests (laufen nur über `progressionStep` in der App). Blätter/h im Sim also nur Café-Level + Events + Influencer: 11–15/h; mit Erfolgen und Quests liegt die Frühphase im Richtwert 15–25/h (nicht gemessen) → S9.
 - Kalender-Events wirken auch auf Offline-Einnahmen und den Zeitsprung (sie gelten tage-/wochenweise, keine Spielzeit-Timer); Neujahr verdoppelt also auch Offline. Bewusst so, siehe Entscheidungen.
 - Kein Weg, ein laufendes Zufalls-Event vorzeitig zu beenden oder die Event-Häufigkeit einzustellen (Settings) – nicht im Design.
 - Balancing Prestige: Erster Reset bringt im Sim 40 Zen (Richtwert 20–30), weil er erst bei 3 h 22 min kommt (Café-Level 14). Berlin stockt ab ~3 h 30 bei Café-Level 14 (Stationskosten mit Wachstum 1.14–1.21 explodieren, Qualität 4 kostet 500 M); Café-Level 15 wird ohne Reset nie erreicht → S9 (Kurve späte Café-Level, ggf. Kyoto zurück auf 15).
 - Freischalt-Café-Level der Standorte ab Tokio stehen weiter auf 15 (Design); ob das mit der neuen Kurve passt, ist ungeprüft – Sim spielt bisher nur bis Kyoto sinnvoll → S9.
-- Alle Standorte nutzen weiter `DEFAULT_LAYOUT` (gleicher Grundriss); eigene Grundrisse je Standort und echte Skins → S8.
 - Kein „Café-Level-Fortschritt anderer Standorte“-Hinweis im HUD (z. B. Badge, wenn ein anderer Standort etwas Kaufbares hat) – Idee für S9.
 - Achievement-Fortschritt „Café-Level“/„Stations-Level“ nimmt das aktuelle Level aller Standorte; nach einem Reset fällt der Balken noch nicht erreichter Stufen zurück (Erreichtes bleibt). Für Café-Level könnte S9 `bestLevel` nehmen.
 - Balancing: Mit Café-Level-Jagd laufen frühe Meilensteine noch zu schnell (Iced-Bar 5,4 min statt 10–15, Bäckerei 22 min statt ~30); Café-Level 10 passt. Greedy startet nie eine Kampagne, Reinigungskraft bleibt auf Stufe 1, Café-Level 15 wird in 2 h nicht erreicht → S9.
@@ -49,13 +55,9 @@ next: S8
 - Kunden gehen nicht über die Kasse; die Kasse hat keine sichtbare Schlange (sie ist im Modell ein Engpass, keine Verkaufsstation).
 - Pinch-Zoom ist nur logisch umgesetzt, nicht auf echtem Touch-Gerät getestet.
 - `pages.yml` läuft weiter bei jedem Push auf main und schlägt fehl, solange Pages nicht aktiviert ist – erwartet, ignorieren (siehe Entscheidungen).
-- PWA-Icon ist nur ein SVG-Platzhalter (PNG 192/512 in S8/S9).
 - Ein nicht lesbarer Spielstand wird unter `mce.save.v4.corrupt` beiseitegelegt; die IndexedDB-Backups (`mce-backups`) haben noch keine Wiederherstellen-UI.
-- SFX/Musik-Schalter speichern nur die Einstellung; Audio selbst kommt in S8.
-- Bundle 381 KB gzip JS (Phaser ist der Großteil), Ziel < 2 MB eingehalten.
 - Marketing-Plakat vorm Café (GAME_DESIGN § 9, „Visuell“) fehlt. Kandidat für S8.
 - Auto-Kauf und Sauberkeit laufen offline nicht (siehe Entscheidungen).
-- Personal-Figuren stehen neben der Station; mit echten Sprites in S8 ggf. hinter die Theke. Terrassen-Deck und Außentische sind Platzhalter (S8).
 - Terrasse Stufe 2 gibt eine L-förmige Fläche; die fehlende Ecke (Stufe 3) ist beim Antippen trotzdem „im Café“ (Tap-Bonus) – kosmetisch egal.
 ## Entscheidungen, die vom Plan abweichen
 - Vorgabe Vincent (2026-10-14): Kein Deploy durch die Sessions. Sessions bauen nur das Spiel (`pnpm build` muss grün sein); Vincent deployt selbst. Pages-Deploy, „Pages-URL erreichbar“ und der Pages-Link in der Abschlussnachricht entfallen als Abnahmekriterium. Ein roter `pages`-Workflow auf main blockiert nichts.
@@ -140,13 +142,28 @@ next: S8
 - `[hidden] { display: none !important }` global in `style.css`: Klassen mit eigenem `display` (Flex-Zeilen, Pillen, Event-Karte) überstimmten sonst das `hidden`-Attribut.
 - Event-Karte wippt (`@keyframes bob`), bei `prefers-reduced-motion` nicht; Event-Partikel (Regen, Blüten, Funkeln) laufen dann ebenfalls nicht, nur der Farbfilter. e2e emuliert `reducedMotion`, weil Playwright ein dauerhaft animiertes Element nie als „stabil“ klickt.
 - PRNG/Hash (`mulberry32`, FNV-1a) aus `progression/quests.ts` nach `core/math/random.ts` gezogen, damit Events und Quests denselben nutzen.
-## Nächste Session: S8
-Startpunkt: PLAN.md § 3, Abschnitt S8 (Grafik und Audio) und `docs/UI_STYLE.md` § 2–4 und § 7 (Umsetzungs-Checkliste).
-- UI-Skin: S7 hat die S7-Bausteine schon mit den Ziel-Klassen angelegt (`.boost-pill`, `.event-card`, `.hud-plus`); beim Umbau auf `.hud-pill`/`.actionbar` die `data-testid`s behalten (`hud-leaf-shop`, `hud-free-boost`, `hud-boost-*`, `event-card`, `leaf-*`, `event-resolve-*`).
-- Szene: Event-Overlay (`getEventOverlay`) liefert Farbe/Alpha/Partikel-Art; Partikel-Texturen `fx-rain`, `fx-petal`, `fx-sparkle` sind Platzhalter in `scenes/placeholders.ts`. Skins tönen heute nur (`equippedSkinTints`) – mit echten Sprites eigene Texturen je Skin.
-- Audio: SFX für Kauf, Event-Start/-Ende, Blatt-Drop, Boost; Musik-Schalter existiert seit S3.
-- Fallen: `[hidden]` ist global `display:none !important` – neue Komponenten mit eigenem `display` brauchen nichts extra. Neue Instanz-Felder in `CafeScene.init()` zurücksetzen (Szene startet bei Wechsel/Reset neu; `fx`, `overlayKey` gibt es schon). Neue UI-Texte in beide JSONs. e2e lokal: `PW_CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome pnpm e2e`; animierte Elemente in e2e mit `page.emulateMedia({ reducedMotion: 'reduce' })` klicken. Bundle (393 KB gzip JS) im Blick behalten.
+- S8: Sprites selbst gezeichnet **als Code** (`scripts/art/sprites.ts`, SVG) statt Kenney-Packs – Kenney hat kein Matcha-/Café-Inventar und nutzt Outlines/Texturen (widerspricht UI_STYLE § 4). Ausgabe wird eingecheckt; `pnpm art` nur nach Änderungen (braucht Chromium, nicht Teil von CI).
+- S8: Texture-Atlas mit eigenem Shelf-Packer in `scripts/build-art.ts` statt `free-tex-packer-core`/Vite-Plugin – keine neue Abhängigkeit. Rendern über das vorhandene `@playwright/test`.
+- S8: Audio komplett per Web Audio synthetisiert (keine Howler-Abhängigkeit, keine Audiodateien, keine Lizenzfrage). Phaser-Audio wird nicht genutzt.
+- S8: Save-Schema v7: `settings.sfxVolume`/`musicVolume` (Standard 0.7/0.4, `data/audio.ts`); Schalter `sfx`/`music` bleiben und stummen unabhängig. `mce.save.v6` in `LEGACY_KEYS`.
+- S8: Neues Token `--c-danger-ink` (#c42727): Weiß auf `--c-danger` hat nur 3.9:1; Löschen-Buttons, Badges und das Screen-X nutzen die tiefere Stufe (5.7:1). `.stat dt` in `--c-ink` statt `--c-ink-muted` (4.06:1 auf `--c-surface-2`).
+- S8: Qualitäts-Pille zeigt 6 Blätter (das Spiel hat 6 Qualitätsstufen, `data/quality.ts`), nicht 4 wie UI_STYLE § 3.3.
+- S8: Verwaltungs-Screen: jeder Tab bleibt ein eigenes Panel (eigene `panel-*`-Testid), der Screen bündelt sie über `createManageTabs`. Shop-Varianten haben eigene Keys (`shop`, `shop:quality`, `shop:ambience`), damit HUD-Qualität/Bauen nicht das gerade offene Shop-Panel wegklappen.
+- S8: Statistik zeigt Werte „pro Café-Tag“ (24 min Spielzeit = 1 Tag, wie die Uhr).
+- S8: Stationen haben je zwei Blickrichtungen (Theke nach +y oder ±x); Figuren zwei Richtungen × 2 Frames, die anderen zwei per `flipX`.
+- S8: Tag/Nacht hängt an `playtimeSec` (Start 9:00), nicht an der Wanduhr – rein kosmetisch, keine Einnahmen-Wirkung. Helper in `core/time/dayCycle.ts` (pur, getestet), Konstanten `DAY_CYCLE` in `data/ui.ts`.
+- S8: Warteschlangen-Tafel zählt alle wartenden Kunden im Café (Kunden laufen im Modell nicht über die Kasse).
+- S8: Kauf-Plopp bei jedem Level-Kauf einer Station und jedem Ambiente-Kauf; Shine nur beim ersten Kauf und bei neuer Ausbaustufe (25/100), damit es besonders bleibt.
+- S8: Bottom-Sheet deckt Zahnrad/Leiste ab (z-index Panel > HUD, wie Vorbild); e2e schließt Panels vor Klicks auf die Leiste bzw. aufs Café (Tagesaufgaben-Test angepasst, Sprachwechsel-Test prüft `aria-label` statt sichtbarem Nav-Text).
+- S8: PWA: `theme_color` #1d457b, PNG-Icons 192/512, Precache auch für `json` (Atlanten) und `woff2`.
+## Nächste Session: S9
+Startpunkt: PLAN.md § 3, Abschnitt S9 (Balancing, Tutorial, Release) und die S9-Punkte unter „Offen“ (Kundentypen-Effekte, späte Café-Level-Kurve, Prestige-Zen, Blätter/h).
+- Tutorial/Onboarding: UI_STYLE § 3.5 sieht einen einmaligen Tooltip vor, der die unbeschrifteten Leisten-Buttons erklärt. Alle Buttons haben stabile `data-testid`s (`nav-*`, `hud-*`, `manage-tab-*`, `tile-*`).
+- Fallen: Neue UI nur mit Tokens aus `style.css` (Hex nur dort und in `UI_THEME`). Neue Sprites in `scripts/art/sprites.ts` zeichnen und `PW_CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome pnpm art` laufen lassen (Atlas + Icons werden neu geschrieben, `tests/art.test.ts` prüft Frames). Neue Instanz-Felder in `CafeScene.init()` zurücksetzen. Panels decken im Hochformat die Leiste ab – e2e vorher `panel-close`. Animierte Elemente in e2e mit `reducedMotion: 'reduce'` klicken. Save-Schema steht auf v7.
+- e2e lokal: `PW_CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome pnpm e2e` (27 Tests, ~2 min).
+
 ## Balancing-Snapshot (Sim-Ausgabe, `pnpm sim --hours 4`)
+S8 hat keine Balancing-Werte geändert; `pnpm sim --hours 1` läuft fehlerfrei mit identischem Ergebnis (Café-Level 8, 4.27 K/s nach 1 h). Snapshot aus S7 gilt weiter:
 Balance-Sim: 4 h, Greedy-Spieler (Stationen, Personal, Ambiente, Qualität, Marketing, Reset, Zen), Meilensteine Berlin erster Run
 | Meilenstein | Zielzeit | Ist |
 |---|---|---|

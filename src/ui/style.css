@@ -1125,7 +1125,9 @@ legend {
   color: var(--c-ink-muted);
 }
 .event-card-icon {
-  font-size: 22px;
+  width: 26px;
+  height: 26px;
+  color: var(--c-energy);
 }
 @keyframes bob {
   0%,

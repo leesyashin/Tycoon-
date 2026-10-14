@@ -45,6 +45,11 @@ export type IconName =
   | 'fast-forward'
   | 'paint-brush'
   | 'close'
+  | 'cloud-rain'
+  | 'flower-lotus'
+  | 'confetti'
+  | 'package'
+  | 'ice-cream'
   | 'tick';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
