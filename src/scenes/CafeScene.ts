@@ -1,9 +1,9 @@
 import Phaser from 'phaser';
-import { getLayout, type CafeLayout, type GridPos } from '@data/layouts';
+import { CLEANER_AREA, getLayout, staffSpot, type CafeLayout, type GridPos } from '@data/layouts';
 import { STATIONS, getStationDef } from '@data/stations';
 import { getLocation, type GameState } from '@core/GameState';
 import type { Store } from '@core/store';
-import { computeLocationRates, tapCafe, type LocationRates } from '@core/customers';
+import { computeLocationRates, mood, tapCafe, type LocationRates } from '@core/customers';
 import { buyStation, getBulkCost, isStationUnlocked } from '@core/economy';
 import { formatNumber } from '@core/math/format';
 import { Decimal } from '@core/math/bignum';
@@ -49,6 +49,10 @@ export class CafeScene extends Phaser.Scene {
   private labelZoom = 0;
   private ambienceImages: Phaser.GameObjects.Image[] = [];
   private ambienceKey = '';
+  private moodSprites: Phaser.GameObjects.Image[] = [];
+  private staffViews: { stationId: string; sprite: Phaser.GameObjects.Image }[] = [];
+  private cleaner!: Phaser.GameObjects.Image;
+  private cleanerWait = 0;
 
   constructor() {
     super('CafeScene');
@@ -68,6 +72,10 @@ export class CafeScene extends Phaser.Scene {
     this.agentSprites = this.crowd.agents.map(() =>
       this.add.image(0, 0, TEX.customer('student')).setOrigin(0.5, 1).setVisible(false),
     );
+    this.moodSprites = this.crowd.agents.map(() =>
+      this.add.image(0, 0, TEX.mood('happy')).setOrigin(0.5, 1).setVisible(false),
+    );
+    this.createStaff();
     for (let i = 0; i < POPUP_POOL; i++) {
       this.popups.push(this.makeText(12, '#ffe27a').setVisible(false).setDepth(DEPTH.overlay));
     }
@@ -117,9 +125,11 @@ export class CafeScene extends Phaser.Scene {
       this.ratesAge = 0;
       this.refreshStations(state);
       this.createAmbience(state);
+      this.refreshStaff(state);
     }
+    this.moveCleaner(deltaMs / 1000);
     const { purchases } = this.crowd.update(deltaMs / 1000, this.visibleRates(this.rates));
-    this.syncAgents();
+    this.syncAgents(mood(getLocation(state, this.locationId).satisfaction));
     for (const a of purchases) this.coinPopup(a.x, a.y);
     const hidden = this.crowd.hiddenCount;
     this.moreText.setVisible(hidden > 0);
@@ -278,14 +288,69 @@ export class CafeScene extends Phaser.Scene {
     }
   }
 
-  private syncAgents(): void {
+  /** Personal-Figuren (kosmetisch): je Station mit eingestellter Rolle eine Figur daneben, plus Reinigungskraft. */
+  private createStaff(): void {
+    for (const p of this.layout.stations) {
+      const spot = staffSpot(p);
+      const w = this.world(spot);
+      const role = getStationDef(p.stationId).staffRole;
+      const sprite = this.add
+        .image(w.x, w.y + TILE_H * 0.75, TEX.staff(role))
+        .setOrigin(0.5, 1)
+        .setDepth(isoDepth(spot.x, spot.y, 6))
+        .setVisible(false);
+      this.staffViews.push({ stationId: p.stationId, sprite });
+    }
+    const start = this.world({ x: CLEANER_AREA.min, y: CLEANER_AREA.min });
+    this.cleaner = this.add
+      .image(start.x, start.y, TEX.staff('cleaner'))
+      .setOrigin(0.5, 1)
+      .setVisible(false);
+  }
+
+  private refreshStaff(state: GameState): void {
+    const loc = getLocation(state, this.locationId);
+    for (const v of this.staffViews) {
+      const role = getStationDef(v.stationId).staffRole;
+      const show = (loc.stations[v.stationId]?.level ?? 0) > 0 && (loc.staff[role] ?? 0) > 0;
+      if (v.sprite.visible !== show) v.sprite.setVisible(show);
+    }
+    const cleaner = (loc.staff['cleaner'] ?? 0) > 0;
+    if (this.cleaner.visible !== cleaner) this.cleaner.setVisible(cleaner);
+  }
+
+  /** Die Reinigungskraft wischt sich von Tisch zu Tisch; rein optisch. */
+  private moveCleaner(dtSec: number): void {
+    if (!this.cleaner.visible) return;
+    this.cleanerWait -= dtSec;
+    if (this.cleanerWait > 0) return;
+    this.cleanerWait = CLEANER_AREA.moveEverySec;
+    const span = CLEANER_AREA.max - CLEANER_AREA.min + 1;
+    const gx = CLEANER_AREA.min + Math.floor(Math.random() * span);
+    const gy = CLEANER_AREA.min + Math.floor(Math.random() * span);
+    const p = toScreen(gx, gy);
+    const y = p.y + TILE_H / 2 + 4;
+    this.cleaner.setFlipX(p.x < this.cleaner.x);
+    this.tweens.add({
+      targets: this.cleaner,
+      x: p.x,
+      y,
+      duration: CLEANER_AREA.moveEverySec * 500,
+      onUpdate: () => this.cleaner.setDepth(isoDepth(gx, gy, 6)),
+    });
+  }
+
+  private syncAgents(currentMood: string): void {
     const agents = this.crowd.agents;
+    const moodTex = TEX.mood(currentMood);
     for (let i = 0; i < agents.length; i++) {
       const a = agents[i];
       const s = this.agentSprites[i];
-      if (!a || !s) continue;
+      const m = this.moodSprites[i];
+      if (!a || !s || !m) continue;
       if (!a.active) {
         s.setVisible(false);
+        m.setVisible(false);
         continue;
       }
       const p = toScreen(a.x, a.y);
@@ -299,6 +364,13 @@ export class CafeScene extends Phaser.Scene {
       s.setVisible(true)
         .setPosition(x, y)
         .setDepth(isoDepth(a.x, a.y, 6));
+      // Smiley nur in Schlange und beim Bedienen, damit die Szene nicht überladen wirkt.
+      const serving = a.phase === 'serve' || a.phase === 'queue';
+      m.setVisible(serving);
+      if (serving) {
+        if (m.texture.key !== moodTex) m.setTexture(moodTex);
+        m.setPosition(x, y - 26).setDepth(DEPTH.label - 1);
+      }
     }
   }
 

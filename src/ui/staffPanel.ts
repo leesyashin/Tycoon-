@@ -76,6 +76,11 @@ function nextText(role: StaffRoleDef, s: GameState, locId: string): string {
   if (Math.abs(p.satisfactionDelta) >= 0.05) {
     return t('staff.next.satisfaction', { value: fmtSigned(p.satisfactionDelta) });
   }
+  if (role.id === 'cleaner') {
+    return t('staff.next.cleanRate', {
+      rate: fmtSigned(cleanlinessRatePerMin(hiredOnce(loc, role.id))),
+    });
+  }
   return t('staff.next.none');
 }
 

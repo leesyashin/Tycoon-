@@ -183,5 +183,7 @@
   "marketing.campaign.cooldown": "Cooldown: {time} left",
   "marketing.campaign.start": "Start · {cost}",
   "marketing.campaign.skip": "Ready now · {leaves} 🍃",
-  "toast.campaignStarted": "Campaign started: ×2 customer flow!"
+  "toast.campaignStarted": "Campaign started: ×2 customer flow!",
+  "satisfaction.hint.moreCleaners": "More cleaners: from tier 3 the café gets mopped back up.",
+  "staff.next.cleanRate": "Next tier: cleanliness {rate}/min"
 }

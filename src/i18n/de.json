@@ -183,5 +183,7 @@
   "marketing.campaign.cooldown": "Abklingzeit: noch {time}",
   "marketing.campaign.start": "Starten · {cost}",
   "marketing.campaign.skip": "Sofort bereit · {leaves} 🍃",
-  "toast.campaignStarted": "Kampagne gestartet: ×2 Kundenstrom!"
+  "toast.campaignStarted": "Kampagne gestartet: ×2 Kundenstrom!",
+  "satisfaction.hint.moreCleaners": "Mehr Reinigungskräfte: ab Stufe 3 wird wieder aufgewischt.",
+  "staff.next.cleanRate": "Nächste Stufe: Sauberkeit {rate}/min"
 }

@@ -62,7 +62,13 @@ export function createSatisfactionPanel(store: Store): PanelContent {
     setText(tips, t('satisfaction.effect.tips', { value: fmtSmall(rates.tipRate * 100, 1) }));
     // Hinweis auf den stärksten negativen Beitrag.
     const worst = b.waitPressure <= b.cleanliness ? 'waitPressure' : 'cleanliness';
-    setText(hint, b[worst] < 0 ? t(`satisfaction.hint.${worst}`) : t('satisfaction.hint.ok'));
+    const key =
+      b[worst] >= 0
+        ? 'ok'
+        : worst === 'cleanliness' && (loc.staff['cleaner'] ?? 0) > 0
+          ? 'moreCleaners'
+          : worst;
+    setText(hint, t(`satisfaction.hint.${key}`));
   };
   const view: View = { el, update };
   return { title: t('satisfaction.title'), view };

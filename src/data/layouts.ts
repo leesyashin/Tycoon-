@@ -116,3 +116,11 @@ export function getLayout(locationId: string): CafeLayout {
   if (!l) throw new Error(`No layout for location: ${locationId}`);
   return l;
 }
+
+/** Platz für die (kosmetische) Personal-Figur: neben der Station, quer zur Schlange. */
+export function staffSpot(p: StationPlacement): GridPos {
+  return { x: p.tile.x + Math.abs(p.queueDir.y), y: p.tile.y + Math.abs(p.queueDir.x) };
+}
+
+/** Bereich, in dem die Reinigungskraft zwischen den Tischen wischt (Kacheln, inklusive). */
+export const CLEANER_AREA = { min: 3, max: 9, moveEverySec: 3 } as const;

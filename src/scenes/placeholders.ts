@@ -17,7 +17,22 @@ export const TEX = {
   station: (id: string) => `station-${id}`,
   customer: (id: string) => `customer-${id}`,
   ambience: (id: string) => `ambience-${id}`,
+  staff: (id: string) => `staff-${id}`,
+  mood: (id: string) => `mood-${id}`,
 } as const;
+
+/** Schürzenfarbe je Personal-Rolle. */
+const STAFF_COLORS: Record<string, number> = {
+  barista: 0x2f6b2f,
+  cashier: 0xc9a227,
+  cleaner: 0x4a7fbf,
+  manager: 0x333333,
+  baker: 0xe0e0e0,
+  socialMedia: 0xd9468a,
+  teaMaster: 0x8e3c3c,
+};
+
+const MOOD_COLORS: Record<string, number> = { happy: 0x7dd35a, neutral: 0xf5c542, sad: 0xe0584a };
 
 /** Höhe der Stations-Blöcke in px. */
 export const STATION_BOX_H = 26;
@@ -139,7 +154,46 @@ function drawCustomer(g: Phaser.GameObjects.Graphics, t: CustomerTypeDef) {
   }
 }
 
+function drawStaff(g: Phaser.GameObjects.Graphics, apron: number) {
+  // 14×24 wie die Kunden, aber helles Hemd mit farbiger Schürze und Mütze.
+  g.fillStyle(0x2b2b2b, 1);
+  g.fillRect(4, 18, 2, 6);
+  g.fillRect(8, 18, 2, 6);
+  g.fillStyle(0xf5f5f0, 1);
+  g.fillRoundedRect(2, 8, 10, 11, 3);
+  g.fillStyle(apron, 1);
+  g.fillRect(4, 11, 6, 8);
+  g.fillStyle(0xf1c9a5, 1);
+  g.fillCircle(7, 5, 4);
+  g.fillStyle(apron, 1);
+  g.fillRect(3, 0, 8, 3);
+}
+
+function drawMood(g: Phaser.GameObjects.Graphics, mood: string, color: number) {
+  // 12×12: Gesicht, Augen, Mund (lachend, gerade, traurig).
+  g.fillStyle(color, 1);
+  g.fillCircle(6, 6, 6);
+  g.fillStyle(0x1d2a17, 1);
+  g.fillRect(3, 3, 2, 2);
+  g.fillRect(7, 3, 2, 2);
+  if (mood === 'happy') {
+    g.fillRect(3, 7, 6, 1);
+    g.fillRect(4, 8, 4, 1);
+  } else if (mood === 'neutral') {
+    g.fillRect(3, 8, 6, 1);
+  } else {
+    g.fillRect(4, 7, 4, 1);
+    g.fillRect(3, 8, 6, 1);
+  }
+}
+
 export function generatePlaceholders(scene: Phaser.Scene): void {
+  for (const [id, color] of Object.entries(STAFF_COLORS)) {
+    make(scene, TEX.staff(id), 14, 24, (g) => drawStaff(g, color));
+  }
+  for (const [id, color] of Object.entries(MOOD_COLORS)) {
+    make(scene, TEX.mood(id), 12, 12, (g) => drawMood(g, id, color));
+  }
   for (const [key, color] of [
     [TEX.tileA, 0xc9b28a],
     [TEX.tileB, 0xbda57c],
