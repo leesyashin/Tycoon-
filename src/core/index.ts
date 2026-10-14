@@ -10,3 +10,6 @@ export * from './marketing';
 export * from './staff';
 export * from './prestige';
 export * from './progression';
+export * from './events';
+export * from './leaves';
+export * from './monetization';

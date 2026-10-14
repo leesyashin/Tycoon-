@@ -1,5 +1,7 @@
 import { BALANCE } from '@data/balance';
-import { SCHEMA_VERSION, createStats } from '../GameState';
+import { SCHEMA_VERSION, createEventSchedule, createStats } from '../GameState';
+import { FREE_BOOST } from '@data/monetization';
+import { hashString } from '../math/random';
 
 type Json = Record<string, unknown>;
 
@@ -77,6 +79,24 @@ export const migrations: ((raw: Json) => Json)[] = [
       next[id] = { ...loc, bestLevel: level };
     }
     return { ...raw, schemaVersion: 5, locations: next };
+  },
+  // v5 → v6: Events mit Standort und Startzeit, Event-Plan, Gratis-Boost-Timer, Influencer-Drops, Skins (S7).
+  // Alte `activeEvents` waren nie befüllt (kein Event-System), alte Boosts behalten ihre Form.
+  (raw) => {
+    const meta = (raw['meta'] as Json | undefined) ?? {};
+    const playtime = typeof raw['playtimeSec'] === 'number' ? raw['playtimeSec'] : 0;
+    const createdAt = typeof raw['createdAt'] === 'number' ? raw['createdAt'] : 0;
+    const schedule = createEventSchedule(hashString(String(createdAt)));
+    return {
+      ...raw,
+      schemaVersion: 6,
+      meta: { ...meta, skins: { owned: [], equipped: [] } },
+      activeEvents: [],
+      calendarEvents: [],
+      eventSchedule: { ...schedule, nextAt: playtime + schedule.nextAt },
+      freeBoostAt: playtime + FREE_BOOST.intervalSec,
+      leafDrops: { date: '', count: 0, fraction: 0 },
+    };
   },
 ];
 

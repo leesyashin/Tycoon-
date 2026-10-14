@@ -12,6 +12,8 @@ export interface SatisfactionBreakdown {
   teaMaster: number;
   /** Meta-Upgrade „Basis-Zufriedenheit“ (Zen). */
   zen: number;
+  /** Laufende Events (Hanami +10). */
+  event: number;
   waitPressure: number;
   cleanliness: number;
   target: number;
@@ -65,15 +67,17 @@ export function computeSatisfactionTarget(
   loc: LocationState,
   waitPressure: number,
   zenBonus = 0,
+  eventBonus = 0,
+  qualityPenalty = 0,
 ): SatisfactionBreakdown {
   const s = BALANCE.satisfaction;
   const decor = (loc.ambience['decor'] ?? 0) * s.perDecor;
-  const quality = loc.quality * s.perQuality;
+  const quality = Math.max(0, loc.quality - qualityPenalty) * s.perQuality;
   const teaMaster = (loc.staff['teaMaster'] ?? 0) * s.perTeaMaster;
   const wait = -waitPressure * s.waitPressureWeight;
   const cleanliness = (loc.cleanliness - s.cleanlinessNeutral) * s.cleanlinessWeight;
   const target = clamp(
-    s.base + decor + quality + teaMaster + zenBonus + wait + cleanliness,
+    s.base + decor + quality + teaMaster + zenBonus + eventBonus + wait + cleanliness,
     0,
     100,
   );
@@ -83,6 +87,7 @@ export function computeSatisfactionTarget(
     quality,
     teaMaster,
     zen: zenBonus,
+    event: eventBonus,
     waitPressure: wait,
     cleanliness,
     target,
@@ -118,7 +123,7 @@ export function computeLocationRates(state: GameState, locationId: string): Loca
   const perStation: Record<string, number> = {};
   const perStationIncome: Record<string, Decimal> = {};
   let income = ZERO;
-  const tips = tipRate(loc);
+  const tips = tipRate(loc) * mods.tipMult;
   const priceMult = (1 + tips) * mods.incomeMult * mods.priceMult * mods.prestigeMult;
   for (const def of STATIONS) {
     const cap = perStationCap[def.id];
@@ -126,7 +131,7 @@ export function computeLocationRates(state: GameState, locationId: string): Loca
     const customers = served * (cap / sumThroughput);
     perStation[def.id] = customers;
     const revenue = getStationPrice(def, loc.stations[def.id]?.level ?? 0, locationId).mul(
-      customers,
+      customers * (mods.stationPriceMult[def.id] ?? 1),
     );
     perStationIncome[def.id] = revenue.mul(priceMult);
     if (customers > 0) income = income.add(revenue);
@@ -139,7 +144,13 @@ export function computeLocationRates(state: GameState, locationId: string): Loca
     waitPressure,
     satisfactionFactor: satisfactionFactor(loc.satisfaction),
     tipRate: tips,
-    satisfaction: computeSatisfactionTarget(loc, waitPressure, mods.satisfactionBonus),
+    satisfaction: computeSatisfactionTarget(
+      loc,
+      waitPressure,
+      mods.satisfactionBonus,
+      mods.eventSatisfaction,
+      mods.qualityPenalty,
+    ),
     perStation,
     perStationIncome,
   };

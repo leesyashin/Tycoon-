@@ -138,7 +138,7 @@ describe('Offline zählt keine zeitlich begrenzten Boosts', () => {
     const boosted = {
       ...s,
       boosts: [{ id: 'hype', until: 100, spawnMult: 2, incomeMult: 2, speedMult: 1 }],
-      activeEvents: [{ id: 'e', until: 100, spawnMult: 2, incomeMult: 2 }],
+      activeEvents: [{ id: 'heatwave', locationId: LOC, startedAt: 0, until: 100 }],
     };
     const plain = withoutTemporaryBoosts(boosted);
     expect(plain.boosts).toEqual([]);

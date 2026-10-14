@@ -181,6 +181,10 @@ describe('Modifiers', () => {
       discount: 0,
       satisfactionBonus: 0,
       staffSpeedMult: Object.fromEntries(STATIONS.map((d) => [d.id, 1])),
+      stationPriceMult: {},
+      tipMult: 1,
+      eventSatisfaction: 0,
+      qualityPenalty: 0,
     });
   });
   it('aktive Events und Boosts multiplizieren, abgelaufene nicht', () => {
@@ -188,14 +192,16 @@ describe('Modifiers', () => {
       ...fresh(),
       playtimeSec: 10,
       activeEvents: [
-        { id: 'a', until: 20, spawnMult: 2, incomeMult: 1.5 },
-        { id: 'old', until: 5, spawnMult: 10, incomeMult: 10 },
+        // Hitzewelle: Spawn ×1.3, Iced-Bar ×3
+        { id: 'heatwave', locationId: 'berlin', startedAt: 0, until: 20 },
+        { id: 'influencerVisit', locationId: 'berlin', startedAt: 0, until: 5 },
       ],
       boosts: [{ id: 'b', until: 30, spawnMult: 1.5, incomeMult: 2, speedMult: 3 }],
     };
     const m = collectModifiers(s);
-    expect(m.spawnMult).toBeCloseTo(3, 9);
-    expect(m.incomeMult).toBeCloseTo(3, 9);
+    expect(m.spawnMult).toBeCloseTo(1.3 * 1.5, 9);
+    expect(m.incomeMult).toBeCloseTo(2, 9);
     expect(m.speedMult).toBe(3);
+    expect(m.stationPriceMult['icedBar']).toBe(3);
   });
 });

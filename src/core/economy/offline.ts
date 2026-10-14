@@ -3,6 +3,7 @@ import { getMetaUpgradeDef } from '@data/prestige';
 import { Decimal, D } from '../math/bignum';
 import { getLocation, type GameState } from '../GameState';
 import { computeLocationRates } from '../customers/rates';
+import { advanceEventsOffline } from '../events/schedule';
 
 export function getOfflineCapMs(state: GameState): number {
   const o = BALANCE.offline;
@@ -42,16 +43,17 @@ export function withoutTemporaryBoosts(state: GameState): GameState {
   return { ...state, boosts: [], activeEvents: [], locations };
 }
 
-/**
- * Schreibt Offline-Einnahmen gut. Negative Deltas (Uhr zurückgestellt) zählen als 0.
- * Die Rate wird aus dem Zustand beim Speichern genommen und bleibt konstant.
- */
-export function applyOffline(state: GameState, elapsedMs: number): OfflineResult {
-  const elapsed = Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs) : 0;
-  const credited = Math.min(elapsed, getOfflineCapMs(state));
-  const seconds = (credited / 1000) * getOfflineEfficiency(state);
-  if (seconds <= 0) return { state, elapsedMs: elapsed, creditedMs: credited, earned: D(0) };
+export interface CreditResult {
+  state: GameState;
+  earned: Decimal;
+}
 
+/**
+ * Schreibt `seconds` Einkommen aller Standorte gut, mit der Rate ohne zeitlich begrenzte Multiplikatoren.
+ * Gemeinsame Grundlage für Offline-Einnahmen und den Zeitsprung.
+ */
+export function creditIncome(state: GameState, seconds: number): CreditResult {
+  if (!(seconds > 0)) return { state, earned: D(0) };
   const rateState = withoutTemporaryBoosts(state);
   let total = D(0);
   let served = 0;
@@ -75,9 +77,25 @@ export function applyOffline(state: GameState, elapsedMs: number): OfflineResult
       meta: { ...state.meta, lifetimeEarned: state.meta.lifetimeEarned.add(total) },
       stats: { ...state.stats, customersServed: state.stats.customersServed + served },
     },
+    earned: total,
+  };
+}
+
+/**
+ * Schreibt Offline-Einnahmen gut. Negative Deltas (Uhr zurückgestellt) zählen als 0.
+ * Die Rate wird aus dem Zustand beim Speichern genommen und bleibt konstant. Events laufen in
+ * Echtzeit weiter und werden abgeschlossen, wenn sie in der Abwesenheit geendet hätten.
+ */
+export function applyOffline(state: GameState, elapsedMs: number): OfflineResult {
+  const elapsed = Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs) : 0;
+  const credited = Math.min(elapsed, getOfflineCapMs(state));
+  const seconds = (credited / 1000) * getOfflineEfficiency(state);
+  const { state: paid, earned } = creditIncome(state, seconds);
+  return {
+    state: advanceEventsOffline(paid, elapsed / 1000),
     elapsedMs: elapsed,
     creditedMs: credited,
-    earned: total,
+    earned,
   };
 }
 

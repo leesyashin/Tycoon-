@@ -14,6 +14,7 @@ const PARTS: Part[] = [
   'quality',
   'teaMaster',
   'zen',
+  'event',
   'waitPressure',
   'cleanliness',
 ];

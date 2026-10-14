@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  SCHEMA_VERSION,
   createInitialState,
   getLocation,
   withLocation,
@@ -369,7 +370,7 @@ describe('Save v5', () => {
     const locs = v4['locations'] as Record<string, Record<string, unknown>>;
     delete locs['berlin']?.['bestLevel'];
     const m = migrate(v4);
-    expect(m['schemaVersion']).toBe(5);
+    expect(m['schemaVersion']).toBe(SCHEMA_VERSION);
     expect(deserialize(JSON.stringify(m)).locations['berlin']?.bestLevel).toBe(7);
   });
   it('Roundtrip mit mehreren Standorten, Zen und Meta-Upgrades', () => {
