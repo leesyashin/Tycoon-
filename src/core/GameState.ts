@@ -4,14 +4,18 @@ import { STATIONS } from '@data/stations';
 import { START_LOCATION_ID, getLocationDef } from '@data/locations';
 import { EVENT_CONFIG } from '@data/events';
 import { FREE_BOOST } from '@data/monetization';
+import { AUDIO_DEFAULTS } from '@data/audio';
 import { hashString, rng } from './math/random';
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 export interface Settings {
   lang: 'de' | 'en';
   sfx: boolean;
   music: boolean;
+  /** Lautstärke 0..1 (S8); der Schalter `sfx`/`music` stummt unabhängig davon. */
+  sfxVolume: number;
+  musicVolume: number;
   numberFormat: 'short' | 'scientific';
 }
 
@@ -215,7 +219,14 @@ export function createInitialState(now: number, lang: 'de' | 'en' = 'en'): GameS
     createdAt: now,
     lastSavedAt: now,
     playtimeSec: 0,
-    settings: { lang, sfx: true, music: true, numberFormat: 'short' },
+    settings: {
+      lang,
+      sfx: true,
+      music: true,
+      sfxVolume: AUDIO_DEFAULTS.sfxVolume,
+      musicVolume: AUDIO_DEFAULTS.musicVolume,
+      numberFormat: 'short',
+    },
     meta: {
       goldenLeaves: D(0),
       zen: D(0),

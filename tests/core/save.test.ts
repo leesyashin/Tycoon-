@@ -159,7 +159,7 @@ describe('Storage und Export', () => {
     delete v1['tap'];
     st.setItem('mce.save.v1', JSON.stringify(v1));
     expect(loadGame(st)?.tap.hype).toBe(0);
-    expect(SAVE_KEY).toBe('mce.save.v6');
+    expect(SAVE_KEY).toBe('mce.save.v7');
   });
   it('Laden bringt Offline-Einnahmen und setzt lastSavedAt', () => {
     const st = new MemStorage();
@@ -187,5 +187,37 @@ describe('Storage und Export', () => {
     raw['locations'] = {};
     raw['activeLocationId'] = 'x';
     expect(() => importSave(JSON.stringify(raw))).toThrow(SaveError);
+  });
+});
+
+describe('Save v7 (Lautstärke, S8)', () => {
+  it('Migration v6 → v7 setzt Standard-Lautstärken und behält die Schalter', () => {
+    const v6 = JSON.parse(serialize(createInitialState(0, 'de'))) as Record<string, unknown>;
+    v6['schemaVersion'] = 6;
+    v6['settings'] = { lang: 'de', sfx: false, music: true, numberFormat: 'scientific' };
+    const s = deserialize(JSON.stringify(v6));
+    expect(s.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(s.settings).toEqual({
+      lang: 'de',
+      sfx: false,
+      music: true,
+      sfxVolume: 0.7,
+      musicVolume: 0.4,
+      numberFormat: 'scientific',
+    });
+  });
+  it('liest den alten v6-Schlüssel', () => {
+    const st = new MemStorage();
+    const v6 = JSON.parse(serialize(createInitialState(0))) as Record<string, unknown>;
+    v6['schemaVersion'] = 6;
+    st.setItem('mce.save.v6', JSON.stringify(v6));
+    expect(loadGame(st)?.settings.musicVolume).toBe(0.4);
+  });
+  it('Härtung: Lautstärke geklemmt, unbekannte Werte auf Standard', () => {
+    const raw = JSON.parse(serialize(createInitialState(0))) as Record<string, unknown>;
+    raw['settings'] = { lang: 'xx', sfx: 'ja', sfxVolume: 7, musicVolume: -1, numberFormat: 1 };
+    const s = deserialize(JSON.stringify(raw)).settings;
+    expect(s).toMatchObject({ lang: 'en', sfx: true, sfxVolume: 1, musicVolume: 0 });
+    expect(s.numberFormat).toBe('short');
   });
 });
