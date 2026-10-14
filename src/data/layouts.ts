@@ -51,7 +51,7 @@ export const CROWD = {
 
 /** Kamera-Grenzen. */
 export const CAMERA = {
-  minZoom: 0.6,
+  minZoom: 0.35,
   maxZoom: 2.5,
   wheelStep: 0.0015,
   /** Ab dieser Zeigerbewegung (px) gilt ein Tap als Drag. */

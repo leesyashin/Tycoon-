@@ -66,9 +66,11 @@ export class CustomerCrowd {
     return this.agents.reduce((n, a) => n + (a.active ? 1 : 0), 0);
   }
 
-  /** Geschätzte Kunden im Café, die nicht als Figur gezeigt werden („+N“). */
+  /** Geschätzte Kunden im Café, die nicht als Figur gezeigt werden („+N“); nur bei vollem Pool. */
   get hiddenCount(): number {
-    return Math.max(0, Math.round(this.totalRate * CROWD.avgVisitSec) - this.activeCount);
+    const active = this.activeCount;
+    if (active < CROWD.maxAgents) return 0;
+    return Math.max(0, Math.round(this.totalRate * CROWD.avgVisitSec) - active);
   }
 
   queueLength(stationId: string): number {
