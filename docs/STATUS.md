@@ -4,7 +4,7 @@ current: S8
 branch: session/s8-art
 started: 2026-10-14T22:12:48Z
 next: S8
-## Letzte Session: S8 – Grafik und Audio (2026-10-14, PR folgt)
+## Letzte Session: S8 – Grafik und Audio (2026-10-14, PR #11)
 ## Fertig
 - UI-Skin 1:1 nach UI_STYLE (Checkliste § 7 vollständig abgehakt): Tokens § 2 in `src/ui/style.css`, Spiegel `UI_THEME` in `src/data/ui.ts`; Schriften Poppins/Didact Gothic lokal (WOFF2, OFL); Icon-Sprite `public/assets/ui/icons.svg` (Phosphor Fill, MIT) mit Helper `src/ui/icons.ts`
 - HUD (§ 3.1–3.3): Währungs-Pille mit orangem „+“, Status-Pille (Café-Uhr, Einkommen/s, Standort), Chips Zufriedenheit/Sauberkeit (< 70), Boost-Pillen, Qualitäts-Pille rechts (6 Blätter = 6 Stufen, öffnet Shop-Tab Qualität)
