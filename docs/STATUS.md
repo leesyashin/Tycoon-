@@ -1,10 +1,10 @@
 ## Loop
-state: running
-current: S6
-branch: session/s6-prestige
-started: 2026-10-14T21:16:47Z
-next: S6
-## Letzte Session: S6 – Standorte und Prestige (2026-10-14, PR folgt)
+state: idle
+current: -
+branch: -
+started: -
+next: S7
+## Letzte Session: S6 – Standorte und Prestige (2026-10-14, PR #9)
 ## Fertig
 - `data/prestige.ts`: Zen-Formel-Konstanten, Reset ab Café-Level 10, alle 7 Meta-Upgrades aus GAME_DESIGN § 11.3 (Kosten, Wachstum, Max, Effekt je Stufe)
 - `core/prestige/`: `computeZenGain` (§ 11.2), `franchiseReset` (setzt nur den `LocationState` zurück; `meta`, `prestigeCount` und neuer `bestLevel` bleiben; Start-Kapital, Schnellstart, `stats.resets`), Meta-Upgrades kaufen, `getMetaEffects`, `affordableMetaLevels` (Reset-Vorschau)
