@@ -1,9 +1,9 @@
 ## Loop
-state: running
-current: S5
-branch: session/s5-progression
-started: 2026-10-14T20:46:39Z
-next: S5
+state: idle
+current: -
+branch: -
+started: -
+next: S6
 ## Letzte Session: S5 – Progression (2026-10-14, PR #7)
 ## Fertig
 - `data/quality.ts` + `core/progression/quality.ts`: 6 Qualitätsstufen nach GAME_DESIGN § 8 (Kosten × Standort-Skalierung, Café-Level-Sperre), `priceMult = 1.5^Stufe` zentral in `collectModifiers` → Rate-Modell; +4 Zufriedenheit/Stufe wirkte schon
