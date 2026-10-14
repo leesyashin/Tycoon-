@@ -66,7 +66,7 @@ describe('Personal: Daten und Kosten', () => {
   });
 
   it('gesperrt, zu teuer oder maximal → kein Kauf', () => {
-    const locked = make({ level: 2 });
+    const locked = make({ level: getStaffDef('cleaner').unlockCafeLevel - 1 });
     expect(hireStaff(locked, LOC, 'cleaner')).toBe(locked);
     const poor = make({ coins: D(10) });
     expect(hireStaff(poor, LOC, 'barista')).toBe(poor);

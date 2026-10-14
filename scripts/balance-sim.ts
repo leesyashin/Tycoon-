@@ -7,6 +7,7 @@ import { createInitialState, getLocation, withLocation, type GameState } from '@
 import { tick } from '@core/GameLoop';
 import { getEventResolveCost, resolveEvent } from '@core/events';
 import { buyStation, getBulkCost, isStationUnlocked, needsTerrace } from '@core/economy/actions';
+import { cafeLevelProgress } from '@core/economy/cafeLevel';
 import { buyQuality, getNextQualityCost, isNextQualityUnlocked } from '@core/progression';
 import {
   buyAmbience,
@@ -46,6 +47,7 @@ import {
   isMarketingUnlocked,
   startCampaign,
 } from '@core/marketing';
+import { applyOffline } from '@core/economy/offline';
 import { formatDuration, formatNumber } from '@core/math/format';
 import { D, type Decimal } from '@core/math/bignum';
 
@@ -168,10 +170,8 @@ function pickPurchase(state: GameState, id: string): Candidate | null {
  */
 function levelChase(state: GameState, id: string): Candidate | null {
   const loc = getLocation(state, id);
-  const total = Object.values(loc.stations).reduce((a, x) => a + x.level, 0);
-  const missing =
-    BALANCE.cafeLevel.stationLevelsPerCafeLevel -
-    (total % BALANCE.cafeLevel.stationLevelsPerCafeLevel);
+  const { done, need } = cafeLevelProgress(loc);
+  const missing = need - done;
   let s = withLocation(state, id, { ...loc, coins: D(1e300) });
   let pathCost = 0;
   let first: Candidate | null = null;
@@ -289,9 +289,52 @@ function shouldReset(s: GameState, id: string, t: number): boolean {
   return stalled && gain >= Math.max(RESET_MIN_ZEN, zenEarned);
 }
 
+/** Offline-Rückkehr (GAME_DESIGN § 15): Stand nach so viel aktiver Zeit, dann 8 h weg. */
+const OFFLINE_PROBE_SEC = 3600;
+const OFFLINE_AWAY_MS = 8 * 3_600_000;
+/** „Tagesfortschritt“ eines aktiven Spielers = was er in so vielen Sekunden aktiver Zeit verdient. */
+const ACTIVE_DAY_SEC = 5400;
+let offlineProbe: { earned: number; bigBuy: number; nextBuys: number; lifetimeAt: number } | null =
+  null;
+let activeDayEarned: number | null = null;
+
+/** Wie viele der nächsten Greedy-Käufe die Offline-Einnahmen bezahlen (ohne Einkommen dazwischen). */
+function buysCovered(s: GameState, id: string, budget: number): number {
+  let cur = withLocation(s, id, { ...getLocation(s, id), coins: D(budget) });
+  let n = 0;
+  for (; n < 1000; n++) {
+    const pick = pickPurchase(cur, id);
+    if (!pick || getLocation(cur, id).coins.lt(pick.cost)) break;
+    cur = pick.apply(cur);
+  }
+  return n;
+}
+
+/**
+ * „Großer Kauf“ = die nächste Matcha-Qualitätsstufe (größter Einzelkauf im Spiel, GAME_DESIGN § 8),
+ * auch wenn sie noch gesperrt ist; ohne weitere Stufe der teuerste sichtbare Kauf.
+ */
+function biggestBuy(s: GameState, id: string): number {
+  const q = getNextQualityCost(s, id);
+  if (q) return q.toNumber();
+  return Math.max(0, ...candidates(s, id).map((c) => c.cost.toNumber()));
+}
+
 const eventsSeen = new Map<string, number>();
 const leavesAt = new Map<number, number>();
 for (let t = 0; t < hours * 3600; t += STEP_MS / 1000) {
+  if (t === OFFLINE_PROBE_SEC) {
+    const earned = applyOffline(state, OFFLINE_AWAY_MS).earned.toNumber();
+    offlineProbe = {
+      earned,
+      bigBuy: biggestBuy(state, LOC),
+      nextBuys: buysCovered(state, LOC, earned),
+      lifetimeAt: state.meta.lifetimeEarned.toNumber(),
+    };
+  }
+  if (offlineProbe && t === OFFLINE_PROBE_SEC + ACTIVE_DAY_SEC) {
+    activeDayEarned = state.meta.lifetimeEarned.toNumber() - offlineProbe.lifetimeAt;
+  }
   const count = state.eventSchedule.count;
   state = tick(state, STEP_MS);
   if (state.eventSchedule.count > count) {
@@ -366,6 +409,17 @@ console.log(
 console.log('| Meilenstein | Zielzeit | Ist |');
 console.log('|---|---|---|');
 for (const r of rows) console.log(`| ${r.join(' | ')} |`);
+if (offlineProbe) {
+  const p = offlineProbe;
+  console.log(
+    `Offline nach 1 h, 8 h weg: +${formatNumber(D(p.earned))} = ${(p.earned / p.bigBuy).toFixed(2)}× nächste Qualitätsstufe (${formatNumber(D(p.bigBuy))}), deckt die nächsten ${String(p.nextBuys)} Greedy-Käufe (Ziel: 1–2 große Käufe)`,
+  );
+  if (activeDayEarned !== null) {
+    console.log(
+      `Idle-Anteil: Offline-Nacht ${formatNumber(D(p.earned))} / aktiver Tag (${String(ACTIVE_DAY_SEC / 3600)} h ab 1 h) ${formatNumber(D(activeDayEarned))} = ${((100 * p.earned) / activeDayEarned).toFixed(0)} % (Ziel 20–30 %)`,
+    );
+  }
+}
 console.log(
   `Prestige: ${String(resets)} Resets, Zen verdient ${String(zenEarned)}, übrig ${state.meta.zen.toString()}; Meta: ${
     Object.entries(state.meta.metaUpgrades)

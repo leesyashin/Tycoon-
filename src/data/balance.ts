@@ -8,7 +8,16 @@ export const BALANCE = {
   /** Obergrenze für Kostenrabatte (Meta-Upgrade `discount`), damit nichts gratis wird. */
   maxDiscount: 0.9,
 
-  cafeLevel: { stationLevelsPerCafeLevel: 25, max: 50 },
+  /**
+   * Café-Level aus der Summe der Stations-Level: `steps[i]` Level braucht der Schritt von Café-Level i+1
+   * auf i+2, danach je `stepAfter`. Frühe Schritte sind größer, damit Iced-Bar/Bäckerei nicht zu früh
+   * kommen (GAME_DESIGN § 15).
+   */
+  cafeLevel: {
+    steps: [25, 35, 30, 25, 25, 25, 25, 25, 25, 22, 22, 22, 22] as readonly number[],
+    stepAfter: 25,
+    max: 50,
+  },
 
   /** Level-Meilensteine; danach alle `stepAfter` Level. */
   milestones: {

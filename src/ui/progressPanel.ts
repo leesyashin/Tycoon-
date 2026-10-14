@@ -9,7 +9,7 @@ import {
   isQuestComplete,
 } from '@core/progression';
 import { ACHIEVEMENTS, type AchievementDef } from '@data/achievements';
-import { BALANCE } from '@data/balance';
+import { cafeLevelProgress } from '@core/economy/cafeLevel';
 import { QUEST_CONFIG, QUESTS } from '@data/quests';
 import { CAFE_LEVEL_REWARD, getNextUnlockLevel, getUnlocksAt } from '@data/unlocks';
 import { h, on, setDisabled, setText, type View } from './dom';
@@ -208,11 +208,9 @@ function statsView(): View {
     ),
     update(s) {
       const loc = getLocation(s, s.activeLocationId);
-      const per = BALANCE.cafeLevel.stationLevelsPerCafeLevel;
-      const total = Object.values(loc.stations).reduce((a, x) => a + x.level, 0);
-      const done = loc.level >= BALANCE.cafeLevel.max ? per : total % per;
-      setText(cafe, t('stats.cafeLevelProgress', { level: loc.level, done, total: per }));
-      cafeBar.set(done / per);
+      const { done, need } = cafeLevelProgress(loc);
+      setText(cafe, t('stats.cafeLevelProgress', { level: loc.level, done, total: need }));
+      cafeBar.set(done / need);
       const nextLevel = getNextUnlockLevel(loc.level);
       setText(
         next,

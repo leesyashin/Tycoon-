@@ -9,7 +9,7 @@ export interface LocationDef {
 export const LOCATIONS: readonly LocationDef[] = [
   { id: 'berlin', scale: 1, unlock: null },
   // Kyoto: Café-Level 14 statt 15 (GAME_DESIGN § 3), damit der Richtwert „Kyoto nach 3–4 h“ (§ 15)
-  // mit der aktuellen Berlin-Kurve hält; siehe STATUS „Entscheidungen“. Feinjustierung in S9.
+  // mit der Berlin-Kurve hält; siehe STATUS „Entscheidungen“ (in S9 per Sim bestätigt).
   { id: 'kyoto', scale: 25, unlock: { prevLocationId: 'berlin', cafeLevel: 14, zen: 10 } },
   { id: 'tokyo', scale: 600, unlock: { prevLocationId: 'kyoto', cafeLevel: 15, zen: 50 } },
   { id: 'seoul', scale: 15_000, unlock: { prevLocationId: 'tokyo', cafeLevel: 15, zen: 250 } },

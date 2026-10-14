@@ -98,23 +98,24 @@ function grown(): GameState {
 }
 
 describe('Zen-Formel (GAME_DESIGN § 11.2)', () => {
-  it('floor(3 × sqrt(earned / (1e6 × scale)) × (1 + prestige × 0.1))', () => {
+  it('floor(factor × sqrt(earned / (1e6 × scale)) × (1 + prestige × 0.1))', () => {
+    const f = PRESTIGE.zen.factor;
     const s = patch(fresh(), { earnedThisRun: D(64e6) });
-    expect(computeZenGain(s, L).toNumber()).toBe(24);
+    expect(computeZenGain(s, L).toNumber()).toBe(Math.floor(f * 8));
     const p2 = patch(s, { prestigeCount: 2 });
-    expect(computeZenGain(p2, L).toNumber()).toBe(Math.floor(24 * 1.2));
+    expect(computeZenGain(p2, L).toNumber()).toBe(Math.floor(f * 8 * 1.2));
     const tiny = patch(fresh(), { earnedThisRun: D(1e5) });
-    expect(computeZenGain(tiny, L).toNumber()).toBe(Math.floor(3 * Math.sqrt(0.1)));
+    expect(computeZenGain(tiny, L).toNumber()).toBe(Math.floor(f * Math.sqrt(0.1)));
     expect(computeZenGain(patch(fresh(), { earnedThisRun: D(0) }), L).toNumber()).toBe(0);
   });
   it('Standort-Skalierung gleicht die Zen-Menge an', () => {
     let s = unlockLocation(withZen(patch(fresh(), { bestLevel: 15 }), 10), 'kyoto');
     s = patch(s, { earnedThisRun: D(64e6 * getLocationDef('kyoto').scale) }, 'kyoto');
-    expect(computeZenGain(s, 'kyoto').toNumber()).toBe(24);
+    expect(computeZenGain(s, 'kyoto').toNumber()).toBe(Math.floor(PRESTIGE.zen.factor * 8));
   });
   it('Richtwert: ~3 h Berlin geben 20–30 Zen', () => {
-    // ~3 h mit im Mittel ~7 K/s (Balance-Sim) ≈ 75 M verdient.
-    const s = patch(fresh(), { earnedThisRun: D(75e6) });
+    // Balance-Sim (S9): Berlin hat beim ersten Reset nach ~3 h 30 min rund 190 M verdient.
+    const s = patch(fresh(), { earnedThisRun: D(190e6) });
     const z = computeZenGain(s, L).toNumber();
     expect(z).toBeGreaterThanOrEqual(20);
     expect(z).toBeLessThanOrEqual(30);
@@ -171,8 +172,9 @@ describe('Franchise-Reset (GAME_DESIGN § 11.1)', () => {
     const a = patch(fresh(), { level: 10, earnedThisRun: D(1e8) });
     const first = computeZenGain(a, L).toNumber();
     const r = patch(franchiseReset(a, L), { level: 10, earnedThisRun: D(1e8) });
-    expect(computeZenGain(r, L).toNumber()).toBe(Math.floor(30 * 1.1));
-    expect(first).toBe(30);
+    const f = PRESTIGE.zen.factor;
+    expect(computeZenGain(r, L).toNumber()).toBe(Math.floor(f * 10 * 1.1));
+    expect(first).toBe(Math.floor(f * 10));
   });
   it('Start-Kapital: 10 min Einkommen des Vor-Runs je Stufe', () => {
     const s = withMeta(grown(), { startCapital: 2 });

@@ -91,8 +91,9 @@ describe('Matcha-Qualität (GAME_DESIGN § 8)', () => {
 describe('Freischalt-Tabelle und Café-Level (GAME_DESIGN § 5.3)', () => {
   it('sammelt Stationen, Ambiente, Personal, Qualität und Marketing je Level', () => {
     const at3 = getUnlocksAt(3).map((u) => `${u.kind}:${u.id}`);
-    expect(at3).toEqual(expect.arrayContaining(['station:icedBar', 'staff:cleaner', 'quality:1']));
-    expect(getUnlocksAt(2).map((u) => u.kind)).toContain('marketing');
+    expect(at3).toEqual(expect.arrayContaining(['station:icedBar', 'quality:1']));
+    const at2 = getUnlocksAt(2).map((u) => `${u.kind}:${u.id}`);
+    expect(at2).toEqual(expect.arrayContaining(['marketing:campaign', 'staff:cleaner']));
     expect(getUnlocksAt(8).map((u) => u.id)).toContain('terrace');
     expect(getUnlocksAt(999)).toEqual([]);
     expect(getNextUnlockLevel(1)).toBe(2);
