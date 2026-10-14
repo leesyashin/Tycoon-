@@ -28,9 +28,10 @@ next: S3
 - Balancing (siehe Snapshot) weiter nicht abgestimmt → S9. Kasse wird vom Greedy-Spieler nie gekauft.
 - Gebäudereinigung/Sauberkeit, Personal-Tempo, Meta-Multiplikatoren außer `tapPower` fehlen noch (S4/S6).
 - IndexedDB-Backup und Autosave kommen mit dem UI (S3); aktuell startet jede Sitzung frisch.
-- GitHub Pages muss einmalig aktiviert werden (Settings → Pages → Source: GitHub Actions), das kann nur Vincent.
+- `pages.yml` läuft weiter bei jedem Push auf main und schlägt fehl, solange Pages nicht aktiviert ist – erwartet, ignorieren (siehe Entscheidungen).
 - PWA-Icon ist nur ein SVG-Platzhalter (PNG 192/512 in S8/S9). e2e läuft noch nicht in CI (Pflicht ab S3).
 ## Entscheidungen, die vom Plan abweichen
+- Vorgabe Vincent (2026-10-14): Kein Deploy durch die Sessions. Sessions bauen nur das Spiel (`pnpm build` muss grün sein); Vincent deployt selbst. Pages-Deploy, „Pages-URL erreichbar“ und der Pages-Link in der Abschlussnachricht entfallen als Abnahmekriterium. Ein roter `pages`-Workflow auf main blockiert nichts.
 - Neue Dev-Abhängigkeit `@vitest/coverage-v8` – nötig, um das Abnahmekriterium „Coverage core ≥ 90 %“ zu messen.
 - Kasse auf Level 0 liefert `checkout.baselineThroughput` (0.3/s) statt 0, sonst wäre der Start ohne Kauf blockiert (GAME_DESIGN lässt das offen).
 - `ActiveEvent`/`ActiveBoost.until` sind in `playtimeSec` gemessen (monoton), nicht in Wanduhrzeit.
