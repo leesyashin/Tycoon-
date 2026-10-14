@@ -292,5 +292,6 @@
   "toast.cafeLevelReward": "Café level bonus: +{coins} coins{leaves}",
   "toast.cafeLevelLeaves": ", +{leaves} 🍃",
   "toast.questDone": "Daily quest done: {name} – claim it under Progress",
-  "toast.quality": "Quality upgraded: {name}"
+  "toast.quality": "Quality upgraded: {name}",
+  "scene.station.needsTerrace": "needs terrace"
 }

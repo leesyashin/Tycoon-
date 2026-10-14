@@ -11,7 +11,7 @@ import { STATIONS, getStationDef } from '@data/stations';
 import { getLocation, type GameState } from '@core/GameState';
 import type { Store } from '@core/store';
 import { computeLocationRates, mood, tapCafe, type LocationRates } from '@core/customers';
-import { buyStation, getBulkCost, isStationUnlocked } from '@core/economy';
+import { buyStation, getBulkCost, isStationUnlocked, needsTerrace } from '@core/economy';
 import { formatNumber } from '@core/math/format';
 import { Decimal } from '@core/math/bignum';
 import { getLang, t } from '@i18n/index';
@@ -32,7 +32,8 @@ interface StationView {
   sprite: Phaser.GameObjects.Image;
   label: Phaser.GameObjects.Text;
   shownLevel: number;
-  shownUnlocked: boolean;
+  /** Gezeigter Sperrzustand: frei, Café-Level fehlt oder Terrasse fehlt. */
+  shownLock: 'open' | 'level' | 'terrace' | '';
 }
 
 /** Tiefe nach Grid-Position; Feinsortierung innerhalb einer Diagonale über `bias`. */
@@ -241,7 +242,7 @@ export class CafeScene extends Phaser.Scene {
       const label = this.makeText(13, '#ffffff')
         .setPosition(w.x, w.y - STATION_BOX_H + TILE_H / 2 - 2)
         .setDepth(DEPTH.label);
-      this.stations.push({ id: p.stationId, sprite, label, shownLevel: -1, shownUnlocked: false });
+      this.stations.push({ id: p.stationId, sprite, label, shownLevel: -1, shownLock: '' });
     }
   }
 
@@ -304,18 +305,26 @@ export class CafeScene extends Phaser.Scene {
     for (const v of this.stations) {
       const level = loc.stations[v.id]?.level ?? 0;
       const unlocked = isStationUnlocked(state, this.locationId, v.id);
-      if (level === v.shownLevel && unlocked === v.shownUnlocked) continue;
+      const lock = unlocked
+        ? 'open'
+        : needsTerrace(state, this.locationId, v.id) &&
+            loc.level >= getStationDef(v.id).unlockCafeLevel
+          ? 'terrace'
+          : 'level';
+      if (level === v.shownLevel && lock === v.shownLock) continue;
       v.shownLevel = level;
-      v.shownUnlocked = unlocked;
+      v.shownLock = lock;
       if (level > 0) {
         v.sprite.setTexture(TEX.station(v.id)).setAlpha(1);
         v.label.setText(t('scene.station.level', { level }));
       } else {
         v.sprite.setTexture(TEX.ghost).setAlpha(unlocked ? 1 : 0.45);
         v.label.setText(
-          unlocked
+          lock === 'open'
             ? t('scene.station.buy')
-            : t('scene.station.locked', { level: getStationDef(v.id).unlockCafeLevel }),
+            : lock === 'terrace'
+              ? t('scene.station.needsTerrace')
+              : t('scene.station.locked', { level: getStationDef(v.id).unlockCafeLevel }),
         );
       }
     }

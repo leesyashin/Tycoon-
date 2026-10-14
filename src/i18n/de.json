@@ -292,5 +292,6 @@
   "toast.cafeLevelReward": "Café-Level-Bonus: +{coins} Münzen{leaves}",
   "toast.cafeLevelLeaves": ", +{leaves} 🍃",
   "toast.questDone": "Tagesaufgabe erledigt: {name} – abholen unter Fortschritt",
-  "toast.quality": "Qualität aufgewertet: {name}"
+  "toast.quality": "Qualität aufgewertet: {name}",
+  "scene.station.needsTerrace": "Terrasse nötig"
 }
