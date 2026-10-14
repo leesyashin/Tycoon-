@@ -1,9 +1,9 @@
 ## Loop
-state: running
-current: S7
-branch: session/s7-events
-started: 2026-10-14T21:36:24Z
-next: S7
+state: idle
+current: -
+branch: -
+started: -
+next: S8
 ## Letzte Session: S7 – Events, Boosts, Premium-Währung, Monetarisierungs-Interface (2026-10-14, PR #10)
 ## Fertig
 - `data/events.ts`: 5 Zufalls-Events (§ 12.1: Hitzewelle, Influencer-Besuch, Lieferengpass, Food-Blogger, Regentag) mit Wirkung, Belohnung, Szene-Overlay; 3 Kalender-Events (§ 12.2: Hanami, Sommer-Eis, Neujahr); Intervall/Dauer-Konstanten
