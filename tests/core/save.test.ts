@@ -114,7 +114,7 @@ describe('Migration', () => {
     const v1 = JSON.parse(serialize(createInitialState(0))) as Record<string, unknown>;
     v1['schemaVersion'] = 1;
     delete v1['tap'];
-    (v1['locations'] as Record<string, { coins: string }>)['berlin']!.coins = '42';
+    (v1['locations'] as { berlin: { coins: string } }).berlin.coins = '42';
     const s = deserialize(JSON.stringify(v1));
     expect(s.schemaVersion).toBe(2);
     expect(s.tap).toEqual({ hype: 0, windowStart: 0, windowTaps: 0 });
