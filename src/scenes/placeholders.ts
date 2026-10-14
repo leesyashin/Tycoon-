@@ -10,6 +10,7 @@ import { TILE_H, TILE_W } from './iso/iso';
 export const TEX = {
   tileA: 'tile-a',
   tileB: 'tile-b',
+  terrace: 'tile-terrace',
   entrance: 'entrance',
   ghost: 'station-ghost',
   coin: 'coin',
@@ -53,6 +54,8 @@ const AMBIENCE: Record<string, { color: number; h: number; scale: number }> = {
   decor: { color: 0x3f8f3f, h: 18, scale: 0.4 },
   music: { color: 0x333344, h: 16, scale: 0.35 },
   wifi: { color: 0xdddddd, h: 6, scale: 0.3 },
+  // Terrasse: Sonnenschirm-Tisch
+  terrace: { color: 0xd9673a, h: 14, scale: 0.5 },
 };
 
 function shade(color: number, f: number): number {
@@ -206,6 +209,15 @@ export function generatePlaceholders(scene: Phaser.Scene): void {
       g.strokePoints(pts, true);
     });
   }
+  make(scene, TEX.terrace, TILE_W, TILE_H, (g) => {
+    // Holzdeck mit Fugen, damit die Terrasse sich vom Café-Boden abhebt.
+    const pts = diamond(TILE_W, TILE_H);
+    g.fillStyle(0x8a6a44, 1);
+    g.fillPoints(pts, true);
+    g.lineStyle(1, 0x6b4f30, 1);
+    g.strokePoints(pts, true);
+    g.lineBetween(TILE_W / 4, TILE_H / 4, (TILE_W * 3) / 4, (TILE_H * 3) / 4);
+  });
   make(scene, TEX.entrance, TILE_W, TILE_H, (g) => {
     const pts = diamond(TILE_W, TILE_H);
     g.fillStyle(0x6b4a2f, 1);
