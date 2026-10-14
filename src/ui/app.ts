@@ -11,6 +11,11 @@ import { getMetaUpgradeDef } from '@data/prestige';
 import { h, mount } from './dom';
 import { confirmTwice, showDialog } from './dialog';
 import { createHud } from './hud';
+import { createEventCard, createEventPanel } from './eventPanel';
+import { createLeafShopPanel } from './leafShopPanel';
+import { claimFreeBoost, isFreeBoostReady } from '@core/events';
+import { createMonetizationProvider } from '@core/monetization';
+import { getRandomEventDef } from '@data/events';
 import { createLocationsPanel } from './locationsPanel';
 import { achievementName, claimableQuests, createProgressPanel } from './progressPanel';
 import { createMarketingPanel } from './marketingPanel';
@@ -54,10 +59,13 @@ export function startApp(o: AppOptions): App {
   const { root, store } = o;
   root.replaceChildren();
   const hudSlot = h('div', { class: 'hud-slot' });
+  const eventSlot = h('div', { class: 'event-slot' });
   const navSlot = h('div', { class: 'nav-slot' });
   const panels = createPanelHost(store);
   const toaster = createToaster();
-  root.append(hudSlot, panels.el, navSlot, toaster.el);
+  root.append(hudSlot, eventSlot, panels.el, navSlot, toaster.el);
+  // Einziger Weg zu Werbung/Käufen; mit `MONETIZATION_ENABLED = false` immer der No-op-Provider.
+  const monetization = createMonetizationProvider();
 
   const persistence = startPersistence(store, o.storage, () =>
     toaster.show(t('toast.saveFailed'), 'error'),
@@ -100,16 +108,45 @@ export function startApp(o: AppOptions): App {
     key: 'satisfaction',
     create: () => createSatisfactionPanel(store),
   };
-  const toggleSatisfaction = (): void => {
-    if (panels.current()?.key === satisfactionReq.key) panels.close();
-    else panels.open(satisfactionReq);
+  const toggle = (req: PanelRequest): void => {
+    if (panels.current()?.key === req.key) panels.close();
+    else panels.open(req);
   };
+  const leafShopReq: PanelRequest = {
+    key: 'leafShop',
+    create: () => createLeafShopPanel(store, () => void doFreeBoost()),
+  };
+  const eventsReq: PanelRequest = { key: 'events', create: () => createEventPanel(store) };
+
+  /** „Boost ansehen“: Provider zeigt (No-op: sofort) die Belohnung, `core` bucht den Boost. */
+  async function doFreeBoost(): Promise<void> {
+    if (!isFreeBoostReady(store.getState()) || !monetization.isAvailable()) return;
+    const result = await monetization.showRewarded('freeBoost');
+    if (!result.rewarded) return;
+    const before = store.getState();
+    if (store.dispatch(claimFreeBoost) !== before) toaster.show(t('toast.freeBoost'), 'success');
+  }
 
   let unmountHud: (() => void) | null = null;
+  let unmountCard: (() => void) | null = null;
   let nav: Nav | null = null;
   const build = (): void => {
     unmountHud?.();
-    unmountHud = mount(hudSlot, createHud(toggleSatisfaction), store);
+    unmountHud = mount(
+      hudSlot,
+      createHud({
+        onSatisfaction: () => toggle(satisfactionReq),
+        openLeafShop: () => toggle(leafShopReq),
+        claimFreeBoost: () => void doFreeBoost(),
+      }),
+      store,
+    );
+    unmountCard?.();
+    unmountCard = mount(
+      eventSlot,
+      createEventCard(() => toggle(eventsReq)),
+      store,
+    );
     nav = createNav((id) => {
       if (panels.current()?.key === requests[id].key) panels.close();
       else panels.open(requests[id]);
@@ -214,7 +251,9 @@ export function startApp(o: AppOptions): App {
     }
     nav?.setBadge('achievements', claimableQuests(s));
     notifyLocations(before, s);
-    if (s.createdAt !== before.createdAt || s.activeLocationId !== before.activeLocationId) return;
+    if (s.createdAt !== before.createdAt) return;
+    notifyEvents(before, s);
+    if (s.activeLocationId !== before.activeLocationId) return;
     notifyProgress(before, s);
   });
 
@@ -232,6 +271,47 @@ export function startApp(o: AppOptions): App {
       t('toast.locationSwitched', { name: t(`location.${s.activeLocationId}.name`) }),
       'success',
     );
+  }
+
+  /** Event-Start (Ankündigung), Event-Ende mit Belohnung, Blätter von Influencern. */
+  function notifyEvents(before: GameState, s: GameState): void {
+    if (s.activeEvents !== before.activeEvents) {
+      const known = (list: GameState['activeEvents'], e: GameState['activeEvents'][number]) =>
+        list.some(
+          (x) => x.id === e.id && x.startedAt === e.startedAt && x.locationId === e.locationId,
+        );
+      for (const e of s.activeEvents) {
+        if (known(before.activeEvents, e)) continue;
+        // Offline verkürzte Events tauchen mit verschobenem Start erneut auf – das ist kein neues Event.
+        if (s.eventSchedule.count === before.eventSchedule.count) continue;
+        toaster.show(
+          t('toast.eventStarted', {
+            name: t(`event.${e.id}.name`),
+            where: t(`location.${e.locationId}.name`),
+            desc: t(`event.${e.id}.desc`),
+          }),
+          'info',
+        );
+      }
+      if (s.stats.events > before.stats.events) {
+        const gained = s.stats.leavesEarned - before.stats.leavesEarned;
+        for (const e of before.activeEvents) {
+          if (s.activeEvents.some((x) => x.id === e.id && x.locationId === e.locationId)) continue;
+          const def = getRandomEventDef(e.id);
+          const name = t(`event.${e.id}.name`);
+          toaster.show(
+            def && gained >= def.reward
+              ? t('toast.eventEndedReward', { name, leaves: def.reward })
+              : t('toast.eventEnded', { name }),
+            'success',
+          );
+        }
+      }
+    }
+    const drops = s.leafDrops.count - before.leafDrops.count;
+    if (drops > 0 && s.leafDrops.date === before.leafDrops.date) {
+      toaster.show(t('toast.leafDrop', { leaves: drops }), 'success');
+    }
   }
 
   /** Toasts für Café-Level, Freischaltungen, Erfolge, Tagesaufgaben – aus dem Zustandsvergleich. */

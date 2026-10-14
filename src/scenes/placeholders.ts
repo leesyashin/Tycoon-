@@ -15,6 +15,9 @@ export const TEX = {
   ghost: 'station-ghost',
   coin: 'coin',
   leaf: 'leaf',
+  rain: 'fx-rain',
+  petal: 'fx-petal',
+  sparkle: 'fx-sparkle',
   station: (id: string) => `station-${id}`,
   customer: (id: string) => `customer-${id}`,
   ambience: (id: string) => `ambience-${id}`,
@@ -251,5 +254,18 @@ export function generatePlaceholders(scene: Phaser.Scene): void {
   make(scene, TEX.leaf, 8, 6, (g) => {
     g.fillStyle(0x7dc34a, 1);
     g.fillPoints(diamond(8, 6), true);
+  });
+  // Event-Partikel (S7): Regen, Kirschblüten, Funkeln.
+  make(scene, TEX.rain, 2, 10, (g) => {
+    g.fillStyle(0xbcd8ff, 0.8);
+    g.fillRect(0, 0, 2, 10);
+  });
+  make(scene, TEX.petal, 6, 4, (g) => {
+    g.fillStyle(0xffb7d5, 1);
+    g.fillEllipse(3, 2, 6, 4);
+  });
+  make(scene, TEX.sparkle, 4, 4, (g) => {
+    g.fillStyle(0xffffff, 1);
+    g.fillCircle(2, 2, 2);
   });
 }
