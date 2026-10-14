@@ -103,7 +103,9 @@ export function startApp(o: AppOptions): App {
     create: () => ({ ...create(), variant: 'screen' }),
   });
   const shopTabReq = (tab: 'stations' | 'ambience' | 'quality'): PanelRequest =>
-    manage('shop', 'shop', () => createShopPanel(store, (id) => panels.open(stationReq(id)), tab));
+    manage('shop', tab === 'stations' ? 'shop' : `shop:${tab}`, () =>
+      createShopPanel(store, (id) => panels.open(stationReq(id)), tab),
+    );
   const manageReqs: Record<ManageTab, PanelRequest> = {
     shop: shopTabReq('stations'),
     marketing: manage('marketing', 'marketing', () =>

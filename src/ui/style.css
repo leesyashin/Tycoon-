@@ -735,7 +735,8 @@ button.chip {
 }
 .stat dt {
   font-size: var(--fs-badge);
-  color: var(--c-ink-muted);
+  /* --c-ink-muted auf --c-surface-2 hätte nur 4.06:1. */
+  color: var(--c-ink);
 }
 .stat dd {
   margin: 0;

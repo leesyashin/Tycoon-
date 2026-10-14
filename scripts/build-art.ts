@@ -179,6 +179,7 @@ for (const s of stations.filter((x) => x.name.endsWith('-a'))) {
 for (const s of ambience) writePng(`${OUT}/icons/${s.name}.png`, await trimmed(s.svg));
 const manager = characters.find((c) => c.name === 'staff-manager-front-0');
 if (manager) writePng(`${OUT}/icons/staff-manager.png`, await trimmed(manager.svg));
+writeFileSync('public/assets/ui/icon.svg', `${appIcon()}\n`);
 writePng('public/assets/ui/icon-192.png', await trimmed(appIcon(), 192));
 writePng('public/assets/ui/icon-512.png', await trimmed(appIcon(), 512));
 await browser.close();
