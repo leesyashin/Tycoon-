@@ -1,8 +1,8 @@
 ## Loop
-state: idle
-current: -
-branch: -
-started: -
+state: running
+current: S8
+branch: session/s8-art
+started: 2026-10-14T22:12:48Z
 next: S8
 ## Letzte Session: S7 – Events, Boosts, Premium-Währung, Monetarisierungs-Interface (2026-10-14, PR #10)
 ## Fertig
