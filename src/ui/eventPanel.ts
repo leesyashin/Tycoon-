@@ -6,6 +6,19 @@ import { getCalendarEventDef, getRandomEventDef } from '@data/events';
 import { h, on, setDisabled, setText, type View } from './dom';
 import { fmt, fmtTime } from './format';
 import type { PanelContent } from './panel';
+import { icon, setIcon, type IconName } from './icons';
+
+/** Gefüllte Glyphen je Event (UI_STYLE § 6.6); das Emoji in `data/events` bleibt Text-Fallback. */
+const EVENT_GLYPH: Record<string, IconName> = {
+  heatwave: 'sun',
+  influencerVisit: 'sparkle',
+  supplyShortage: 'package',
+  foodBlogger: 'star',
+  rainyDay: 'cloud-rain',
+  hanami: 'flower-lotus',
+  summerIced: 'ice-cream',
+  newYear: 'confetti',
+};
 
 export function eventIcon(id: string): string {
   return getRandomEventDef(id)?.icon ?? getCalendarEventDef(id)?.icon ?? '✨';
@@ -23,13 +36,13 @@ export function featuredEvent(s: GameState): { index: number; id: string; rest: 
 
 /** Event-Karte am rechten Rand über der Szene (UI_STYLE § 3.7): Symbol, Name, Restzeit; öffnet das Detail. */
 export function createEventCard(onOpen: () => void): View {
-  const icon = h('span', { class: 'event-card-icon', 'aria-hidden': 'true' });
+  const glyph = icon('bell', 'event-card-icon');
   const name = h('strong');
   const time = h('span', { class: 'muted' });
   const el = h(
     'button',
     { class: 'event-card ui-interactive', type: 'button', 'data-testid': 'event-card' },
-    icon,
+    glyph,
     name,
     time,
   );
@@ -41,7 +54,7 @@ export function createEventCard(onOpen: () => void): View {
       const ev = featuredEvent(s);
       el.hidden = !ev;
       if (!ev) return;
-      setText(icon, eventIcon(ev.id));
+      setIcon(glyph, EVENT_GLYPH[ev.id] ?? 'bell');
       setText(name, t(`event.${ev.id}.name`));
       setText(time, fmtTime(Math.ceil(ev.rest)));
       el.setAttribute(

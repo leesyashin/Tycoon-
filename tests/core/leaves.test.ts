@@ -6,6 +6,7 @@ import {
   grantLeaves,
   spendLeaves,
   withLocation,
+  SCHEMA_VERSION,
   type GameState,
 } from '@core/GameState';
 import { tick } from '@core/GameLoop';
@@ -308,7 +309,7 @@ describe('Save v6', () => {
     delete (v5['meta'] as Record<string, unknown>)['skins'];
     v5['activeEvents'] = [{ id: 'x', until: 9, spawnMult: 2, incomeMult: 2 }];
     const m = migrate(v5);
-    expect(m['schemaVersion']).toBe(6);
+    expect(m['schemaVersion']).toBe(SCHEMA_VERSION);
     const back = deserialize(JSON.stringify(m));
     expect(back.activeEvents).toEqual([]);
     expect(back.calendarEvents).toEqual([]);

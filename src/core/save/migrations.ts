@@ -1,6 +1,7 @@
 import { BALANCE } from '@data/balance';
 import { SCHEMA_VERSION, createEventSchedule, createStats } from '../GameState';
 import { FREE_BOOST } from '@data/monetization';
+import { AUDIO_DEFAULTS } from '@data/audio';
 import { hashString } from '../math/random';
 
 type Json = Record<string, unknown>;
@@ -96,6 +97,19 @@ export const migrations: ((raw: Json) => Json)[] = [
       eventSchedule: { ...schedule, nextAt: playtime + schedule.nextAt },
       freeBoostAt: playtime + FREE_BOOST.intervalSec,
       leafDrops: { date: '', count: 0, fraction: 0 },
+    };
+  },
+  // v6 → v7: Lautstärke für Effekte und Musik (S8).
+  (raw) => {
+    const settings = (raw['settings'] as Json | undefined) ?? {};
+    return {
+      ...raw,
+      schemaVersion: 7,
+      settings: {
+        ...settings,
+        sfxVolume: AUDIO_DEFAULTS.sfxVolume,
+        musicVolume: AUDIO_DEFAULTS.musicVolume,
+      },
     };
   },
 ];

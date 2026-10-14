@@ -2,6 +2,7 @@ import { BALANCE } from '@data/balance';
 import { getCalendarEventDef, getRandomEventDef } from '@data/events';
 import { BOOST_RULES, LEAF_DROPS, getSkinDef } from '@data/leaves';
 import { FREE_BOOST } from '@data/monetization';
+import { AUDIO_DEFAULTS } from '@data/audio';
 import { hashString } from '../math/random';
 import { D, Decimal, isDecimalNaN } from '../math/bignum';
 import {
@@ -17,6 +18,7 @@ import {
   type LocationState,
   type QuestItem,
   type QuestState,
+  type Settings,
   type Stats,
 } from '../GameState';
 import { migrate, SaveError } from './migrations';
@@ -176,6 +178,21 @@ function reviveSkins(raw: unknown): SkinState {
   return { owned, equipped: ids(r['equipped']).filter((id) => owned.includes(id)) };
 }
 
+/** Unbekannte Werte fallen auf Standards zurück; Lautstärken werden auf 0..1 geklemmt. */
+function reviveSettings(raw: unknown): Settings {
+  const r = isObj(raw) ? raw : {};
+  const vol = (v: unknown, fallback: number): number =>
+    Math.min(1, Math.max(0, typeof v === 'number' && Number.isFinite(v) ? v : fallback));
+  return {
+    lang: r['lang'] === 'de' ? 'de' : 'en',
+    sfx: r['sfx'] !== false,
+    music: r['music'] !== false,
+    sfxVolume: vol(r['sfxVolume'], AUDIO_DEFAULTS.sfxVolume),
+    musicVolume: vol(r['musicVolume'], AUDIO_DEFAULTS.musicVolume),
+    numberFormat: r['numberFormat'] === 'scientific' ? 'scientific' : 'short',
+  };
+}
+
 export function deserialize(text: string): GameState {
   let parsed: unknown;
   try {
@@ -215,6 +232,7 @@ export function deserialize(text: string): GameState {
     createdAt: num(raw['createdAt'], 0),
     lastSavedAt: num(raw['lastSavedAt'], 0),
     playtimeSec: num(raw['playtimeSec'], 0),
+    settings: reviveSettings(raw['settings']),
     meta: {
       ...(meta as unknown as GameState['meta']),
       goldenLeaves: dec(meta['goldenLeaves'], 'goldenLeaves'),

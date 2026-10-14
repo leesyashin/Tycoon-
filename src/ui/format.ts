@@ -29,3 +29,12 @@ export function fmtSmall(value: number, digits = 2): string {
 export function fmtBonusPct(mult: number): string {
   return fmtSmall((mult - 1) * 100, 0);
 }
+
+/** Café-Uhrzeit im Format der Sprache (DE 14:05, EN 2:05 PM). */
+export function fmtClock(hour: number, minute: number): string {
+  return new Intl.DateTimeFormat(getLang(), {
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(2000, 0, 1, hour, minute)));
+}

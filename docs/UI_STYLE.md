@@ -311,13 +311,13 @@ Jede Komponente: Aussehen im Vorbild → unsere Fassung → CSS-Klasse (Ziel) �
 
 ## 7. Umsetzungs-Checkliste (für S8 „UI-Skin“)
 
-- [ ] `style.css`: `:root`-Tokens aus § 2 ersetzen die Dunkelgrün-Tokens; `--font-ui`/`--font-display` mit lokalen WOFF2.
-- [ ] `data/ui.ts`: `UI_THEME` mit denselben Hex-Werten für Phaser (Ring, Nacht-Overlay, Tafel).
-- [ ] HUD neu: `.hud-pill`, `.status-pill`, `.quality-pill`, rechte Spalte `.btn-round`, `.actionbar` (ersetzt `.nav`), Avatar, Zahnrad.
-- [ ] Stations-Panel: Kopf-Chips, weiße Detailkarte, Icon-Grid 5 Spalten, Pfeile.
-- [ ] Verwaltungs-Screen mit Karten-Tabs; Statistik-Balken; Listen-Zeilen mit „LOS“.
-- [ ] Dialog/Toast weiß.
-- [ ] Szene: Tag/Nacht-Overlay, Fortschrittsringe, Warteschlangen-Tafel, Kauf-Plopp.
-- [ ] axe-e2e grün (Kontrast § 2.1), Touch-Ziele ≥ 44 px, `prefers-reduced-motion` respektiert (kein Wippen, kein Shine).
-- [ ] `docs/ASSETS.md`: Fonts + Icon-Set mit Lizenz.
-- [ ] Screenshots DE/EN im PR, Hochformat 390×844 und Desktop 1280×720.
+- [x] `style.css`: `:root`-Tokens aus § 2 ersetzen die Dunkelgrün-Tokens; `--font-ui`/`--font-display` mit lokalen WOFF2.
+- [x] `data/ui.ts`: `UI_THEME` mit denselben Hex-Werten für Phaser (Ring, Nacht-Overlay, Tafel).
+- [x] HUD neu: `.hud-pill`, `.status-pill`, `.quality-pill`, rechte Spalte `.btn-round`, `.actionbar` (ersetzt `.nav`), Avatar, Zahnrad.
+- [x] Stations-Panel: Kopf-Chips, weiße Detailkarte, Icon-Grid 5 Spalten, Pfeile.
+- [x] Verwaltungs-Screen mit Karten-Tabs; Statistik-Balken; Listen-Zeilen mit „LOS“.
+- [x] Dialog/Toast weiß.
+- [x] Szene: Tag/Nacht-Overlay, Fortschrittsringe, Warteschlangen-Tafel, Kauf-Plopp.
+- [x] axe-e2e grün (Kontrast § 2.1), Touch-Ziele ≥ 44 px, `prefers-reduced-motion` respektiert (kein Wippen, kein Shine).
+- [x] `docs/ASSETS.md`: Fonts + Icon-Set mit Lizenz.
+- [x] Screenshots DE/EN im PR, Hochformat 390×844 und Desktop 1280×720.

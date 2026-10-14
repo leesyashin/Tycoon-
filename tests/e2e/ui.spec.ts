@@ -92,11 +92,12 @@ test('Ambiente lässt sich im Shop kaufen', async ({ page }) => {
 
 test('Sprachwechsel ändert Texte und Zahlenformat sofort', async ({ page }) => {
   await page.goto('?lang=de');
-  await expect(page.getByTestId('nav-settings')).toContainText('Einstellungen');
+  // Bottom-Bar ohne sichtbare Beschriftung (UI_STYLE § 6.2): Name steckt im aria-label.
+  await expect(page.getByTestId('nav-settings')).toHaveAttribute('aria-label', 'Einstellungen');
   await expect(page.getByTestId('hud-coins')).toContainText(/\d,\d/);
   await page.getByTestId('nav-settings').click();
   await page.getByTestId('settings-lang').selectOption('en');
-  await expect(page.getByTestId('nav-settings')).toContainText('Settings');
+  await expect(page.getByTestId('nav-settings')).toHaveAttribute('aria-label', 'Settings');
   await expect(page.getByTestId('hud')).toContainText('Coins');
   await expect(page.getByTestId('hud-income')).toContainText('per sec');
   await expect(page.getByTestId('hud-coins')).toContainText(/\d\.\d/);
@@ -157,6 +158,8 @@ test('Export, Import und Löschen mit doppelter Bestätigung', async ({ page }) 
 });
 
 test('Barrierefreiheit: keine axe-Verstöße (WCAG 2 A/AA) in HUD und Panels', async ({ page }) => {
+  // 15 axe-Scans brauchen auf dem CI-Runner mehr als die Standard-30 s.
+  test.setTimeout(90_000);
   await page.goto('?lang=de');
   const scan = async (): Promise<void> => {
     const r = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
@@ -184,6 +187,11 @@ test('Barrierefreiheit: keine axe-Verstöße (WCAG 2 A/AA) in HUD und Panels', a
   await scan();
   await page.getByTestId('nav-shop').click();
   await page.getByTestId('shop-station-matchaBar').click();
+  await scan();
+  await page.getByTestId('tile-ambience-seats').click();
+  await scan();
+  await page.getByTestId('nav-stats').click();
+  await expect(page.getByTestId('panel-stats')).toBeVisible();
   await scan();
 });
 
@@ -259,12 +267,16 @@ test('Erfolg löst einmal aus: Toast und Blätter, nach Neuladen nicht erneut', 
 });
 
 test('Tagesaufgabe erledigen und abholen', async ({ page }) => {
+  // 100 Taps im Takt > 11 s plus Screen-Wechsel; auf dem CI-Runner knapp über 30 s.
+  test.setTimeout(60_000);
   await page.goto('?lang=en');
   await reloadWithSave(page, { questsToday: ['tap100', 'buy20', 'serve500'] });
   await page.getByTestId('nav-achievements').click();
   await page.getByTestId('progress-tab-quests').click();
   await expect(page.getByTestId('quest-0')).toContainText('Tap the café 100 times');
   await expect(page.getByTestId('quest-claim-0')).toBeDisabled();
+  // Der Fortschritts-Screen deckt das Café ab (Vollbild); zum Tippen schließen.
+  await page.getByTestId('panel-close').click();
   // 100 Taps auf das Café, verteilt über > 10 s (Deckel 10 Taps/s).
   const canvas = page.locator('#game canvas');
   const box = await canvas.boundingBox();
@@ -273,8 +285,10 @@ test('Tagesaufgabe erledigen und abholen', async ({ page }) => {
     await page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.6);
     await page.waitForTimeout(110);
   }
-  await expect(page.getByTestId('quest-claim-0')).toBeEnabled({ timeout: 5_000 });
   await expect(page.getByTestId('nav-badge-achievements')).toBeVisible();
+  await page.getByTestId('nav-achievements').click();
+  await page.getByTestId('progress-tab-quests').click();
+  await expect(page.getByTestId('quest-claim-0')).toBeEnabled({ timeout: 5_000 });
   await page.getByTestId('quest-claim-0').click();
   await expect(page.getByTestId('quest-claim-0')).toHaveText('Claimed');
   // 3 🍃 Quest + 2 🍃 Erfolg „Anfeuerer I“ (100 Taps).

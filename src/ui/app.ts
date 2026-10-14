@@ -22,7 +22,10 @@ import { createMarketingPanel } from './marketingPanel';
 import { createSatisfactionPanel } from './satisfactionPanel';
 import { createStaffPanel } from './staffPanel';
 import { createNav, type Nav, type NavTarget } from './nav';
-import { createPanelHost, type PanelRequest } from './panel';
+import { createManageTabs, type ManageTab } from './manageTabs';
+import { createStatsPanel } from './statsPanel';
+import { createAmbienceObjectPanel, type ObjectRef } from './stationPanel';
+import { createPanelHost, type PanelContent, type PanelRequest } from './panel';
 import { clearIndexedDbBackups, startPersistence } from './persistence';
 import { createSettingsPanel } from './settingsPanel';
 import { createShopPanel } from './shopPanel';
@@ -32,12 +35,15 @@ import { createToaster } from './toast';
 import { fmt, fmtTime } from './format';
 import type { OfflineResult } from '@core/economy';
 import { UI_CONFIG } from '@data/ui';
+import type { SfxId } from '@data/audio';
 
 export interface AppOptions {
   root: HTMLElement;
   store: Store;
   storage: StorageLike | null;
   version: string;
+  /** Spielt einen Klang (Audio-Schicht); Auslöser sind Zustandswechsel, nicht einzelne Buttons. */
+  sfx?(id: SfxId): void;
   /** Wird nach einem Sprachwechsel aufgerufen, damit die Szene ihre Texte neu setzt. */
   onLangChange(lang: Lang): void;
 }
@@ -60,7 +66,7 @@ export function startApp(o: AppOptions): App {
   root.replaceChildren();
   const hudSlot = h('div', { class: 'hud-slot' });
   const eventSlot = h('div', { class: 'event-slot' });
-  const navSlot = h('div', { class: 'nav-slot' });
+  const navSlot = h('div', { class: 'nav-host' });
   const panels = createPanelHost(store);
   const toaster = createToaster();
   root.append(hudSlot, eventSlot, panels.el, navSlot, toaster.el);
@@ -71,36 +77,55 @@ export function startApp(o: AppOptions): App {
     toaster.show(t('toast.saveFailed'), 'error'),
   );
 
+  const openObject = (obj: ObjectRef): void => {
+    panels.open(obj.kind === 'station' ? stationReq(obj.id) : ambienceReq(obj.id));
+  };
   const stationReq = (id: string): PanelRequest => ({
     key: `station:${id}`,
-    create: () => createStationPanel(store, id),
+    create: () => createStationPanel(store, id, openObject),
   });
-  const shopReq: PanelRequest = {
-    key: 'shop',
-    create: () => createShopPanel(store, (id) => panels.open(stationReq(id))),
+  const ambienceReq = (id: string): PanelRequest => ({
+    key: `station:ambience-${id}`,
+    create: () => createAmbienceObjectPanel(store, id, openObject),
+  });
+  /** Verwaltungs-Screen (UI_STYLE § 3.9): Shop, Marketing, Personal, Statistik als Karten-Tabs. */
+  const manage = (tab: ManageTab, key: string, create: () => PanelContent): PanelRequest => ({
+    key,
+    create: () => ({
+      ...create(),
+      title: t('manage.title'),
+      variant: 'screen',
+      tabs: createManageTabs(tab, (next) => panels.open(manageReqs[next])),
+    }),
+  });
+  const screen = (key: string, create: () => PanelContent): PanelRequest => ({
+    key,
+    create: () => ({ ...create(), variant: 'screen' }),
+  });
+  const shopTabReq = (tab: 'stations' | 'ambience' | 'quality'): PanelRequest =>
+    manage('shop', tab === 'stations' ? 'shop' : `shop:${tab}`, () =>
+      createShopPanel(store, (id) => panels.open(stationReq(id)), tab),
+    );
+  const manageReqs: Record<ManageTab, PanelRequest> = {
+    shop: shopTabReq('stations'),
+    marketing: manage('marketing', 'marketing', () =>
+      createMarketingPanel(store, () => toaster.show(t('toast.campaignStarted'), 'success')),
+    ),
+    staff: manage('staff', 'staff', () => createStaffPanel(store)),
+    stats: manage('stats', 'stats', () => createStatsPanel(store)),
   };
-  const settingsReq: PanelRequest = {
-    key: 'settings',
-    create: () =>
-      createSettingsPanel(
-        store,
-        { exportSave: doExport, importSave: doImport, deleteSave: () => void doDelete() },
-        o.version,
-      ),
-  };
+  const settingsReq = screen('settings', () =>
+    createSettingsPanel(
+      store,
+      { exportSave: doExport, importSave: doImport, deleteSave: () => void doDelete() },
+      o.version,
+    ),
+  );
   const requests: Record<NavTarget, PanelRequest> = {
-    shop: shopReq,
-    staff: { key: 'staff', create: () => createStaffPanel(store) },
-    marketing: {
-      key: 'marketing',
-      create: () =>
-        createMarketingPanel(store, () => toaster.show(t('toast.campaignStarted'), 'success')),
-    },
-    locations: {
-      key: 'locations',
-      create: () => createLocationsPanel(store, (id) => void doReset(id)),
-    },
-    achievements: { key: 'achievements', create: () => createProgressPanel(store) },
+    ...manageReqs,
+    build: shopTabReq('ambience'),
+    locations: screen('locations', () => createLocationsPanel(store, (id) => void doReset(id))),
+    achievements: screen('achievements', () => createProgressPanel(store)),
     settings: settingsReq,
   };
 
@@ -129,6 +154,7 @@ export function startApp(o: AppOptions): App {
 
   let unmountHud: (() => void) | null = null;
   let unmountCard: (() => void) | null = null;
+  let unmountNav: (() => void) | null = null;
   let nav: Nav | null = null;
   const build = (): void => {
     unmountHud?.();
@@ -138,6 +164,7 @@ export function startApp(o: AppOptions): App {
         onSatisfaction: () => toggle(satisfactionReq),
         openLeafShop: () => toggle(leafShopReq),
         claimFreeBoost: () => void doFreeBoost(),
+        openQuality: () => panels.open(shopTabReq('quality')),
       }),
       store,
     );
@@ -147,12 +174,10 @@ export function startApp(o: AppOptions): App {
       createEventCard(() => toggle(eventsReq)),
       store,
     );
-    nav = createNav((id) => {
-      if (panels.current()?.key === requests[id].key) panels.close();
-      else panels.open(requests[id]);
-    });
+    unmountNav?.();
+    nav = createNav((id) => toggle(requests[id]));
     nav.setBadge('achievements', claimableQuests(store.getState()));
-    navSlot.replaceChildren(nav.el);
+    unmountNav = mount(navSlot, nav, store);
   };
   build();
 
@@ -173,6 +198,7 @@ export function startApp(o: AppOptions): App {
     try {
       imported = importSave(text);
     } catch {
+      o.sfx?.('error');
       toaster.show(t('toast.importFailed'), 'error');
       return;
     }
@@ -250,12 +276,37 @@ export function startApp(o: AppOptions): App {
       o.onLangChange(s.settings.lang);
     }
     nav?.setBadge('achievements', claimableQuests(s));
+    playSounds(before, s);
     notifyLocations(before, s);
     if (s.createdAt !== before.createdAt) return;
     notifyEvents(before, s);
     if (s.activeLocationId !== before.activeLocationId) return;
     notifyProgress(before, s);
   });
+
+  const levelSum = (s: GameState): number => {
+    const loc = getLocation(s, s.activeLocationId);
+    let n = 0;
+    for (const st of Object.values(loc.stations)) n += st.level;
+    for (const a of Object.values(loc.ambience)) n += a;
+    for (const r of Object.values(loc.staff)) n += r;
+    return n + loc.quality + loc.marketing.level;
+  };
+
+  /** Klänge aus dem Zustandsvergleich (S8): Kauf, Freischaltung, Events, Blätter, Boosts. */
+  function playSounds(before: GameState, s: GameState): void {
+    const play = o.sfx;
+    if (!play || s.createdAt !== before.createdAt || s.activeLocationId !== before.activeLocationId)
+      return;
+    if (getLocation(s, s.activeLocationId).level > getLocation(before, s.activeLocationId).level)
+      play('unlock');
+    else if (levelSum(s) > levelSum(before)) play('buy');
+    if (s.eventSchedule.count > before.eventSchedule.count) play('eventStart');
+    if (s.stats.events > before.stats.events) play('eventEnd');
+    if (s.leafDrops.count > before.leafDrops.count) play('leaf');
+    if (s.boosts.length > before.boosts.length && s.boosts.some((b) => b.id !== 'hype'))
+      play('boost');
+  }
 
   /** Standort eröffnet oder gewechselt: Toast, und Panels mit festem Standort schließen. */
   function notifyLocations(before: GameState, s: GameState): void {
@@ -383,6 +434,9 @@ export function startApp(o: AppOptions): App {
         testId: 'dialog-offline',
       });
     },
-    toastError: (text) => toaster.show(text, 'error'),
+    toastError: (text) => {
+      o.sfx?.('error');
+      toaster.show(text, 'error');
+    },
   };
 }

@@ -1,0 +1,212 @@
+{
+ "frames": {
+  "entrance": {
+   "frame": {
+    "x": 526,
+    "y": 2,
+    "w": 128,
+    "h": 64
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 64
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 64
+   }
+  },
+  "floor-a": {
+   "frame": {
+    "x": 656,
+    "y": 2,
+    "w": 128,
+    "h": 64
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 64
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 64
+   }
+  },
+  "floor-b": {
+   "frame": {
+    "x": 786,
+    "y": 2,
+    "w": 128,
+    "h": 64
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 64
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 64
+   }
+  },
+  "front-u": {
+   "frame": {
+    "x": 266,
+    "y": 2,
+    "w": 128,
+    "h": 100
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 100
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 100
+   }
+  },
+  "front-v": {
+   "frame": {
+    "x": 396,
+    "y": 2,
+    "w": 128,
+    "h": 100
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 100
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 100
+   }
+  },
+  "terrace": {
+   "frame": {
+    "x": 2,
+    "y": 172,
+    "w": 128,
+    "h": 64
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 64
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 64
+   }
+  },
+  "wall-u": {
+   "frame": {
+    "x": 2,
+    "y": 2,
+    "w": 64,
+    "h": 168
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 64,
+    "h": 168
+   },
+   "sourceSize": {
+    "w": 64,
+    "h": 168
+   }
+  },
+  "wall-u-window": {
+   "frame": {
+    "x": 68,
+    "y": 2,
+    "w": 64,
+    "h": 168
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 64,
+    "h": 168
+   },
+   "sourceSize": {
+    "w": 64,
+    "h": 168
+   }
+  },
+  "wall-v": {
+   "frame": {
+    "x": 134,
+    "y": 2,
+    "w": 64,
+    "h": 168
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 64,
+    "h": 168
+   },
+   "sourceSize": {
+    "w": 64,
+    "h": 168
+   }
+  },
+  "wall-v-window": {
+   "frame": {
+    "x": 200,
+    "y": 2,
+    "w": 64,
+    "h": 168
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 64,
+    "h": 168
+   },
+   "sourceSize": {
+    "w": 64,
+    "h": 168
+   }
+  }
+ },
+ "meta": {
+  "image": "theme-seoul.png",
+  "size": {
+   "w": 916,
+   "h": 238
+  },
+  "scale": "2"
+ }
+}

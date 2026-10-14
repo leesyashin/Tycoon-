@@ -64,7 +64,7 @@ function stationRow(locId: string, id: string, openStation: (id: string) => void
           ? `${t('station.panel.level', { level: lvl })}${affordable ? ` · ${t('ui.affordable')}` : ''}`
           : lockedReason(s, locId, id, def?.unlockCafeLevel ?? 0),
       );
-      setText(btn, unlocked ? `🪙 ${fmt(s, cost)}` : t('shop.open'));
+      setText(btn, unlocked ? fmt(s, cost) : t('shop.open'));
       btn.setAttribute('aria-label', `${stationName(locId, id)}: ${t('shop.open')}`);
     },
   };

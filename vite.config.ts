@@ -23,7 +23,7 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: false, // public/manifest.webmanifest wird direkt verlinkt
-      workbox: { globPatterns: ['**/*.{js,css,html,png,svg,webmanifest}'] },
+      workbox: { globPatterns: ['**/*.{js,css,html,png,svg,json,woff2,webmanifest}'] },
     }),
   ],
   test: {
