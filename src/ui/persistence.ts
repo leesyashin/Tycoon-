@@ -125,7 +125,13 @@ export function startPersistence(
     if (!backupsHeld) backupToIndexedDb(store.getState()).catch(() => undefined);
     return true;
   };
-  window.setInterval(save, UI_CONFIG.autosaveMs);
+  // Regelmäßiges Autosave im Leerlauf (serialisieren kostet bei großen Ständen einige ms); beim
+  // Verlassen der Seite dagegen sofort.
+  window.setInterval(() => {
+    if (typeof window.requestIdleCallback === 'function') {
+      window.requestIdleCallback(() => save(), { timeout: UI_CONFIG.autosaveIdleTimeoutMs });
+    } else save();
+  }, UI_CONFIG.autosaveMs);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') save();
   });

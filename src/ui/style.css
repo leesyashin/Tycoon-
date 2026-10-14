@@ -1302,11 +1302,11 @@ legend {
 }
 
 /* ---------- Bewegung reduzieren ---------- */
-/* ---------- Splash (S9): bis die Szene steht ---------- */
+/* ---------- Splash (S9): deckt nur die Szene ab, bis sie steht; HUD ist schon bedienbar ---------- */
 .splash {
   position: fixed;
   inset: 0;
-  z-index: var(--z-toast);
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: center;
