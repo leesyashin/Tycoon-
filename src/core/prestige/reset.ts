@@ -1,6 +1,6 @@
 import { PRESTIGE } from '@data/prestige';
 import { getLocationDef } from '@data/locations';
-import { STATIONS, getStationDef } from '@data/stations';
+import { STATIONS } from '@data/stations';
 import { D, type Decimal } from '../math/bignum';
 import { createLocationState, getLocation, withLocation, type GameState } from '../GameState';
 import { computeCafeLevel } from '../economy/cafeLevel';
@@ -55,12 +55,9 @@ export function franchiseReset(state: GameState, locationId: string): GameState 
     const cur = fresh.stations[def.id] ?? { level: 0, unlocked: false };
     fresh.stations[def.id] = { level: Math.max(cur.level, fx.fastStartLevel), unlocked: true };
   }
+  // Die Schnellstart-Stationen sind die mit dem niedrigsten Freischalt-Level; was das neue Café-Level
+  // zusätzlich freigibt, ist damit schon dabei.
   fresh.level = computeCafeLevel(fresh);
-  for (const [id, st] of Object.entries(fresh.stations)) {
-    if (!st.unlocked && fresh.level >= getStationDef(id).unlockCafeLevel) {
-      fresh.stations[id] = { ...st, unlocked: true };
-    }
-  }
   fresh.bestLevel = Math.max(old.bestLevel, old.level, fresh.level);
   const next = withLocation(state, locationId, fresh);
   return {

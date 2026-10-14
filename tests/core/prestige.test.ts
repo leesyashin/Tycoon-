@@ -190,8 +190,8 @@ describe('Franchise-Reset (GAME_DESIGN § 11.1)', () => {
     const four = loc(franchiseReset(withMeta(grown(), { fastStart: 4 }), L));
     expect(four.stations['icedBar']).toEqual({ level: 10, unlocked: true });
     expect(four.level).toBe(2);
-    // Café-Level 2 schaltet das To-go-Fenster frei.
-    expect(four.stations['togoWindow']?.unlocked).toBe(true);
+    expect(four.stations['togoWindow']).toEqual({ level: 10, unlocked: true });
+    expect(four.stations['bakery']).toEqual({ level: 0, unlocked: false });
   });
   it('Blätter für Café-Level gibt es nach dem Reset nur über dem Bestwert', () => {
     // Reset bei Café-Level 12 → die Level 2..12 bringen beim Wiederaufstieg keine Blätter mehr.
