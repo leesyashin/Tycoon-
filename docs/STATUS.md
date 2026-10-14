@@ -1,9 +1,9 @@
 # STATUS
 ## Loop
-state: idle
-current: -
-branch: -
-started: -
+state: running
+current: S4
+branch: session/s4-staff
+started: 2026-10-14T20:26:47Z
 next: S4
 ## Letzte Session: S3 – UI/HUD und Shop (2026-10-14)
 ## Fertig
