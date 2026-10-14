@@ -8,3 +8,5 @@ export * from './store';
 export * from './settings';
 export * from './marketing';
 export * from './staff';
+export * from './prestige';
+export * from './progression';

@@ -41,6 +41,7 @@ function num(v: unknown, fallback: number): number {
 
 function reviveLocation(id: string, raw: unknown): LocationState {
   if (!isObj(raw)) throw new SaveError(`Invalid location: ${id}`);
+  const level = Math.max(1, Math.floor(num(raw['level'], 1)));
   return {
     ...(raw as unknown as LocationState),
     coins: dec(raw['coins'], `${id}.coins`),
@@ -50,6 +51,9 @@ function reviveLocation(id: string, raw: unknown): LocationState {
       Math.max(0, num(raw['cleanliness'], BALANCE.cleanliness.start)),
     ),
     autoBuy: raw['autoBuy'] === true,
+    level,
+    bestLevel: Math.max(level, Math.floor(num(raw['bestLevel'], level))),
+    prestigeCount: Math.max(0, Math.floor(num(raw['prestigeCount'], 0))),
     staff: isObj(raw['staff']) ? (raw['staff'] as Record<string, number>) : {},
   };
 }
@@ -111,6 +115,20 @@ export function deserialize(text: string): GameState {
   if (typeof activeLocationId !== 'string' || !revived[activeLocationId]) {
     throw new SaveError('Active location missing');
   }
+  // Freigeschaltet ist nur, was auch einen Standort-Zustand hat (sonst zeigte die UI leere Cafés).
+  const listed = Array.isArray(meta['unlockedLocations'])
+    ? (meta['unlockedLocations'] as unknown[])
+    : [];
+  const unlockedLocations = Object.keys(revived).filter(
+    (id) => listed.includes(id) || id === activeLocationId,
+  );
+  const metaUpgrades: Record<string, number> = {};
+  if (isObj(meta['metaUpgrades'])) {
+    for (const [k, v] of Object.entries(meta['metaUpgrades'])) {
+      const lvl = Math.floor(num(v, 0));
+      if (lvl > 0) metaUpgrades[k] = lvl;
+    }
+  }
   return {
     ...(raw as unknown as GameState),
     schemaVersion: SCHEMA_VERSION,
@@ -122,6 +140,8 @@ export function deserialize(text: string): GameState {
       goldenLeaves: dec(meta['goldenLeaves'], 'goldenLeaves'),
       zen: dec(meta['zen'], 'zen'),
       lifetimeEarned: dec(meta['lifetimeEarned'], 'lifetimeEarned'),
+      unlockedLocations,
+      metaUpgrades,
     },
     locations: revived,
     tap: reviveTap(raw['tap']),

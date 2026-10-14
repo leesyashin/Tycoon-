@@ -5,6 +5,8 @@ export const BALANCE = {
   maxTicksPerFrame: 1000,
   startCoins: 5,
   startSatisfaction: 50,
+  /** Obergrenze für Kostenrabatte (Meta-Upgrade `discount`), damit nichts gratis wird. */
+  maxDiscount: 0.9,
 
   cafeLevel: { stationLevelsPerCafeLevel: 25, max: 50 },
 
@@ -90,7 +92,6 @@ export const BALANCE = {
   tap: {
     /** Sekunden Einkommen pro Tap. */
     incomeSeconds: 0.5,
-    perTapPowerLevel: 0.5,
     maxPerSec: 10,
     hypeMax: 30,
     hypeDurationSec: 10,
@@ -105,7 +106,6 @@ export const BALANCE = {
     perManagerHours: 2,
     maxCapHours: 14,
     baseEfficiency: 0.5,
-    perEfficiencyLevel: 0.05,
     maxEfficiency: 1,
   },
 } as const;

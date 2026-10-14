@@ -2,6 +2,7 @@ import { getLocation, type GameState } from '../GameState';
 import { campaignSpawnMult } from '../marketing/effects';
 import { staffSpeedMults } from '../staff/effects';
 import { qualityPriceMult } from '../progression/quality';
+import { getMetaEffects } from '../prestige/meta';
 
 /** Alle Multiplikatoren an einer Stelle (GAME_DESIGN § 14), damit nichts verstreut multipliziert wird. */
 export interface Modifiers {
@@ -12,8 +13,12 @@ export interface Modifiers {
   priceMult: number;
   /** Tempo-Boosts auf Kasse und Stationen. */
   speedMult: number;
-  /** Kostenrabatt 0..1. */
+  /** Dauerhafter Einkommens-Multiplikator aller Standorte (Zen, `prestigeMult` GAME_DESIGN § 7.2). */
+  prestigeMult: number;
+  /** Kostenrabatt 0..1 (Zen). */
   discount: number;
+  /** Zusätzliche Basis-Zufriedenheit (Zen). */
+  satisfactionBonus: number;
   /** Tempo-Faktor aus Personal je Station (GAME_DESIGN § 6). */
   staffSpeedMult: Record<string, number>;
 }
@@ -39,12 +44,15 @@ export function collectModifiers(
       speedMult *= b.speedMult;
     }
   }
+  const meta = getMetaEffects(state);
   return {
     spawnMult,
     incomeMult,
     priceMult: qualityPriceMult(loc),
     speedMult,
-    discount: 0,
+    prestigeMult: meta.incomeMult,
+    discount: meta.discount,
+    satisfactionBonus: meta.satisfactionBonus,
     staffSpeedMult: staffSpeedMults(loc),
   };
 }
