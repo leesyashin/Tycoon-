@@ -1,8 +1,8 @@
 ## Loop
-state: idle
-current: -
-branch: -
-started: -
+state: running
+current: S6
+branch: session/s6-prestige
+started: 2026-10-14T21:16:47Z
 next: S6
 ## Letzte Session: S5 – Progression (2026-10-14, PR #7)
 ## Fertig
