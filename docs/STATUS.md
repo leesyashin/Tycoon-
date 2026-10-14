@@ -1,10 +1,10 @@
 # STATUS
 ## Loop
-state: running
-current: S3
-branch: session/s3-ui
-started: 2026-10-14T20:02:25Z
-next: S3
+state: idle
+current: -
+branch: -
+started: -
+next: S4
 ## Letzte Session: S3 – UI/HUD und Shop (2026-10-14)
 ## Fertig
 - UI-Mini-Framework `ui/dom.ts`: `h()`, `mount(root, view, store)` mit `store.subscribe` und Render-Drossel (200 ms), Komponenten als `View { el, update }`; Theme über CSS-Variablen in `ui/style.css`
