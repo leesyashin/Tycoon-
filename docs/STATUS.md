@@ -1,9 +1,9 @@
 # STATUS
 ## Loop
-state: idle
-current: -
-branch: -
-started: -
+state: running
+current: S1
+branch: session/s1-core
+started: 2026-10-14T19:36:14Z
 next: S1
 ## Letzte Session: S0 – Projekt-Setup (2026-10-14, PR #2)
 ## Fertig
