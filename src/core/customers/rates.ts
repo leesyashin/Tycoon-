@@ -52,7 +52,7 @@ export function computeSpawnRate(loc: LocationState, extraSpawnMult = 1): number
   const mult =
     (1 + (a['wifi'] ?? 0) * sp.perWifi) *
     (1 + loc.marketing.level * sp.perMarketing) *
-    (1 + (a['socialMedia'] ?? 0) * sp.perSocialMedia) *
+    (1 + (loc.staff['socialMedia'] ?? 0) * sp.perSocialMedia) *
     satisfactionFactor(loc.satisfaction) *
     extraSpawnMult;
   const demand = sp.base * loc.level ** sp.cafeLevelExponent * mult;
@@ -68,21 +68,22 @@ export function computeSatisfactionTarget(
   const quality = loc.quality * s.perQuality;
   const teaMaster = (loc.staff['teaMaster'] ?? 0) * s.perTeaMaster;
   const wait = -waitPressure * s.waitPressureWeight;
-  const cleanliness = (s.cleanlinessDefault - s.cleanlinessNeutral) * s.cleanlinessWeight;
+  const cleanliness = (loc.cleanliness - s.cleanlinessNeutral) * s.cleanlinessWeight;
   const target = clamp(s.base + decor + quality + teaMaster + wait + cleanliness, 0, 100);
   return { base: s.base, decor, quality, teaMaster, waitPressure: wait, cleanliness, target };
 }
 
 export function computeLocationRates(state: GameState, locationId: string): LocationRates {
   const loc = getLocation(state, locationId);
-  const mods = collectModifiers(state);
+  const mods = collectModifiers(state, locationId);
 
   const perStationCap: Record<string, number> = {};
   let sumThroughput = 0;
   for (const def of STATIONS) {
     if (def.basePrice <= 0) continue;
     const lvl = loc.stations[def.id]?.level ?? 0;
-    const th = getStationThroughput(def, lvl, mods.staffSpeedMult, mods.speedMult);
+    const staff = mods.staffSpeedMult[def.id] ?? 1;
+    const th = getStationThroughput(def, lvl, staff, mods.speedMult);
     perStationCap[def.id] = th;
     sumThroughput += th;
   }

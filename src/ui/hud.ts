@@ -1,11 +1,12 @@
 import { t } from '@i18n/index';
 import { getLocation, type GameState } from '@core/GameState';
 import { getHypeProgress, getHypeRemaining, getIncomePerSec } from '@core/customers';
-import { h, setText, type View } from './dom';
+import { h, on, setText, type View } from './dom';
 import { fmt } from './format';
+import { moodIcon } from './mood';
 
 /** Kopfzeile: Standort, Münzen, Einkommen/s, Goldene Blätter, Zufriedenheit, Hype. Nur lesend. */
-export function createHud(): View {
+export function createHud(onSatisfaction: () => void): View {
   const location = h('div', { class: 'hud-location', 'data-testid': 'hud-location' });
   // Icons sind dekorativ; Screenreader bekommen den Namen als versteckten Text.
   const stat = (cls: string, testId: string, label: string, icon: string, visibleLabel = false) => {
@@ -22,7 +23,25 @@ export function createHud(): View {
   const coins = stat('hud-coins', 'hud-coins', t('hud.coins'), '🪙', true);
   const income = h('div', { class: 'hud-income', 'data-testid': 'hud-income' });
   const leaves = stat('hud-stat', 'hud-leaves', t('hud.goldenLeaves'), '🍃');
-  const satisfaction = stat('hud-stat', 'hud-satisfaction', t('hud.satisfaction'), '😊');
+  // Zufriedenheit ist antippbar und öffnet das Detail (was drückt, was hebt).
+  const satValue = h('span');
+  const satIcon = h('span', { 'aria-hidden': 'true', text: '😊 ' });
+  const satisfaction = {
+    el: h(
+      'button',
+      {
+        class: 'hud-stat hud-stat-btn ui-interactive',
+        type: 'button',
+        'data-testid': 'hud-satisfaction',
+        'aria-label': t('hud.satisfactionOpen'),
+      },
+      satIcon,
+      satValue,
+      h('span', { 'aria-hidden': 'true', class: 'hud-more', text: ' ›' }),
+    ),
+    value: satValue,
+  };
+  on(satisfaction.el, 'click', onSatisfaction);
   const fill = h('div', { class: 'hud-hype-fill' });
   const hypeLabel = h('span');
   const hype = h(
@@ -59,6 +78,7 @@ export function createHud(): View {
       setText(income, `+${fmt(s, getIncomePerSec(s, s.activeLocationId))} ${t('hud.income')}`);
       setText(leaves.value, fmt(s, s.meta.goldenLeaves));
       setText(satisfaction.value, `${String(Math.round(loc.satisfaction))} %`);
+      setText(satIcon, `${moodIcon(loc.satisfaction)} `);
       const remaining = getHypeRemaining(s);
       const active = remaining > 0;
       const pct = Math.round((active ? 1 : getHypeProgress(s)) * 100);

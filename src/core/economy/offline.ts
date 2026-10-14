@@ -27,6 +27,18 @@ export interface OfflineResult {
 }
 
 /**
+ * Zustand ohne zeitlich begrenzte Multiplikatoren (Boosts, Events, aktive Kampagne). Ihre Timer laufen
+ * in Spielzeit und stehen offline still; ohne das Abziehen würde ein 10-min-Boost für bis zu 14 h zählen.
+ */
+export function withoutTemporaryBoosts(state: GameState): GameState {
+  const locations = { ...state.locations };
+  for (const [id, loc] of Object.entries(state.locations)) {
+    locations[id] = { ...loc, marketing: { ...loc.marketing, campaignUntil: undefined } };
+  }
+  return { ...state, boosts: [], activeEvents: [], locations };
+}
+
+/**
  * Schreibt Offline-Einnahmen gut. Negative Deltas (Uhr zurückgestellt) zählen als 0.
  * Die Rate wird aus dem Zustand beim Speichern genommen und bleibt konstant.
  */
@@ -36,11 +48,12 @@ export function applyOffline(state: GameState, elapsedMs: number): OfflineResult
   const seconds = (credited / 1000) * getOfflineEfficiency(state);
   if (seconds <= 0) return { state, elapsedMs: elapsed, creditedMs: credited, earned: D(0) };
 
+  const rateState = withoutTemporaryBoosts(state);
   let total = D(0);
   const locations = { ...state.locations };
   for (const id of Object.keys(state.locations)) {
     const loc = getLocation(state, id);
-    const gain = computeLocationRates(state, id).incomePerSec.mul(seconds);
+    const gain = computeLocationRates(rateState, id).incomePerSec.mul(seconds);
     total = total.add(gain);
     locations[id] = {
       ...loc,

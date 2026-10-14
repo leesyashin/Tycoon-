@@ -6,3 +6,5 @@ export * from './math';
 export * from './save';
 export * from './store';
 export * from './settings';
+export * from './marketing';
+export * from './staff';

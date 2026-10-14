@@ -2,8 +2,13 @@ import { BALANCE } from '@data/balance';
 import { getLocation, type GameState, type LocationState } from './GameState';
 import { computeLocationRates } from './customers/rates';
 import { applyOffline } from './economy/offline';
+import { autoBuyStep } from './economy/actions';
+import { advanceCleanliness } from './staff/effects';
 
-/** Ein Simulationsschritt beliebiger Länge; die Rate-Formeln sind linear, die Zufriedenheit nähert sich exakt. */
+/**
+ * Ein Simulationsschritt beliebiger Länge; die Rate-Formeln sind linear, die Zufriedenheit nähert sich exakt.
+ * Einnahmen nutzen den Zustand zu Beginn des Schritts, danach ändern sich Sauberkeit und Zufriedenheit.
+ */
 export function tick(state: GameState, dtMs: number): GameState {
   const dt = Number.isFinite(dtMs) ? Math.max(0, dtMs) / 1000 : 0;
   if (dt === 0) return state;
@@ -22,11 +27,12 @@ export function tick(state: GameState, dtMs: number): GameState {
       coins: loc.coins.add(gain),
       earnedThisRun: loc.earnedThisRun.add(gain),
       satisfaction,
+      cleanliness: advanceCleanliness(loc, dt),
     };
     earnedTotal = earnedTotal.add(gain);
   }
   const playtimeSec = state.playtimeSec + dt;
-  return {
+  let next: GameState = {
     ...state,
     playtimeSec,
     locations,
@@ -35,6 +41,8 @@ export function tick(state: GameState, dtMs: number): GameState {
     boosts: state.boosts.filter((b) => b.until > playtimeSec),
     tap: { ...state.tap, hype: Math.max(0, state.tap.hype - BALANCE.tap.hypeDecayPerSec * dt) },
   };
+  for (const id of Object.keys(next.locations)) next = autoBuyStep(next, id);
+  return next;
 }
 
 export interface FrameResult {

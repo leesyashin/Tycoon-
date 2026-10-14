@@ -1,3 +1,4 @@
+import { BALANCE } from '@data/balance';
 import { D, Decimal, isDecimalNaN } from '../math/bignum';
 import { SCHEMA_VERSION, type GameState, type LocationState } from '../GameState';
 import { migrate, SaveError } from './migrations';
@@ -36,6 +37,12 @@ function reviveLocation(id: string, raw: unknown): LocationState {
     ...(raw as unknown as LocationState),
     coins: dec(raw['coins'], `${id}.coins`),
     earnedThisRun: dec(raw['earnedThisRun'], `${id}.earnedThisRun`),
+    cleanliness: Math.min(
+      BALANCE.cleanliness.max,
+      Math.max(0, num(raw['cleanliness'], BALANCE.cleanliness.start)),
+    ),
+    autoBuy: raw['autoBuy'] === true,
+    staff: isObj(raw['staff']) ? (raw['staff'] as Record<string, number>) : {},
   };
 }
 

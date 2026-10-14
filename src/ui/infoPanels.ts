@@ -1,48 +1,8 @@
 import { t } from '@i18n/index';
-import { getLocation, type GameState } from '@core/GameState';
+import type { GameState } from '@core/GameState';
 import { LOCATIONS } from '@data/locations';
-import { STAFF_ROLES } from '@data/staff';
 import { h, setText } from './dom';
 import type { PanelContent } from './panel';
-
-/** Personal-Übersicht; Einstellen und Effekte folgen mit S4, bis dahin nur Vorschau. */
-export function createStaffPanel(): PanelContent {
-  const rows = STAFF_ROLES.map((r) => {
-    const status = h('span', { class: 'row-status' });
-    const el = h(
-      'li',
-      { class: 'shop-row' },
-      h(
-        'div',
-        { class: 'row-text' },
-        h('strong', { text: t(`staff.${r.id}.name`) }),
-        h('span', { class: 'muted', text: t(`staff.${r.id}.effect`) }),
-        status,
-      ),
-    );
-    return { r, el, status };
-  });
-  return {
-    title: t('staff.title'),
-    view: {
-      el: h(
-        'div',
-        {},
-        h('p', { class: 'muted', text: t('ui.comingSoon') }),
-        h('ul', { class: 'shop-list' }, ...rows.map((x) => x.el)),
-      ),
-      update(s: GameState) {
-        const level = getLocation(s, s.activeLocationId).level;
-        for (const x of rows) {
-          setText(
-            x.status,
-            level >= x.r.unlockCafeLevel ? '' : t('ui.unlockAt', { level: x.r.unlockCafeLevel }),
-          );
-        }
-      },
-    },
-  };
-}
 
 /** Standort-Liste mit Freischalt-Bedingungen; Wechseln und Reset kommen in S6. */
 export function createLocationsPanel(): PanelContent {

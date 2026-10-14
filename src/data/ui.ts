@@ -8,5 +8,7 @@ export const UI_CONFIG = {
   offlineDialogMinSec: 60,
   /** Anzahl IndexedDB-Backups (PLAN § 2.3). */
   backupCount: 3,
+  /** Schwellen für Stimmungs-Symbole (HUD und Smileys über den Kunden). */
+  mood: { happyFrom: 60, neutralFrom: 40 },
   licensesUrl: 'https://github.com/leesyashin/Tycoon-/blob/main/docs/ASSETS.md',
 } as const;

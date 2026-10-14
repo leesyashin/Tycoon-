@@ -471,3 +471,54 @@ fieldset {
     border-radius: var(--radius) var(--radius) 0 0;
   }
 }
+
+/* S4: Personal, Zufriedenheit, Marketing */
+.hud-stat-btn {
+  font: inherit;
+  color: inherit;
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 2px 10px;
+  min-height: 32px;
+  cursor: pointer;
+}
+.hud-stat-btn:hover,
+.hud-stat-btn:focus-visible {
+  border-color: var(--accent);
+}
+.hud-more {
+  color: var(--text-muted);
+}
+.row-next {
+  color: var(--text);
+}
+.shop-row-stack {
+  flex-direction: column;
+  align-items: stretch;
+}
+.shop-row.active {
+  border-left-color: var(--gold);
+}
+.section-title {
+  font-size: 14px;
+  margin: 12px 0 4px;
+}
+.part-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.part-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--gap);
+  padding: 4px 0;
+  border-bottom: 1px solid var(--surface-2);
+}
+.part-row.pos .part-value {
+  color: var(--accent);
+}
+.part-row.neg .part-value {
+  color: var(--danger);
+}

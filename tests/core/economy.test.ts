@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getStationDef } from '@data/stations';
+import { STATIONS, getStationDef } from '@data/stations';
 import { createInitialState, getLocation, withLocation } from '@core/GameState';
 import { D } from '@core/math';
 import {
@@ -177,7 +177,7 @@ describe('Modifiers', () => {
       incomeMult: 1,
       speedMult: 1,
       discount: 0,
-      staffSpeedMult: 1,
+      staffSpeedMult: Object.fromEntries(STATIONS.map((d) => [d.id, 1])),
     });
   });
   it('aktive Events und Boosts multiplizieren, abgelaufene nicht', () => {

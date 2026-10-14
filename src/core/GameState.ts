@@ -3,7 +3,7 @@ import { BALANCE } from '@data/balance';
 import { STATIONS } from '@data/stations';
 import { START_LOCATION_ID } from '@data/locations';
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export interface Settings {
   lang: 'de' | 'en';
@@ -56,8 +56,19 @@ export interface LocationState {
   staff: Record<string, number>;
   quality: number;
   satisfaction: number;
-  marketing: { level: number; campaignUntil?: number };
+  /** Sauberkeit 0..100 (GAME_DESIGN § 7.3). */
+  cleanliness: number;
+  marketing: MarketingState;
+  /** Auto-Kauf „günstigste Station upgraden“; wirkt nur mit Filialleiter (GAME_DESIGN § 6). */
+  autoBuy: boolean;
   prestigeCount: number;
+}
+
+/** Zeiten in `playtimeSec`; die Abklingzeit beginnt erst nach dem Ende der Kampagne. */
+export interface MarketingState {
+  level: number;
+  campaignUntil?: number;
+  cooldownUntil?: number;
 }
 
 export interface MetaState {
@@ -98,7 +109,9 @@ export function createLocationState(): LocationState {
     staff: {},
     quality: 0,
     satisfaction: BALANCE.startSatisfaction,
+    cleanliness: BALANCE.cleanliness.start,
     marketing: { level: 0 },
+    autoBuy: false,
     prestigeCount: 0,
   };
 }

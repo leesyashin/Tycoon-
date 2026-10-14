@@ -46,12 +46,45 @@ export const BALANCE = {
     waitPressureMax: 2,
     cleanlinessNeutral: 70,
     cleanlinessWeight: 0.3,
-    /** Bis das Reinigungs-System (S4) existiert, gilt dieser feste Wert. */
-    cleanlinessDefault: 70,
     /** Anteil der Differenz zum Ziel, der pro Sekunde abgebaut wird. */
     approachPerSec: 0.02,
     factorBase: 0.5,
   },
+
+  /** Sauberkeit 0..100 (GAME_DESIGN § 7.3), Raten pro Minute Spielzeit. */
+  cleanliness: {
+    start: 100,
+    max: 100,
+    decayPerMin: 2,
+    /** Jede Reinigungs-Stufe senkt den Verfall um diesen Anteil (ab Stufe 4 kein Verfall mehr). */
+    decayReductionPerCleaner: 0.25,
+    /** Ab Reinigungs-Stufe 1 fällt die Sauberkeit nicht unter diesen Wert. */
+    floorWithCleaner: 60,
+    regenFromCleanerLevel: 3,
+    regenPerMin: 5,
+  },
+
+  /** Marketing (GAME_DESIGN § 9). Zeiten in Spielsekunden (`playtimeSec`). */
+  marketing: {
+    /** Kampagnen-Level: Kosten Berlin; Basis ist im Design offen, siehe STATUS „Entscheidungen“. */
+    baseCost: 500,
+    growth: 1.6,
+    maxLevel: 30,
+    unlockCafeLevel: 2,
+    /** Aktive Kampagne kostet so viele Sekunden aktuelles Einkommen … */
+    campaignIncomeSec: 120,
+    /** … mindestens aber so viele Münzen (× Standort-Skalierung). */
+    campaignMinCost: 50,
+    campaignSpawnMult: 2,
+    campaignDurationSec: 600,
+    cooldownSec: 1800,
+    /** Abklingzeit × (1 − x)^socialMedia.level – multiplikativ, damit sie bei Stufe 15 nicht negativ wird. */
+    cooldownReductionPerSocialMedia: 0.1,
+    skipCooldownLeaves: 3,
+  },
+
+  /** Ab dieser Filialleiter-Stufe gibt es den Auto-Kauf-Schalter (GAME_DESIGN § 6). */
+  manager: { autoBuyFromLevel: 1 },
 
   /** Tap-Bonus „Barista anfeuern“ (GAME_DESIGN § 7.4). */
   tap: {
