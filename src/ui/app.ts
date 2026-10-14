@@ -2,20 +2,25 @@ import { getLang, setLang, t, type Lang } from '@i18n/index';
 import { createInitialState, getLocation, type GameState } from '@core/GameState';
 import type { Store } from '@core/store';
 import { clearSave, exportFilename, exportSave, importSave, type StorageLike } from '@core/save';
-import { STATIONS } from '@data/stations';
+import { getAchievementDef } from '@data/achievements';
+import { getQuestDef } from '@data/quests';
+import { getUnlocksAt } from '@data/unlocks';
+import { isQuestComplete } from '@core/progression';
 import { h, mount } from './dom';
 import { confirmTwice, showDialog } from './dialog';
 import { createHud } from './hud';
-import { createAchievementsPanel, createLocationsPanel } from './infoPanels';
+import { createLocationsPanel } from './infoPanels';
+import { achievementName, claimableQuests, createProgressPanel } from './progressPanel';
 import { createMarketingPanel } from './marketingPanel';
 import { createSatisfactionPanel } from './satisfactionPanel';
 import { createStaffPanel } from './staffPanel';
-import { createNav, type NavTarget } from './nav';
+import { createNav, type Nav, type NavTarget } from './nav';
 import { createPanelHost, type PanelRequest } from './panel';
 import { clearIndexedDbBackups, startPersistence } from './persistence';
 import { createSettingsPanel } from './settingsPanel';
 import { createShopPanel } from './shopPanel';
-import { createStationPanel, stationName } from './stationPanel';
+import { createStationPanel } from './stationPanel';
+import { unlockLabel } from './labels';
 import { createToaster } from './toast';
 import { fmt, fmtTime } from './format';
 import type { OfflineResult } from '@core/economy';
@@ -82,7 +87,7 @@ export function startApp(o: AppOptions): App {
         createMarketingPanel(store, () => toaster.show(t('toast.campaignStarted'), 'success')),
     },
     locations: { key: 'locations', create: createLocationsPanel },
-    achievements: { key: 'achievements', create: createAchievementsPanel },
+    achievements: { key: 'achievements', create: () => createProgressPanel(store) },
     settings: settingsReq,
   };
 
@@ -96,15 +101,16 @@ export function startApp(o: AppOptions): App {
   };
 
   let unmountHud: (() => void) | null = null;
+  let nav: Nav | null = null;
   const build = (): void => {
     unmountHud?.();
     unmountHud = mount(hudSlot, createHud(toggleSatisfaction), store);
-    navSlot.replaceChildren(
-      createNav((id) => {
-        if (panels.current()?.key === requests[id].key) panels.close();
-        else panels.open(requests[id]);
-      }),
-    );
+    nav = createNav((id) => {
+      if (panels.current()?.key === requests[id].key) panels.close();
+      else panels.open(requests[id]);
+    });
+    nav.setBadge('achievements', claimableQuests(store.getState()));
+    navSlot.replaceChildren(nav.el);
   };
   build();
 
@@ -171,21 +177,60 @@ export function startApp(o: AppOptions): App {
       panels.rebuild();
       o.onLangChange(s.settings.lang);
     }
+    nav?.setBadge('achievements', claimableQuests(s));
     if (s.createdAt !== before.createdAt || s.activeLocationId !== before.activeLocationId) return;
-    const was = getLocation(before, before.activeLocationId).level;
-    const now = getLocation(s, s.activeLocationId).level;
+    notifyProgress(before, s);
+  });
+
+  /** Toasts für Café-Level, Freischaltungen, Erfolge, Tagesaufgaben – aus dem Zustandsvergleich. */
+  function notifyProgress(before: GameState, s: GameState): void {
+    const locId = s.activeLocationId;
+    const was = getLocation(before, locId).level;
+    const now = getLocation(s, locId).level;
     if (now > was) {
       toaster.show(t('toast.cafeLevel', { level: now }), 'success');
-      for (const d of STATIONS) {
-        if (d.unlockCafeLevel > was && d.unlockCafeLevel <= now) {
-          toaster.show(
-            t('toast.unlocked', { name: stationName(s.activeLocationId, d.id) }),
-            'success',
-          );
+      const gainedLeaves = s.stats.leavesEarned - before.stats.leavesEarned;
+      const coins = s.meta.lifetimeEarned.sub(before.meta.lifetimeEarned);
+      toaster.show(
+        t('toast.cafeLevelReward', {
+          coins: fmt(s, coins),
+          leaves: gainedLeaves > 0 ? t('toast.cafeLevelLeaves', { leaves: gainedLeaves }) : '',
+        }),
+        'success',
+      );
+      for (let l = was + 1; l <= now; l++) {
+        for (const u of getUnlocksAt(l)) {
+          toaster.show(t('toast.unlocked', { name: unlockLabel(locId, u) }), 'success');
         }
       }
     }
-  });
+    const quality = getLocation(s, locId).quality;
+    if (quality > getLocation(before, locId).quality) {
+      toaster.show(
+        t('toast.quality', { name: t(`quality.tier.${String(quality)}.name`) }),
+        'success',
+      );
+    }
+    for (const id of Object.keys(s.meta.achievements)) {
+      if (before.meta.achievements[id]) continue;
+      const def = getAchievementDef(id);
+      toaster.show(
+        t('toast.achievement', { name: achievementName(def), leaves: def.reward }),
+        'success',
+      );
+    }
+    if (s.quests.date === before.quests.date) {
+      s.quests.items.forEach((it, i) => {
+        const prevItem = before.quests.items[i];
+        if (!prevItem || isQuestComplete(prevItem) || !isQuestComplete(it)) return;
+        const def = getQuestDef(it.id);
+        toaster.show(
+          t('toast.questDone', { name: t(`quest.${def.kind}`, { target: def.target }) }),
+          'success',
+        );
+      });
+    }
+  }
 
   return {
     openStation: (id) => panels.open(stationReq(id)),

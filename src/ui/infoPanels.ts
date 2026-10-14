@@ -41,10 +41,3 @@ export function createLocationsPanel(): PanelContent {
     },
   };
 }
-
-export function createAchievementsPanel(): PanelContent {
-  return {
-    title: t('achievements.title'),
-    view: { el: h('p', { class: 'muted', text: t('ui.comingSoon') }), update: () => undefined },
-  };
-}

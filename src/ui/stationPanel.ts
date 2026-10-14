@@ -18,6 +18,7 @@ import { CHECKOUT_ID, getStationDef } from '@data/stations';
 import { h, on, setDisabled, setText } from './dom';
 import { fmt } from './format';
 import type { PanelContent } from './panel';
+import { lockedReason, productName, stationName } from './labels';
 
 const AMOUNTS: { amount: BulkAmount; key: string }[] = [
   { amount: 1, key: 'ui.buy.x1' },
@@ -25,10 +26,6 @@ const AMOUNTS: { amount: BulkAmount; key: string }[] = [
   { amount: 100, key: 'ui.buy.x100' },
   { amount: 'max', key: 'ui.buy.max' },
 ];
-
-export function stationName(locationId: string, stationId: string): string {
-  return t(`station.${locationId}.${stationId}.name`);
-}
 
 /** Stations-Panel (GAME_DESIGN § 16.2): Werte, Meilenstein-Vorschau, Kauf ×1/×10/×100/Max. */
 export function createStationPanel(store: Store, stationId: string): PanelContent {
@@ -47,6 +44,7 @@ export function createStationPanel(store: Store, stationId: string): PanelConten
   );
   const [customersRow, customers] = stat(t('station.panel.customers'));
   const milestone = h('p', { class: 'muted' });
+  const product = h('p', { class: 'muted', 'data-testid': 'station-product' });
   const locked = h('p', { class: 'locked-hint' });
 
   const buttons = AMOUNTS.map(({ amount, key }) => {
@@ -66,6 +64,7 @@ export function createStationPanel(store: Store, stationId: string): PanelConten
     'div',
     { class: 'station-panel' },
     h('p', { class: 'muted', text: t(`station.${locId}.${stationId}.desc`) }),
+    isCheckout ? null : product,
     level,
     h(
       'dl',
@@ -94,7 +93,12 @@ export function createStationPanel(store: Store, stationId: string): PanelConten
       const th = getCheckoutThroughput(lvl, loc.staff['cashier'] ?? 0, mods.speedMult);
       setText(income, t('station.panel.perSec', { amount: fmt(s, th) }));
     } else {
-      setText(price, fmt(s, getStationPrice(def, lvl, locId)));
+      const priceMult = collectModifiers(s, locId).priceMult;
+      setText(price, fmt(s, getStationPrice(def, lvl, locId).mul(priceMult)));
+      setText(
+        product,
+        t('station.panel.product', { product: productName(stationId, loc.quality) }),
+      );
       setText(
         income,
         t('station.panel.perSec', { amount: fmt(s, rates.perStationIncome[stationId] ?? 0) }),
@@ -113,7 +117,7 @@ export function createStationPanel(store: Store, stationId: string): PanelConten
         effect: t(isPrice ? 'station.panel.milestone.price' : 'station.panel.milestone.speed'),
       }),
     );
-    setText(locked, unlocked ? '' : t('ui.unlockAt', { level: def.unlockCafeLevel }));
+    setText(locked, unlocked ? '' : lockedReason(s, locId, stationId, def.unlockCafeLevel));
     locked.hidden = unlocked;
     for (const b of buttons) {
       const n = unlocked ? resolveAmount(s, locId, stationId, b.amount) : 0;

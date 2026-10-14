@@ -1,6 +1,8 @@
 /** Zeit- und Anzeige-Konstanten der DOM-UI (keine Spielbalance, aber ebenfalls nicht im Code verstreut). */
 export const UI_CONFIG = {
   autosaveMs: 10_000,
+  /** Takt für Quest-Tageswechsel und Achievement-Prüfung (Wanduhr-abhängig). */
+  progressionMs: 1_000,
   /** Wie oft das Overlay höchstens neu rendert. */
   renderMs: 200,
   toastMs: 3_500,

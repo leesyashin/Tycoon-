@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import { detectLang, t } from '@i18n/index';
 import { createInitialState, type GameState } from '@core/GameState';
 import { createStore } from '@core/store';
+import { progressionStep } from '@core/progression';
+import { UI_CONFIG } from '@data/ui';
 import { SAVE_KEY, loadWithOffline } from '@core/save';
 import type { OfflineResult } from '@core/economy';
 import { BootScene } from '@scenes/BootScene';
@@ -51,6 +53,13 @@ const loop = (now: number): void => {
 };
 requestAnimationFrame(loop);
 
+// Quests und Achievements hängen an der Wanduhr (lokale Mitternacht, Nachtschicht) – daher außerhalb des Ticks.
+const progress = (): void => {
+  const now = Date.now();
+  store.dispatch((s) => progressionStep(s, now, new Date(now).getTimezoneOffset()));
+};
+window.setInterval(progress, UI_CONFIG.progressionMs);
+
 const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'game',
@@ -84,3 +93,4 @@ if (root) {
   if (loadFailed) app.toastError(t('toast.loadFailed'));
   if (offline) app.showOffline(offline);
 }
+progress();
