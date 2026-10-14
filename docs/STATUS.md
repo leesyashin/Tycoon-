@@ -1,8 +1,8 @@
 ## Loop
-state: idle
-current: -
-branch: -
-started: -
+state: running
+current: S7
+branch: session/s7-events
+started: 2026-10-14T21:36:24Z
 next: S7
 ## Letzte Session: S6 – Standorte und Prestige (2026-10-14, PR #9)
 ## Fertig
