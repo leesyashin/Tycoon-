@@ -53,6 +53,20 @@ export const BALANCE = {
     factorBase: 0.5,
   },
 
+  /** Tap-Bonus „Barista anfeuern“ (GAME_DESIGN § 7.4). */
+  tap: {
+    /** Sekunden Einkommen pro Tap. */
+    incomeSeconds: 0.5,
+    perTapPowerLevel: 0.5,
+    maxPerSec: 10,
+    hypeMax: 30,
+    hypeDurationSec: 10,
+    hypeSpawnMult: 2,
+    /** Hype verfällt langsam, damit der Balken aktives Spielen belohnt und nicht über Stunden gesammelt wird. */
+    hypeDecayPerSec: 0.5,
+    boostId: 'hype',
+  },
+
   offline: {
     baseCapHours: 4,
     perManagerHours: 2,

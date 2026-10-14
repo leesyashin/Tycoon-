@@ -33,6 +33,7 @@ export function tick(state: GameState, dtMs: number): GameState {
     meta: { ...state.meta, lifetimeEarned: earnedTotal },
     activeEvents: state.activeEvents.filter((e) => e.until > playtimeSec),
     boosts: state.boosts.filter((b) => b.until > playtimeSec),
+    tap: { ...state.tap, hype: Math.max(0, state.tap.hype - BALANCE.tap.hypeDecayPerSec * dt) },
   };
 }
 

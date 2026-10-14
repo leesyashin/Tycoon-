@@ -39,6 +39,15 @@ function reviveLocation(id: string, raw: unknown): LocationState {
   };
 }
 
+function reviveTap(raw: unknown): GameState['tap'] {
+  const t = isObj(raw) ? raw : {};
+  return {
+    hype: Math.max(0, num(t['hype'], 0)),
+    windowStart: num(t['windowStart'], 0),
+    windowTaps: Math.max(0, num(t['windowTaps'], 0)),
+  };
+}
+
 export function deserialize(text: string): GameState {
   let parsed: unknown;
   try {
@@ -71,5 +80,6 @@ export function deserialize(text: string): GameState {
       lifetimeEarned: dec(meta['lifetimeEarned'], 'lifetimeEarned'),
     },
     locations: revived,
+    tap: reviveTap(raw['tap']),
   };
 }

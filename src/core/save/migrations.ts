@@ -45,6 +45,12 @@ export const migrations: ((raw: Json) => Json)[] = [
       quests: { date: '', items: [] },
     };
   },
+  // v1 → v2: Tap-Bonus-Zustand (Hype-Balken) ergänzt.
+  (raw) => ({
+    ...raw,
+    schemaVersion: 2,
+    tap: { hype: 0, windowStart: 0, windowTaps: 0 },
+  }),
 ];
 
 export class SaveError extends Error {}
