@@ -1,10 +1,10 @@
 # STATUS
 ## Loop
-state: running
-current: S1
-branch: session/s1-core
-started: 2026-10-14T19:36:14Z
-next: S1
+state: idle
+current: -
+branch: -
+started: -
+next: S2
 ## Letzte Session: S1 – Core-Ökonomie (2026-10-14)
 ## Fertig
 - `src/data`: `stations.ts` (8 Stationen), `locations.ts` (6 Standorte inkl. Skalierung), `balance.ts` (alle Konstanten)
