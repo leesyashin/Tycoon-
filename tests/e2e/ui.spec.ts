@@ -158,6 +158,8 @@ test('Export, Import und Löschen mit doppelter Bestätigung', async ({ page }) 
 });
 
 test('Barrierefreiheit: keine axe-Verstöße (WCAG 2 A/AA) in HUD und Panels', async ({ page }) => {
+  // 15 axe-Scans brauchen auf dem CI-Runner mehr als die Standard-30 s.
+  test.setTimeout(90_000);
   await page.goto('?lang=de');
   const scan = async (): Promise<void> => {
     const r = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
@@ -265,6 +267,8 @@ test('Erfolg löst einmal aus: Toast und Blätter, nach Neuladen nicht erneut', 
 });
 
 test('Tagesaufgabe erledigen und abholen', async ({ page }) => {
+  // 100 Taps im Takt > 11 s plus Screen-Wechsel; auf dem CI-Runner knapp über 30 s.
+  test.setTimeout(60_000);
   await page.goto('?lang=en');
   await reloadWithSave(page, { questsToday: ['tap100', 'buy20', 'serve500'] });
   await page.getByTestId('nav-achievements').click();
