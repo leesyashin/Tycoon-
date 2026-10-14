@@ -1,11 +1,11 @@
 # STATUS
 ## Loop
-state: running
-current: S0
-branch: session/s0-setup
-started: 2026-10-14T19:32:22Z
-next: S0
-## Letzte Session: S0 – Projekt-Setup (2026-10-14)
+state: idle
+current: -
+branch: -
+started: -
+next: S1
+## Letzte Session: S0 – Projekt-Setup (2026-10-14, PR #2)
 ## Fertig
 - Vite 6 + TypeScript strict + Phaser 3.90, break_infinity.js, Vitest, Playwright, ESLint (typescript-eslint strict) + Prettier
 - Ordnerstruktur nach PLAN § 2.2, Pfad-Aliase `@core @ui @scenes @data @i18n`, `base: '/Tycoon-/'`
