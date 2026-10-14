@@ -3,5 +3,22 @@
   "hud.coins": "Coins",
   "hud.language": "Language",
   "scene.grid": "Café grid {size}×{size}",
-  "common.ok": "OK"
+  "common.ok": "OK",
+  "location.berlin.name": "Neighborhood Café Berlin",
+  "station.berlin.matchaBar.name": "Matcha bar",
+  "station.berlin.matchaBar.desc": "The classic: a fresh matcha latte.",
+  "station.berlin.checkout.name": "Checkout",
+  "station.berlin.checkout.desc": "More throughput for every station.",
+  "station.berlin.togoWindow.name": "To-go window",
+  "station.berlin.togoWindow.desc": "Matcha on the go.",
+  "station.berlin.icedBar.name": "Iced matcha bar",
+  "station.berlin.icedBar.desc": "Ice cold and pricier.",
+  "station.berlin.bakery.name": "Bakery",
+  "station.berlin.bakery.desc": "Matcha croissants fresh from the oven.",
+  "station.berlin.merchShelf.name": "Merch shelf",
+  "station.berlin.merchShelf.desc": "Cups, whisks and tote bags.",
+  "station.berlin.ceremonyCorner.name": "Ceremony corner",
+  "station.berlin.ceremonyCorner.desc": "A tea ceremony for connoisseurs.",
+  "station.berlin.workshopRoom.name": "Workshop room",
+  "station.berlin.workshopRoom.desc": "Matcha classes at premium prices."
 }
