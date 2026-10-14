@@ -14,13 +14,33 @@ export function suffixForTier(tier: number): string | undefined {
   return LETTERS.charAt(Math.floor(i / 26)) + LETTERS.charAt(i % 26);
 }
 
-function localize(s: string, lang: FormatLang): string {
-  return lang === 'de' ? s.replace('.', ',') : s;
+const LOCALES: Record<FormatLang, string> = { de: 'de-DE', en: 'en-US' };
+const fixed2 = new Map<FormatLang, Intl.NumberFormat>();
+const upTo2 = new Map<FormatLang, Intl.NumberFormat>();
+
+function formatter(cache: Map<FormatLang, Intl.NumberFormat>, lang: FormatLang, min: number) {
+  let f = cache.get(lang);
+  if (!f) {
+    // Ohne Tausendertrennung: Werte ≥ 1000 bekommen ohnehin ein Suffix.
+    f = new Intl.NumberFormat(LOCALES[lang], {
+      minimumFractionDigits: min,
+      maximumFractionDigits: 2,
+      useGrouping: false,
+    });
+    cache.set(lang, f);
+  }
+  return f;
 }
 
-function plain(n: number): string {
-  // Bis 2 Nachkommastellen, ohne überflüssige Nullen.
-  return Number(n.toFixed(2)).toString();
+/** Mantisse mit genau 2 Nachkommastellen, lokaler Dezimaltrenner. */
+function localize(n: number, lang: FormatLang): string {
+  // Erst wie die Grenzprüfungen runden, sonst könnte Intl anders runden als `toFixed`.
+  return formatter(fixed2, lang, 2).format(Number(n.toFixed(2)));
+}
+
+/** Bis 2 Nachkommastellen, ohne überflüssige Nullen. */
+function plain(n: number, lang: FormatLang): string {
+  return formatter(upTo2, lang, 0).format(Number(n.toFixed(2)));
 }
 
 /** Kurzformat mit denselben Suffixen in beiden Sprachen; nur der Dezimaltrenner ist lokal. */
@@ -35,8 +55,8 @@ export function formatNumber(
   if (d.lt(1000)) {
     const n = d.toNumber();
     // 999.999 rundet auf 1000 → muss als „1.00 K“ erscheinen.
-    if (Number(n.toFixed(2)) < 1000) return localize(plain(n), lang);
-    return localize('1.00', lang) + ' K';
+    if (Number(n.toFixed(2)) < 1000) return plain(n, lang);
+    return localize(1, lang) + ' K';
   }
   let exp = d.e;
   let mant = d.mantissa;
@@ -46,18 +66,18 @@ export function formatNumber(
     exp += 1;
   }
   if (mode === 'scientific') {
-    return localize(mant.toFixed(2), lang) + 'e' + String(exp);
+    return localize(mant, lang) + 'e' + String(exp);
   }
   const tier = Math.floor(exp / 3);
   const suffix = suffixForTier(tier);
-  if (suffix === undefined) return localize(mant.toFixed(2), lang) + 'e' + String(exp);
+  if (suffix === undefined) return localize(mant, lang) + 'e' + String(exp);
   const shifted = mant * 10 ** (exp - tier * 3);
   // Rundung kann 999.995 → 1000.00 erzeugen; dann eine Stufe höher.
   if (Number(shifted.toFixed(2)) >= 1000) {
     const next = suffixForTier(tier + 1);
-    if (next !== undefined) return localize('1.00', lang) + ' ' + next;
+    if (next !== undefined) return localize(1, lang) + ' ' + next;
   }
-  return localize(shifted.toFixed(2), lang) + ' ' + suffix;
+  return localize(shifted, lang) + ' ' + suffix;
 }
 
 /** `3 h 12 min` (de) bzw. `3h 12m` (en). */

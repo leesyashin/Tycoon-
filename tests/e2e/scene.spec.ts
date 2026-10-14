@@ -5,7 +5,7 @@ test('Café-Szene läuft ohne Fehler, auch bei 100 Kunden/s', async ({ page }) =
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('?lang=de&debugSpawn=100');
   await expect(page.locator('#game canvas')).toBeVisible();
-  await expect(page.getByTestId('hud-coins')).toContainText('pro Sek.');
+  await expect(page.getByTestId('hud-income')).toContainText('pro Sek.');
   await page.waitForTimeout(3000);
   // Tap auf die Raummitte: darf nichts kaputt machen (Einkommen kommt nur aus core).
   const box = await page.locator('#game canvas').boundingBox();

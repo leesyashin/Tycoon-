@@ -1,50 +1,74 @@
-import { getLang, t } from '@i18n/index';
-import type { Store } from '@core/store';
-import { getLocation } from '@core/GameState';
+import { t } from '@i18n/index';
+import { getLocation, type GameState } from '@core/GameState';
 import { getHypeProgress, getHypeRemaining, getIncomePerSec } from '@core/customers';
-import { formatNumber } from '@core/math/format';
+import { h, setText, type View } from './dom';
+import { fmt } from './format';
 
-const REFRESH_MS = 250;
-
-/** Minimal-HUD bis S3: Münzen, Einkommen/s, Hype-Balken. Liest nur aus dem Store. */
-export function mountHud(root: HTMLElement, store: Store): () => void {
-  root.innerHTML = '';
-  const hud = document.createElement('div');
-  hud.className = 'hud';
-  hud.dataset.testid = 'hud';
-  const coins = document.createElement('div');
-  coins.dataset.testid = 'hud-coins';
-  const hype = document.createElement('div');
-  hype.className = 'hud-hype';
-  const bar = document.createElement('div');
-  bar.className = 'hud-hype-fill';
-  const hypeLabel = document.createElement('span');
-  hype.append(bar, hypeLabel);
-  hud.append(coins, hype);
-  if (import.meta.env.DEV) {
-    const hint = document.createElement('div');
-    hint.className = 'hud-hint';
-    hint.textContent = t('scene.debugHint');
-    hud.append(hint);
-  }
-  root.append(hud);
-
-  const render = (): void => {
-    const s = store.getState();
-    const lang = getLang();
-    const loc = getLocation(s, s.activeLocationId);
-    const fmt = (v: Parameters<typeof formatNumber>[0]) =>
-      formatNumber(v, lang, s.settings.numberFormat);
-    coins.textContent = `${t('hud.coins')}: ${fmt(loc.coins)} · ${fmt(getIncomePerSec(s, s.activeLocationId))} ${t('hud.income')}`;
-    const remaining = getHypeRemaining(s);
-    const active = remaining > 0;
-    bar.style.width = `${String(Math.round((active ? 1 : getHypeProgress(s)) * 100))}%`;
-    hype.classList.toggle('active', active);
-    hypeLabel.textContent = active
-      ? t('hud.hypeActive', { sec: Math.ceil(remaining) })
-      : t('hud.hype');
+/** Kopfzeile: Standort, Münzen, Einkommen/s, Goldene Blätter, Zufriedenheit, Hype. Nur lesend. */
+export function createHud(): View {
+  const location = h('div', { class: 'hud-location', 'data-testid': 'hud-location' });
+  // Icons sind dekorativ; Screenreader bekommen den Namen als versteckten Text.
+  const stat = (cls: string, testId: string, label: string, icon: string, visibleLabel = false) => {
+    const value = h('span');
+    const el = h(
+      'div',
+      { class: cls, 'data-testid': testId },
+      h('span', { class: visibleLabel ? 'hud-label' : 'sr-only', text: label }),
+      h('span', { 'aria-hidden': 'true', text: `${icon} ` }),
+      value,
+    );
+    return { el, value };
   };
-  render();
-  const timer = window.setInterval(render, REFRESH_MS);
-  return () => window.clearInterval(timer);
+  const coins = stat('hud-coins', 'hud-coins', t('hud.coins'), '🪙', true);
+  const income = h('div', { class: 'hud-income', 'data-testid': 'hud-income' });
+  const leaves = stat('hud-stat', 'hud-leaves', t('hud.goldenLeaves'), '🍃');
+  const satisfaction = stat('hud-stat', 'hud-satisfaction', t('hud.satisfaction'), '😊');
+  const fill = h('div', { class: 'hud-hype-fill' });
+  const hypeLabel = h('span');
+  const hype = h(
+    'div',
+    {
+      class: 'hud-hype',
+      role: 'progressbar',
+      'aria-label': t('hud.hype'),
+      'aria-valuemin': 0,
+      'aria-valuemax': 100,
+    },
+    fill,
+    hypeLabel,
+  );
+  const el = h(
+    'div',
+    { class: 'hud', 'data-testid': 'hud' },
+    h('div', { class: 'hud-row' }, location),
+    h('div', { class: 'hud-row hud-main' }, coins.el, income),
+    h('div', { class: 'hud-row' }, leaves.el, satisfaction.el),
+    hype,
+  );
+  if (import.meta.env.DEV) el.append(h('div', { class: 'hud-hint', text: t('scene.debugHint') }));
+
+  return {
+    el,
+    update(s: GameState) {
+      const loc = getLocation(s, s.activeLocationId);
+      setText(
+        location,
+        `${t(`location.${s.activeLocationId}.name`)} · ${t('hud.cafeLevel', { level: loc.level })}`,
+      );
+      setText(coins.value, fmt(s, loc.coins));
+      setText(income, `+${fmt(s, getIncomePerSec(s, s.activeLocationId))} ${t('hud.income')}`);
+      setText(leaves.value, fmt(s, s.meta.goldenLeaves));
+      setText(satisfaction.value, `${String(Math.round(loc.satisfaction))} %`);
+      const remaining = getHypeRemaining(s);
+      const active = remaining > 0;
+      const pct = Math.round((active ? 1 : getHypeProgress(s)) * 100);
+      fill.style.width = `${String(pct)}%`;
+      hype.setAttribute('aria-valuenow', String(pct));
+      hype.classList.toggle('active', active);
+      setText(
+        hypeLabel,
+        active ? t('hud.hypeActive', { sec: Math.ceil(remaining) }) : t('hud.hype'),
+      );
+    },
+  };
 }

@@ -47,6 +47,8 @@ export class CafeScene extends Phaser.Scene {
   private debugSpawn = 0;
   private room!: Phaser.Geom.Rectangle;
   private labelZoom = 0;
+  private ambienceImages: Phaser.GameObjects.Image[] = [];
+  private ambienceKey = '';
 
   constructor() {
     super('CafeScene');
@@ -97,7 +99,12 @@ export class CafeScene extends Phaser.Scene {
     this.input.on('pointerup', (p: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) =>
       this.onPointerUp(p, over),
     );
-    this.input.keyboard?.on('keydown-B', () => this.debugBuy());
+    if (import.meta.env.DEV) this.input.keyboard?.on('keydown-B', () => this.debugBuy());
+    const onLang = (): void => this.relabel();
+    this.game.events.on(UI_EVENTS.langChanged, onLang);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () =>
+      this.game.events.off(UI_EVENTS.langChanged, onLang),
+    );
     this.refreshStations(state);
   }
 
@@ -109,6 +116,7 @@ export class CafeScene extends Phaser.Scene {
       this.rates = computeLocationRates(state, this.locationId);
       this.ratesAge = 0;
       this.refreshStations(state);
+      this.createAmbience(state);
     }
     const { purchases } = this.crowd.update(deltaMs / 1000, this.visibleRates(this.rates));
     this.syncAgents();
@@ -221,16 +229,30 @@ export class CafeScene extends Phaser.Scene {
     }
   }
 
+  /** Zeichnet Ambiente neu, sobald sich ein Level ändert (Kauf im Shop, Import, Löschen). */
   private createAmbience(state: GameState): void {
     const loc = getLocation(state, this.locationId);
+    const key = this.layout.ambience.map((a) => loc.ambience[a.id] ?? 0).join(',');
+    if (key === this.ambienceKey) return;
+    this.ambienceKey = key;
+    for (const img of this.ambienceImages) img.destroy();
+    this.ambienceImages = [];
     for (const a of this.layout.ambience) {
       if ((loc.ambience[a.id] ?? 0) < a.minLevel) continue;
       const w = this.world(a.tile);
-      this.add
-        .image(w.x, w.y + TILE_H * 0.75, TEX.ambience(a.id))
-        .setOrigin(0.5, 1)
-        .setDepth(isoDepth(a.tile.x, a.tile.y, 5));
+      this.ambienceImages.push(
+        this.add
+          .image(w.x, w.y + TILE_H * 0.75, TEX.ambience(a.id))
+          .setOrigin(0.5, 1)
+          .setDepth(isoDepth(a.tile.x, a.tile.y, 5)),
+      );
     }
+  }
+
+  /** Nach Sprachwechsel alle Stations-Texte neu setzen. */
+  private relabel(): void {
+    for (const v of this.stations) v.shownLevel = -1;
+    this.refreshStations(this.store.getState());
   }
 
   /** Gekauft = farbiger Block + Level-Badge, sonst Umriss mit „Kaufen“ oder Freischalt-Level. */
@@ -325,7 +347,7 @@ export class CafeScene extends Phaser.Scene {
     if (accepted) this.leaves.explode(8, p.worldX, p.worldY);
   }
 
-  /** Debug-Taste B: günstigste kaufbare Station um 1 Level erhöhen (bis die Shop-UI in S3 kommt). */
+  /** Debug-Taste B (nur im Dev-Server): günstigste kaufbare Station um 1 Level erhöhen. */
   private debugBuy(): void {
     const state = this.store.getState();
     const loc = getLocation(state, this.locationId);
