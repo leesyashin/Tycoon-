@@ -5,17 +5,21 @@ import AxeBuilder from '@axe-core/playwright';
  * Schreibt einen geänderten Spielstand und lädt neu. Die alte Seite darf beim Verlassen
  * nicht mehr speichern, sonst überschreibt ihr Autosave die Änderung.
  */
-async function reloadWithSave(page: Page, edit: { coins?: string; ageMs?: number }): Promise<void> {
+async function reloadWithSave(
+  page: Page,
+  edit: { coins?: string; ageMs?: number; level?: number },
+): Promise<void> {
   await page.evaluate((e) => {
     window.dispatchEvent(new Event('pagehide'));
     const key = Object.keys(localStorage).find((k) => /^mce\.save\.v\d+$/.test(k));
     if (!key) throw new Error('no save');
     const save = JSON.parse(localStorage.getItem(key) ?? '{}') as {
       lastSavedAt: number;
-      locations: Record<string, { coins: string }>;
+      locations: Record<string, { coins: string; level: number }>;
     };
     const berlin = save.locations['berlin'];
     if (e.coins !== undefined && berlin) berlin.coins = e.coins;
+    if (e.level !== undefined && berlin) berlin.level = e.level;
     if (e.ageMs !== undefined) save.lastSavedAt -= e.ageMs;
     localStorage.setItem(key, JSON.stringify(save));
     Storage.prototype.setItem = () => undefined;
@@ -133,11 +137,54 @@ test('Barrierefreiheit: keine axe-Verstöße (WCAG 2 A/AA) in HUD und Panels', a
     ).toEqual([]);
   };
   await scan();
-  for (const id of ['shop', 'settings', 'staff', 'locations']) {
+  for (const id of ['shop', 'settings', 'staff', 'marketing', 'locations']) {
     await page.getByTestId(`nav-${id}`).click();
     await scan();
   }
+  await page.getByTestId('hud-satisfaction').click();
+  await expect(page.getByTestId('panel-satisfaction')).toBeVisible();
+  await scan();
   await page.getByTestId('nav-shop').click();
   await page.getByTestId('shop-station-matchaBar').click();
   await scan();
+});
+
+test('Personal einstellen: Stufe steigt, Effekt wird erklärt', async ({ page }) => {
+  await page.goto('?lang=en');
+  await reloadWithSave(page, { coins: '100000', level: 4 });
+  await page.getByTestId('nav-staff').click();
+  const row = page.getByTestId('staff-row-barista');
+  await expect(row).toContainText('Tier 0/20');
+  await expect(row).toContainText('Next tier:');
+  await page.getByTestId('staff-hire-barista').click();
+  await expect(row).toContainText('Tier 1/20');
+  await expect(row).toContainText('bar speed +15%');
+  // Filialleiter schaltet den Auto-Kauf frei.
+  await expect(page.getByTestId('staff-autobuy')).toBeDisabled();
+  await page.getByTestId('staff-hire-manager').click();
+  await expect(page.getByTestId('staff-autobuy')).toBeEnabled();
+  await page.getByTestId('staff-autobuy').check();
+  await expect(page.getByTestId('staff-autobuy')).toBeChecked();
+});
+
+test('Marketing: Kampagne starten, Abklingzeit läuft', async ({ page }) => {
+  await page.goto('?lang=en');
+  await reloadWithSave(page, { coins: '100000', level: 2 });
+  await page.getByTestId('nav-marketing').click();
+  await expect(page.getByTestId('marketing-campaign-status')).toHaveText('Ready');
+  await page.getByTestId('marketing-campaign-start').click();
+  await expect(page.getByTestId('marketing-campaign-status')).toContainText('Running for');
+  await expect(page.getByTestId('marketing-campaign-start')).toBeDisabled();
+  await page.getByTestId('marketing-level-buy').click();
+  await expect(page.getByTestId('marketing-level-status')).toContainText('Lv 1/30');
+});
+
+test('Zufriedenheits-Detail zeigt Beiträge', async ({ page }) => {
+  await page.goto('?lang=de');
+  await page.getByTestId('hud-satisfaction').click();
+  await expect(page.getByTestId('panel-satisfaction')).toBeVisible();
+  await expect(page.getByTestId('sat-part-cleanliness')).toHaveText(/^\+[89]/);
+  await expect(page.getByTestId('sat-part-base')).toHaveText('+50');
+  await page.getByTestId('hud-satisfaction').click();
+  await expect(page.getByTestId('panel-satisfaction')).toBeHidden();
 });

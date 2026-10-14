@@ -8,6 +8,7 @@ import {
   getHypeRemaining,
   getIncomePerSec,
   getTapIncome,
+  mood,
   tapCafe,
 } from '@core/customers';
 import { createStore } from '@core/store';
@@ -103,5 +104,14 @@ describe('Store', () => {
     off();
     store.advance(1000);
     expect(seen.length).toBe(before);
+  });
+});
+
+describe('Stimmung', () => {
+  it('Schwellen 60/40', () => {
+    expect(mood(80)).toBe('happy');
+    expect(mood(60)).toBe('happy');
+    expect(mood(50)).toBe('neutral');
+    expect(mood(39.9)).toBe('sad');
   });
 });

@@ -48,7 +48,8 @@ export function createPanelHost(store: Store): PanelHost {
       text: '✕',
     });
     on(close, 'click', () => host.close());
-    const body = h('div', { class: 'panel-body' });
+    // Fokussierbar, damit lange Listen auch ohne aktive Buttons per Tastatur scrollen (axe: scrollable-region-focusable).
+    const body = h('div', { class: 'panel-body', tabindex: 0 });
     const section = h(
       'section',
       {

@@ -23,6 +23,7 @@ import {
   getStaffCost,
   hireStaff,
   isStaffMaxed,
+  previewStaffHire,
   setAutoBuy,
   staffSpeedMults,
 } from '@core/staff';
@@ -266,5 +267,23 @@ describe('Filialleiter: Auto-Kauf', () => {
 
   it('ohne freigeschaltete Station gibt es keinen Kandidaten', () => {
     expect(getCheapestStation(make({ level: 0 }), LOC)).toBeNull();
+  });
+});
+
+describe('Personal-Vorschau', () => {
+  it('Barista zeigt Mehreinkommen, Reinigung die langfristige Zufriedenheit', () => {
+    const s = make({
+      ambience: { seats: 50 },
+      stations: { ...loc(make()).stations, checkout: { level: 50, unlocked: true } },
+    });
+    const barista = previewStaffHire(s, LOC, 'barista');
+    expect(barista.incomeDelta.gt(0)).toBe(true);
+    expect(barista.satisfactionDelta).toBe(0);
+    const dirty = make({ cleanliness: 30 });
+    const cleaner = previewStaffHire(dirty, LOC, 'cleaner');
+    // 0 → 30 Sauberkeit im Gleichgewicht (Untergrenze 60 greift erst für künftigen Verfall).
+    expect(cleaner.satisfactionDelta).toBeCloseTo(0.3 * 30);
+    const tea = previewStaffHire(make(), LOC, 'teaMaster');
+    expect(tea.satisfactionDelta).toBeCloseTo(BALANCE.satisfaction.perTeaMaster);
   });
 });

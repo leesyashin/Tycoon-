@@ -6,7 +6,10 @@ import { STATIONS } from '@data/stations';
 import { h, mount } from './dom';
 import { confirmTwice, showDialog } from './dialog';
 import { createHud } from './hud';
-import { createAchievementsPanel, createLocationsPanel, createStaffPanel } from './infoPanels';
+import { createAchievementsPanel, createLocationsPanel } from './infoPanels';
+import { createMarketingPanel } from './marketingPanel';
+import { createSatisfactionPanel } from './satisfactionPanel';
+import { createStaffPanel } from './staffPanel';
 import { createNav, type NavTarget } from './nav';
 import { createPanelHost, type PanelRequest } from './panel';
 import { clearIndexedDbBackups, startPersistence } from './persistence';
@@ -72,16 +75,30 @@ export function startApp(o: AppOptions): App {
   };
   const requests: Record<NavTarget, PanelRequest> = {
     shop: shopReq,
-    staff: { key: 'staff', create: createStaffPanel },
+    staff: { key: 'staff', create: () => createStaffPanel(store) },
+    marketing: {
+      key: 'marketing',
+      create: () =>
+        createMarketingPanel(store, () => toaster.show(t('toast.campaignStarted'), 'success')),
+    },
     locations: { key: 'locations', create: createLocationsPanel },
     achievements: { key: 'achievements', create: createAchievementsPanel },
     settings: settingsReq,
   };
 
+  const satisfactionReq: PanelRequest = {
+    key: 'satisfaction',
+    create: () => createSatisfactionPanel(store),
+  };
+  const toggleSatisfaction = (): void => {
+    if (panels.current()?.key === satisfactionReq.key) panels.close();
+    else panels.open(satisfactionReq);
+  };
+
   let unmountHud: (() => void) | null = null;
   const build = (): void => {
     unmountHud?.();
-    unmountHud = mount(hudSlot, createHud(), store);
+    unmountHud = mount(hudSlot, createHud(toggleSatisfaction), store);
     navSlot.replaceChildren(
       createNav((id) => {
         if (panels.current()?.key === requests[id].key) panels.close();

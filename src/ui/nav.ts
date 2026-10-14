@@ -1,11 +1,12 @@
 import { t } from '@i18n/index';
 import { h, on } from './dom';
 
-export type NavTarget = 'shop' | 'staff' | 'locations' | 'achievements' | 'settings';
+export type NavTarget = 'shop' | 'staff' | 'marketing' | 'locations' | 'achievements' | 'settings';
 
 const ITEMS: { id: NavTarget; icon: string }[] = [
   { id: 'shop', icon: '🛒' },
   { id: 'staff', icon: '🧑‍🍳' },
+  { id: 'marketing', icon: '📣' },
   { id: 'locations', icon: '🗺️' },
   { id: 'achievements', icon: '🏆' },
   { id: 'settings', icon: '⚙️' },
