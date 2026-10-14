@@ -11,6 +11,9 @@ async function reloadWithSave(
     coins?: string;
     ageMs?: number;
     level?: number;
+    bestLevel?: number;
+    earnedThisRun?: string;
+    zen?: string;
     stats?: Record<string, number>;
     /** Tagesaufgaben für den heutigen lokalen Tag (IDs aus data/quests). */
     questsToday?: string[];
@@ -22,13 +25,20 @@ async function reloadWithSave(
     if (!key) throw new Error('no save');
     const save = JSON.parse(localStorage.getItem(key) ?? '{}') as {
       lastSavedAt: number;
-      locations: Record<string, { coins: string; level: number }>;
+      locations: Record<
+        string,
+        { coins: string; level: number; bestLevel: number; earnedThisRun: string }
+      >;
+      meta: { zen: string };
       stats: Record<string, number>;
       quests: unknown;
     };
     const berlin = save.locations['berlin'];
     if (e.coins !== undefined && berlin) berlin.coins = e.coins;
     if (e.level !== undefined && berlin) berlin.level = e.level;
+    if (e.bestLevel !== undefined && berlin) berlin.bestLevel = e.bestLevel;
+    if (e.earnedThisRun !== undefined && berlin) berlin.earnedThisRun = e.earnedThisRun;
+    if (e.zen !== undefined) save.meta.zen = e.zen;
     if (e.ageMs !== undefined) save.lastSavedAt -= e.ageMs;
     if (e.stats) save.stats = { ...save.stats, ...e.stats };
     if (e.questsToday) {
@@ -163,6 +173,9 @@ test('Barrierefreiheit: keine axe-Verstöße (WCAG 2 A/AA) in HUD und Panels', a
     await page.getByTestId(`progress-tab-${tab}`).click();
     await scan();
   }
+  await page.getByTestId('nav-locations').click();
+  await page.getByTestId('locations-tab-zen').click();
+  await scan();
   await page.getByTestId('nav-shop').click();
   await page.getByTestId('shop-tab-quality').click();
   await scan();
@@ -268,4 +281,58 @@ test('Tagesaufgabe erledigen und abholen', async ({ page }) => {
   await expect(page.getByTestId('hud-leaves')).toContainText('5');
   await page.getByTestId('progress-tab-stats').click();
   await expect(page.getByTestId('stats-list')).toContainText('Taps');
+});
+
+test('Standort eröffnen, wechseln und nach Neuladen dort bleiben', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('?lang=en');
+  await reloadWithSave(page, { level: 14, bestLevel: 14, zen: '12' });
+  await page.getByTestId('nav-locations').click();
+  await expect(page.getByTestId('zen-balance')).toHaveText('☯ Zen: 12');
+  // Tokio hängt an Kyoto und bleibt gesperrt.
+  await expect(page.getByTestId('location-action-tokyo')).toBeDisabled();
+  const open = page.getByTestId('location-action-kyoto');
+  await expect(open).toHaveText('Open (10 ☯)');
+  await open.click();
+  await expect(page.getByText('New location opened: Kyoto Teahouse')).toBeVisible();
+  await expect(page.getByTestId('zen-balance')).toHaveText('☯ Zen: 2');
+  await expect(open).toHaveText('Switch here');
+  await open.click();
+  await expect(page.getByTestId('hud-location')).toContainText('Kyoto Teahouse');
+  await expect(page.getByTestId('location-status-kyoto')).toHaveText('You are here');
+  await expect(page.getByTestId('location-action-berlin')).toHaveText('Switch here');
+  // Shop zeigt die Kyoto-Stationen.
+  await page.getByTestId('nav-shop').click();
+  await expect(page.getByTestId('panel-shop')).toContainText('Usucha Counter');
+  await page.reload();
+  await expect(page.getByTestId('hud-location')).toContainText('Kyoto Teahouse');
+  expect(errors).toEqual([]);
+});
+
+test('Franchise-Reset: Vorschau, Abbrechen, Bestätigen, Zen ausgeben', async ({ page }) => {
+  await page.goto('?lang=de');
+  await reloadWithSave(page, { level: 10, coins: '5000000', earnedThisRun: '64000000' });
+  await page.getByTestId('nav-locations').click();
+  const reset = page.getByTestId('location-reset-berlin');
+  await expect(reset).toHaveText('Franchise-Reset (+24 ☯)');
+  await reset.click();
+  const dlg = page.getByTestId('dialog-reset');
+  await expect(dlg).toContainText('Du bekommst 24 Zen');
+  await expect(dlg).toContainText('+30 % Einkommen');
+  const r = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
+  expect(r.violations.map((v) => v.id)).toEqual([]);
+  await page.getByTestId('dialog-cancel').click();
+  await expect(page.getByTestId('hud-location')).toContainText('Café-Lv 10');
+  await reset.click();
+  await page.getByTestId('dialog-confirm').click();
+  await expect(page.getByText('Kiez-Café Berlin zurückgesetzt: +24 Zen')).toBeVisible();
+  await expect(page.getByTestId('hud-location')).toContainText('Café-Lv 1');
+  await expect(page.getByTestId('zen-balance')).toHaveText('☯ Zen: 24');
+  await expect(page.getByTestId('location-status-berlin')).toHaveText('Hier bist du');
+  await expect(reset).toBeDisabled();
+  await page.getByTestId('locations-tab-zen').click();
+  await page.getByTestId('zen-globalIncome').click();
+  await expect(page.getByTestId('zen-balance')).toHaveText('☯ Zen: 19');
+  await expect(page.getByTestId('zen-effect-globalIncome')).toHaveText('Jetzt: +10 % Einkommen');
 });

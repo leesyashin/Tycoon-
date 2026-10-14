@@ -1,9 +1,9 @@
 import { Decimal, D } from './math/bignum';
 import { BALANCE } from '@data/balance';
 import { STATIONS } from '@data/stations';
-import { START_LOCATION_ID } from '@data/locations';
+import { START_LOCATION_ID, getLocationDef } from '@data/locations';
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export interface Settings {
   lang: 'de' | 'en';
@@ -90,6 +90,8 @@ export interface LocationState {
   /** Auto-Kauf „günstigste Station upgraden“; wirkt nur mit Filialleiter (GAME_DESIGN § 6). */
   autoBuy: boolean;
   prestigeCount: number;
+  /** Höchstes je erreichtes Café-Level; überlebt den Franchise-Reset (Freischaltung, Blätter-Belohnung). */
+  bestLevel: number;
 }
 
 /** Zeiten in `playtimeSec`; die Abklingzeit beginnt erst nach dem Ende der Kampagne. */
@@ -124,13 +126,14 @@ export interface GameState {
   stats: Stats;
 }
 
-export function createLocationState(): LocationState {
+/** Neuer Standort im Startzustand; Start-Münzen skalieren wie alle Preise mit dem Standort. */
+export function createLocationState(locationId: string = START_LOCATION_ID): LocationState {
   const stations: Record<string, StationState> = {};
   for (const s of STATIONS) {
     stations[s.id] = { level: s.startLevel, unlocked: s.unlockCafeLevel <= 1 };
   }
   return {
-    coins: D(BALANCE.startCoins),
+    coins: D(BALANCE.startCoins).mul(getLocationDef(locationId).scale),
     earnedThisRun: D(0),
     level: 1,
     stations,
@@ -142,6 +145,7 @@ export function createLocationState(): LocationState {
     marketing: { level: 0 },
     autoBuy: false,
     prestigeCount: 0,
+    bestLevel: 1,
   };
 }
 

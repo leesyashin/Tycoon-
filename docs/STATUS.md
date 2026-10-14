@@ -4,27 +4,29 @@ current: S6
 branch: session/s6-prestige
 started: 2026-10-14T21:16:47Z
 next: S6
-## Letzte Session: S5 – Progression (2026-10-14, PR #7)
+## Letzte Session: S6 – Standorte und Prestige (2026-10-14, PR folgt)
 ## Fertig
-- `data/quality.ts` + `core/progression/quality.ts`: 6 Qualitätsstufen nach GAME_DESIGN § 8 (Kosten × Standort-Skalierung, Café-Level-Sperre), `priceMult = 1.5^Stufe` zentral in `collectModifiers` → Rate-Modell; +4 Zufriedenheit/Stufe wirkte schon
-- Shop-Tab „Qualität“: aktuelle Stufe, Effekt in Zahlen, Angebot mit Produktnamen je Station (nur Text, z. B. „Premium-Matcha-Latte“), nächste Stufe kaufen; Stations-Panel zeigt Produkt und Preis inkl. Qualität
-- `data/unlocks.ts`: Freischalt-Tabelle je Café-Level (gesammelt aus Stationen, Ambiente, Personal, Qualität, Marketing), Café-Level-Belohnung (30 s Einkommen, ab Level 5 1–3 🍃), Terrassen-Pflicht für Stationen ab Café-Level 9 (§ 5.2)
-- Ambiente-Freischaltung: Sitzplätze/Deko 1, Musik 2, WLAN 4, Terrasse 8
-- Café-Level-Aufstieg schreibt die Belohnung in `buyStation` gut (auch beim Auto-Kauf); Toasts für Level, Bonus, jede Freischaltung, Qualität
-- Grid-Erweiterung: Terrasse Stufe 1–3 legt Holzdeck-Kacheln vor den Raum (12×12 → 12×14 → 14×14) mit Außentischen, Kamera passt sich an; Stations-Label „Terrasse nötig“
-- Achievements: 44 in `data/achievements.ts` (Münzen, Kunden, Stations-Level, Café-Level, alle Stationen, Qualität, Zufriedenheit 90+ 10 min, Personal max, Resets, Standorte, Taps, Hype, Events, Spielzeit, Kampagnen, Quests; geheim: Nachtschicht, Blitzblank, Stadtgespräch), Belohnung 2–25 🍃, einmalig
-- Daily Quests: 3/Tag aus Pool, Seed = lokales Datum, Reset lokale Mitternacht, Fortschritt ab Ziehen (Basiswert), 3 🍃 je Quest + 5 🍃 Bonus beim dritten, unerledigte verfallen
-- Statistik: neue `state.stats` (Kunden bedient inkl. offline, gekaufte Level, Taps, Hype-Füllungen, Kampagnen, Resets, Events, Quests, Zufriedenheits-Serie, verdiente Blätter)
-- Panel „Fortschritt“ (Nav „Erfolge“): Tabs Erfolge (Fortschrittsbalken, geheime verdeckt) / Tagesaufgaben (Abholen, Bonus, Countdown bis Mitternacht) / Statistik (Café-Level-Fortschritt, nächste Freischaltungen, Lifetime-Werte); Nav-Abzeichen bei abholbaren Quests
-- Goldene Blätter sind jetzt verdienbar (Achievements, Quests, Café-Level ≥ 5) → 🍃-Knopf im Marketing-Panel nutzbar
-- Save-Schema v4 (`stats`, Quests mit `base`/`bonusClaimed`) + Migration v3→v4 + Härtung kaputter Werte; `mce.save.v3` in `LEGACY_KEYS`
-- Tabs als wiederverwendbare Komponente `ui/tabs.ts` (Shop + Fortschritt)
-- Tests: 171 Unit-Tests (neu `tests/core/progression.test.ts`: Qualität, Freischaltungen, Terrasse, Level-Belohnung, Achievements einmalig, Quest-Reset über Datumsgrenze und Zeitzonen inkl. +13:45, Save v4; Coverage core 99.8 % Zeilen, progression 100 %), e2e 14 grün (neu: Qualität kaufen, Erfolg einmalig auch nach Reload, Tagesaufgabe erledigen + abholen; axe prüft jetzt Fortschritt-Tabs und Qualitäts-Tab)
-- `pnpm sim`: Greedy kauft Qualität und (wenn sie Stationen blockiert) Terrasse, jagt Café-Level (siehe Entscheidungen); neue Meilensteine Qualität 1–3
+- `data/prestige.ts`: Zen-Formel-Konstanten, Reset ab Café-Level 10, alle 7 Meta-Upgrades aus GAME_DESIGN § 11.3 (Kosten, Wachstum, Max, Effekt je Stufe)
+- `core/prestige/`: `computeZenGain` (§ 11.2), `franchiseReset` (setzt nur den `LocationState` zurück; `meta`, `prestigeCount` und neuer `bestLevel` bleiben; Start-Kapital, Schnellstart, `stats.resets`), Meta-Upgrades kaufen, `getMetaEffects`, `affordableMetaLevels` (Reset-Vorschau)
+- Meta-Effekte zentral: `collectModifiers` hat jetzt `prestigeMult` (globales Einkommen), `discount` (wirkt auf Stationen, Ambiente, Personal, Marketing, Qualität) und `satisfactionBonus` (eigener Posten „Stammkundschaft (Zen)“ im Zufriedenheits-Detail); Offline-Effizienz und Tap-Stärke lesen ihren Wert aus `data/prestige.ts`
+- `core/progression/locations.ts`: Freischalt-Kette über Café-Level-Bestwert des Vorgängers + Zen (Zen wird verbraucht), `unlockLocation`, `switchLocation`; neue Standorte starten mit `startCoins × Skalierung`; alle freigeschalteten Standorte produzieren parallel (Tick und Offline, war schon so – jetzt getestet)
+- Café-Level-Belohnung nach Reset: Münzen ja, Goldene Blätter nur für Level über dem Bestwert (Offen-Punkt aus S5 entschieden)
+- Standorte-Panel (Nav „Standorte“) mit Tabs „Standorte“ (Café-Level, Einkommen, Münzen, Resets, Bedingung mit bisherigem Bestwert, Eröffnen / Hierher wechseln / Franchise-Reset) und „Zen-Shop“ (Stufe, Effekt in Zahlen, Kosten); Zen-Stand oben im Panel
+- Reset-Dialog mit Vorschau: was zurückgesetzt wird, „Du bekommst X Zen (danach insgesamt Y)“, „+Z % Einkommen an allen Standorten“ (so viele Stufen Globales Einkommen, wie das Zen kauft), was erhalten bleibt
+- Stations-Namen und -Beschreibungen für alle 6 Standorte (DE/EN, z. B. Kyoto „Usucha-Tresen“, „Wagashi-Küche“, „Teezeremonie-Raum“), Thema je Standort als Text; Platzhalter-Skin je Standort (`data/themes.ts`: Boden-Tönung, Wandfarben)
+- Szene baut sich bei Standortwechsel und Reset neu auf (`scene.restart()`, `init()` setzt den Instanz-Zustand zurück, Resize-Listener wird beim Shutdown entfernt); andere offene Panels schließen beim Wechsel; Toasts für Eröffnen, Wechseln, Reset
+- Save-Schema v5 (`bestLevel` je Standort) + Migration v4→v5 + Härtung (`unlockedLocations` nur mit Standort-Zustand, kaputte Meta-Upgrade-Stufen, `prestigeCount`); `mce.save.v4` in `LEGACY_KEYS`. Die Mehr-Standort-Migration aus PLAN („v1 → v2“) existiert seit S1 als v0→v1
+- Tests: 204 Unit-Tests (neu `tests/core/prestige.test.ts`, 31 Tests: Zen-Formel inkl. Skalierung und Richtwert, Reset erhält `meta` vollständig und lässt andere Standorte unberührt, Start-Kapital, Schnellstart, Blätter nach Reset, alle Meta-Effekte, Rabatt-Deckel, Freischalt-Kette inkl. Bestwert nach Reset, paralleles Einkommen online/offline, Save v5), i18n-Test verlangt Stations-Texte für alle Standorte und Meta-Upgrade-Texte; Coverage core 99.8 % Zeilen (prestige 100 %); e2e 16 grün (neu: Standort eröffnen/wechseln/Neuladen, Reset mit Vorschau/Abbrechen/Bestätigen + Zen-Shop-Kauf; axe prüft Zen-Shop und Reset-Dialog)
+- `pnpm sim`: Greedy spielt alle freigeschalteten Standorte, setzt zurück (wenn das den nächsten Standort freischaltet, sonst erst nach 60 min ohne Café-Level-Aufstieg und ≥ 20 Zen), eröffnet Standorte und kauft Meta-Upgrades; neue Meilensteine „Erster Franchise-Reset“, „Kyoto/Tokio freigeschaltet“
 ## Offen / bekannte Bugs
+- Balancing Prestige: Erster Reset bringt im Sim 40 Zen (Richtwert 20–30), weil er erst bei 3 h 22 min kommt (Café-Level 14). Berlin stockt ab ~3 h 30 bei Café-Level 14 (Stationskosten mit Wachstum 1.14–1.21 explodieren, Qualität 4 kostet 500 M); Café-Level 15 wird ohne Reset nie erreicht → S9 (Kurve späte Café-Level, ggf. Kyoto zurück auf 15).
+- Freischalt-Café-Level der Standorte ab Tokio stehen weiter auf 15 (Design); ob das mit der neuen Kurve passt, ist ungeprüft – Sim spielt bisher nur bis Kyoto sinnvoll → S9.
+- Alle Standorte nutzen weiter `DEFAULT_LAYOUT` (gleicher Grundriss); eigene Grundrisse je Standort und echte Skins → S8.
+- HUD zeigt Zen nicht (nur im Standorte-Panel); Blätter-Shop/Boost-Leiste in S7 könnten ihn mit aufnehmen.
+- Kein „Café-Level-Fortschritt anderer Standorte“-Hinweis im HUD (z. B. Badge, wenn ein anderer Standort etwas Kaufbares hat) – Idee für S9.
+- Achievement-Fortschritt „Café-Level“/„Stations-Level“ nimmt das aktuelle Level aller Standorte; nach einem Reset fällt der Balken noch nicht erreichter Stufen zurück (Erreichtes bleibt). Für Café-Level könnte S9 `bestLevel` nehmen.
 - Kundentypen sind nur kosmetisch; ihre Effekte (Merch-Chance, Trinkgeld, Influencer-Hype + 1 % 🍃-Drop, Kritiker) gehören als Erwartungswert ins Rate-Modell – auch in S5 nicht gemacht (nicht im Auftrag). Vorschlag: S7 (zusammen mit Events/Blätter-Quellen) oder S9.
-- Quest „Beende ein Event“ und die Event-Achievements sind angelegt, aber deaktiviert bzw. unerreichbar, bis S7 Events baut (`QUESTS[…].enabled`, `stats.events` hochzählen). Ebenso `stats.resets` (S6) für die Reset-Achievements.
-- Café-Level-Belohnung wird bei jedem Aufstieg gezahlt. Nach einem Franchise-Reset (S6) gäbe es sie erneut – S6 muss entscheiden, ob das gewollt ist (sonst „höchstes belohntes Level“ je Standort speichern).
+- Quest „Beende ein Event“ und die Event-Achievements sind angelegt, aber deaktiviert bzw. unerreichbar, bis S7 Events baut (`QUESTS[…].enabled`, `stats.events` hochzählen). (`stats.resets` zählt seit S6.)
 - „Sofort-Fertigstellung Quest (4 🍃)“ fehlt – gehört zum Blätter-Shop (S7).
 - Balancing: Mit Café-Level-Jagd laufen frühe Meilensteine noch zu schnell (Iced-Bar 5,4 min statt 10–15, Bäckerei 22 min statt ~30); Café-Level 10 passt. Greedy startet nie eine Kampagne, Reinigungskraft bleibt auf Stufe 1, Café-Level 15 wird in 2 h nicht erreicht → S9.
 - Ohne Café-Level-Jagd pumpt der Greedy eine Station (neue Stationen bekommen auf Level 1 kaum Kunden-Anteil) – Hinweis für S9, ob neue Stationen attraktiver werden sollen.
@@ -33,10 +35,8 @@ next: S6
 - 60 fps nur bedingt geprüft: Headless-Chromium ohne GPU (SwiftShader) schafft 60 fps bei 400×800 mit 40 Agenten, bei 1280×720 ~33 fps – Füllrate des Software-Renderers. Auf echtem Desktop-Chrome mit GPU bitte einmal gegenprüfen (`?debugSpawn=100`).
 - Kunden gehen nicht über die Kasse; die Kasse hat keine sichtbare Schlange (sie ist im Modell ein Engpass, keine Verkaufsstation).
 - Pinch-Zoom ist nur logisch umgesetzt, nicht auf echtem Touch-Gerät getestet.
-- Meta-Multiplikatoren außer `tapPower` fehlen noch (S6); `collectModifiers` hat dafür die zentrale Stelle.
 - `pages.yml` läuft weiter bei jedem Push auf main und schlägt fehl, solange Pages nicht aktiviert ist – erwartet, ignorieren (siehe Entscheidungen).
 - PWA-Icon ist nur ein SVG-Platzhalter (PNG 192/512 in S8/S9).
-- Standorte-Panel ist eine Vorschau (Liste + Bedingungen); Wechseln/Reset baut S6.
 - HUD hat noch keinen Boost-Timer/Event-Banner (GAME_DESIGN § 16.1) – kommt mit Events in S7.
 - Ein nicht lesbarer Spielstand wird unter `mce.save.v4.corrupt` beiseitegelegt; die IndexedDB-Backups (`mce-backups`) haben noch keine Wiederherstellen-UI.
 - SFX/Musik-Schalter speichern nur die Einstellung; Audio selbst kommt in S8.
@@ -97,15 +97,28 @@ next: S6
 - Achievement-Namen pro Art mit römischer Stufe („Münzsammler III“), Beschreibung mit Zielwert – statt 44 einzelner Namen.
 - Statistik-Zähler (`state.stats`) liegen global, nicht je Standort; Prestige (S6) soll sie nicht zurücksetzen.
 - Nav-Punkt „Erfolge“ öffnet das Panel „Fortschritt“ (Erfolge / Tagesaufgaben / Statistik, GAME_DESIGN § 16.9).
-## Nächste Session: S6
-Startpunkt: PLAN.md § 3, Abschnitt S6 (Standorte und Prestige: 6 Standorte, Freischaltung, Franchise-Reset, Zen, Meta-Upgrades) und GAME_DESIGN §§ 3, 11.
-- `data/locations.ts` hat alle 6 Standorte mit Skalierung und Freischalt-Bedingung; Layouts nutzen alle `DEFAULT_LAYOUT` (`data/layouts.ts`), Stations-Texte gibt es nur für Berlin (`station.berlin.*`).
-- Beim Franchise-Reset: `stats.resets` hochzählen (Achievements „Franchise-Gründer“), `meta.unlockedLocations` pflegen (Achievements „Weltenbummler“). Klären, ob Café-Level-Belohnungen nach dem Reset erneut gezahlt werden (siehe Offen).
-- Meta-Multiplikatoren gehören in `collectModifiers` (`core/economy/modifiers.ts`); `priceMult` ist schon da (Qualität), `discount` wird überall durchgereicht.
-- Standorte-Panel (`ui/infoPanels.ts`) ist nur eine Vorschau – Wechseln, Reset-Button, Bestätigungsdialog (`confirmTwice` in `ui/dialog.ts`).
-- Fallen: Jede neue UI-Zeichenkette in beide JSONs (Test prüft Daten-Keys). Save-Schema-Änderung → `SCHEMA_VERSION` 5 + Migration + Test + `mce.save.v4` in `LEGACY_KEYS`. `collectModifiers(state, locationId)` ist standortbezogen. Tick-Äquivalenz-Test braucht einen eingeschwungenen Zustand. e2e lokal mit `PW_CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome pnpm e2e`; `reloadWithSave` kann `coins`, `level`, `ageMs`, `stats`, `questsToday` setzen. Die Balance-Sim ist empfindlich: nach Änderungen an Kosten/Preisen `pnpm sim --hours 2` laufen lassen.
-## Balancing-Snapshot (Sim-Ausgabe, `pnpm sim --hours 2`)
-Balance-Sim: 2 h, Greedy-Spieler (Stationen, Personal, Ambiente, Qualität, Marketing), Berlin
+- Kyoto braucht Berlin Café-Level 14 statt 15 (+10 Zen) – mit der aktuellen Kurve wird Café-Level 15 nie erreicht; mit 14 hält der Richtwert „Kyoto nach 3–4 h“ (Sim: 3 h 22 min). Übrige Standorte unverändert (15).
+- Freischalt-Bedingung prüft den Café-Level-**Bestwert** des Vorgängers (`LocationState.bestLevel`, überlebt den Reset). Sonst müsste man vor dem Reset Zen haben, das es erst durch den Reset gibt.
+- Zen für einen Standort wird verbraucht (GAME_DESIGN § 2: Zen „für Meta-Upgrades, Freischaltung von Standorten“), nicht nur als Schwelle geprüft.
+- Café-Level-Belohnung nach Reset: Münzen (30 s Einkommen) gibt es erneut als Neustart-Hilfe, Goldene Blätter nur für Level über dem Bestwert – sonst wäre jeder Reset eine Blätter-Quelle.
+- Start-Kapital = Basis-Startmünzen + Einkommen/s beim Reset × 600 s × Stufe (Einkommen zum Reset-Zeitpunkt, inkl. laufender Boosts).
+- Schnellstart nimmt die ersten N Stationen in Freischalt-Reihenfolge (Matcha-Bar, Kasse, To-go, Iced-Bar) auf Level 10, ohne Café-Level-Belohnung für den dadurch erreichten Level.
+- Neue Standorte starten mit `startCoins × Standort-Skalierung` (Kyoto 125), damit das erste Upgrade dort genauso schnell geht wie in Berlin.
+- Rabatt (Meta-Upgrade) gedeckelt bei 90 % (`BALANCE.maxDiscount`); bei Max-Stufe 15 sind es ohnehin nur 30 %.
+- Zen-Shop als zweiter Tab im Standorte-Panel statt eigenem Nav-Punkt (Nav hat schon 6 Buttons; Mobile zuerst).
+- Reset-Vorschau „+Y %“ = so viele Stufen „Globales Einkommen“, wie das Zen nach dem Reset bezahlt, × 10 %.
+- Reset-Bestätigung ist ein einzelner Dialog (mit Abbrechen), nicht doppelt wie beim Löschen – der Reset ist gewollter Spielfortschritt.
+- Balance-Sim: Meta-Upgrade-Priorität globales Einkommen, Schnellstart, Start-Kapital, Rabatt, Basis-Zufriedenheit (immer das günstigste); Offline-Effizienz und Tap-Stärke kauft der Greedy nicht (spielt weder offline noch tippt er). Zen für den nächsten Standort wird zurückgehalten, sobald dessen Café-Level-Bedingung erfüllt ist.
+## Nächste Session: S7
+Startpunkt: PLAN.md § 3, Abschnitt S7 (Events, Boosts, Premium-Währung, MonetizationProvider No-op, Zeitsprung-Shop) und GAME_DESIGN §§ 10, 12.
+- Boosts/Events laufen schon über `ActiveBoost`/`ActiveEvent` (Zeiten in `playtimeSec`) und `collectModifiers`; Offline rechnet ohne sie (`withoutTemporaryBoosts`).
+- Events: `stats.events` hochzählen und `QUESTS[…].enabled` für „Beende ein Event“ aktivieren; Event-Achievements sind angelegt.
+- Zeitsprung muss alle Standorte parallel vorspulen (wie `applyOffline`, aber ohne Offline-Effizienz?) – Entscheidung dokumentieren.
+- Blätter-Shop: „Sofort-Fertigstellung Quest (4 🍃)“ aus S5-Offen; Kundentypen-Effekte (Influencer-🍃-Drop) als Erwartungswert sind Kandidat.
+- HUD: Boost-Timer und Event-Banner (GAME_DESIGN § 16.1) fehlen noch; Zen könnte dort mit angezeigt werden.
+- Fallen: Neue UI-Texte in beide JSONs. Save-Schema-Änderung → `SCHEMA_VERSION` 6 + Migration + Test + `mce.save.v5` in `LEGACY_KEYS`. Panels halten ihren Standort beim Öffnen fest und werden bei Standortwechsel geschlossen (`notifyLocations` in `ui/app.ts`). Die Szene startet bei Wechsel/Reset neu – neue Instanz-Felder in `CafeScene.init()` zurücksetzen. e2e lokal mit `PW_CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome pnpm e2e`; `reloadWithSave` kann jetzt auch `bestLevel`, `earnedThisRun`, `zen` setzen. Die Balance-Sim ist empfindlich: nach Änderungen `pnpm sim --hours 4` laufen lassen.
+## Balancing-Snapshot (Sim-Ausgabe, `pnpm sim --hours 4`)
+Balance-Sim: 4 h, Greedy-Spieler (Stationen, Personal, Ambiente, Qualität, Marketing, Reset, Zen), Meilensteine Berlin erster Run
 | Meilenstein | Zielzeit | Ist |
 |---|---|---|
 | Erstes Upgrade | < 10 s | 9s |
@@ -120,6 +133,12 @@ Balance-Sim: 2 h, Greedy-Spieler (Stationen, Personal, Ambiente, Qualität, Mark
 | Qualität Stufe 1 (Café Grade) | – | 6m 21s |
 | Qualität Stufe 2 (Premium Grade) | – | 32m 41s |
 | Qualität Stufe 3 (Ceremonial Grade) | – | 1h 43m |
-Ende: Café-Level 11, Münzen 225.93 K, Einkommen/s 17.14 K
-Qualität 3, Goldene Blätter (Café-Level) 9, Zufriedenheit 99.0, Sauberkeit 60.0, Kampagnen 0, Marketing-Level 18
-Personal: cleaner 1, barista 16, socialMedia 11, teaMaster 5, baker 11, cashier 14; Ambiente: seats 8, decor 30, wifi 20, music 20, terrace 1
+| Erster Franchise-Reset | ~3 h (20–30 Zen) | 3h 22m (40 Zen) |
+| Kyoto freigeschaltet | 3–4 h | 3h 22m |
+| Tokio freigeschaltet | – | — |
+Prestige: 1 Resets, Zen verdient 40, übrig 8; Meta: globalIncome 2, startCapital 1
+Standort berlin: Café-Level 6 (Bestwert 14, Resets 1), Einkommen/s 2.70 K
+Standort kyoto: Café-Level 6 (Bestwert 6, Resets 0), Einkommen/s 67.40 K
+Ende: Café-Level 6, Münzen 14.49 K, Einkommen/s 2.70 K
+Qualität 2, Goldene Blätter (Café-Level) 17, Zufriedenheit 84.7, Sauberkeit 60.0, Kampagnen 0, Marketing-Level 12
+Personal: cleaner 1, barista 6, socialMedia 6; Ambiente: seats 6, decor 30, wifi 18, music 15

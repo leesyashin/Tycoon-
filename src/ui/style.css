@@ -559,3 +559,9 @@ fieldset {
   padding-left: 18px;
   font-size: 13px;
 }
+
+/* Standorte / Zen-Shop */
+.zen-balance {
+  font-weight: 700;
+  margin: 0 0 8px;
+}

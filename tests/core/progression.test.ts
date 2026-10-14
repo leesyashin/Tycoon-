@@ -404,7 +404,7 @@ describe('Save v4', () => {
     delete v3['stats'];
     v3['quests'] = { date: '', items: [] };
     const m = migrate(v3);
-    expect(m['schemaVersion']).toBe(4);
+    expect(m['schemaVersion']).toBe(5);
     const back = deserialize(JSON.stringify(m));
     expect(back.stats.customersServed).toBe(0);
     expect(back.quests).toEqual({ date: '', items: [], bonusClaimed: false });

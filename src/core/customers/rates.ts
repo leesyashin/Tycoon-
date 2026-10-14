@@ -10,6 +10,8 @@ export interface SatisfactionBreakdown {
   decor: number;
   quality: number;
   teaMaster: number;
+  /** Meta-Upgrade „Basis-Zufriedenheit“ (Zen). */
+  zen: number;
   waitPressure: number;
   cleanliness: number;
   target: number;
@@ -62,6 +64,7 @@ export function computeSpawnRate(loc: LocationState, extraSpawnMult = 1): number
 export function computeSatisfactionTarget(
   loc: LocationState,
   waitPressure: number,
+  zenBonus = 0,
 ): SatisfactionBreakdown {
   const s = BALANCE.satisfaction;
   const decor = (loc.ambience['decor'] ?? 0) * s.perDecor;
@@ -69,8 +72,21 @@ export function computeSatisfactionTarget(
   const teaMaster = (loc.staff['teaMaster'] ?? 0) * s.perTeaMaster;
   const wait = -waitPressure * s.waitPressureWeight;
   const cleanliness = (loc.cleanliness - s.cleanlinessNeutral) * s.cleanlinessWeight;
-  const target = clamp(s.base + decor + quality + teaMaster + wait + cleanliness, 0, 100);
-  return { base: s.base, decor, quality, teaMaster, waitPressure: wait, cleanliness, target };
+  const target = clamp(
+    s.base + decor + quality + teaMaster + zenBonus + wait + cleanliness,
+    0,
+    100,
+  );
+  return {
+    base: s.base,
+    decor,
+    quality,
+    teaMaster,
+    zen: zenBonus,
+    waitPressure: wait,
+    cleanliness,
+    target,
+  };
 }
 
 export function computeLocationRates(state: GameState, locationId: string): LocationRates {
@@ -103,7 +119,7 @@ export function computeLocationRates(state: GameState, locationId: string): Loca
   const perStationIncome: Record<string, Decimal> = {};
   let income = ZERO;
   const tips = tipRate(loc);
-  const priceMult = (1 + tips) * mods.incomeMult * mods.priceMult;
+  const priceMult = (1 + tips) * mods.incomeMult * mods.priceMult * mods.prestigeMult;
   for (const def of STATIONS) {
     const cap = perStationCap[def.id];
     if (cap === undefined || sumThroughput <= 0) continue;
@@ -123,7 +139,7 @@ export function computeLocationRates(state: GameState, locationId: string): Loca
     waitPressure,
     satisfactionFactor: satisfactionFactor(loc.satisfaction),
     tipRate: tips,
-    satisfaction: computeSatisfactionTarget(loc, waitPressure),
+    satisfaction: computeSatisfactionTarget(loc, waitPressure, mods.satisfactionBonus),
     perStation,
     perStationIncome,
   };

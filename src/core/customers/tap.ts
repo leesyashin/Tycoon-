@@ -1,4 +1,5 @@
 import { BALANCE } from '@data/balance';
+import { getMetaUpgradeDef } from '@data/prestige';
 import { Decimal, D } from '../math/bignum';
 import { getLocation, withLocation, type ActiveBoost, type GameState } from '../GameState';
 import { computeLocationRates } from './rates';
@@ -18,7 +19,7 @@ export function getTapIncome(state: GameState, locationId: string): Decimal {
   const power = state.meta.metaUpgrades['tapPower'] ?? 0;
   return computeLocationRates(state, locationId)
     .incomePerSec.mul(t.incomeSeconds)
-    .mul(1 + power * t.perTapPowerLevel);
+    .mul(1 + power * getMetaUpgradeDef('tapPower').perLevel);
 }
 
 /** „Barista anfeuern“: sofortiges Einkommen, Deckel pro Spielsekunde, Hype-Balken → Spawn-Boost. */

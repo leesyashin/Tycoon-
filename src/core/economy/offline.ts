@@ -1,4 +1,5 @@
 import { BALANCE } from '@data/balance';
+import { getMetaUpgradeDef } from '@data/prestige';
 import { Decimal, D } from '../math/bignum';
 import { getLocation, type GameState } from '../GameState';
 import { computeLocationRates } from '../customers/rates';
@@ -16,7 +17,10 @@ export function getOfflineCapMs(state: GameState): number {
 export function getOfflineEfficiency(state: GameState): number {
   const o = BALANCE.offline;
   const lvl = state.meta.metaUpgrades['offlineEfficiency'] ?? 0;
-  return Math.min(o.maxEfficiency, o.baseEfficiency + lvl * o.perEfficiencyLevel);
+  return Math.min(
+    o.maxEfficiency,
+    o.baseEfficiency + lvl * getMetaUpgradeDef('offlineEfficiency').perLevel,
+  );
 }
 
 export interface OfflineResult {

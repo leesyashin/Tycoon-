@@ -2,6 +2,7 @@ import { getLocationDef } from '@data/locations';
 import { QUALITY_PRICE_MULT_PER_TIER, getNextQualityTier } from '@data/quality';
 import { getLocation, withLocation, type GameState, type LocationState } from '../GameState';
 import { Decimal, D } from '../math/bignum';
+import { getMetaEffects } from '../prestige/meta';
 
 /** Preis-Multiplikator der Matcha-Qualität: `1.5^Stufe` (GAME_DESIGN § 8). */
 export function qualityPriceMult(loc: LocationState): number {
@@ -9,13 +10,11 @@ export function qualityPriceMult(loc: LocationState): number {
 }
 
 /** Kosten der nächsten Stufe (× Standort-Skalierung); `null`, wenn alle Stufen gekauft sind. */
-export function getNextQualityCost(
-  state: GameState,
-  locationId: string,
-  discount = 0,
-): Decimal | null {
+export function getNextQualityCost(state: GameState, locationId: string): Decimal | null {
   const next = getNextQualityTier(getLocation(state, locationId).quality);
   if (!next) return null;
+  // Rabatt direkt aus den Meta-Effekten: `collectModifiers` importiert dieses Modul (Zyklus vermeiden).
+  const discount = getMetaEffects(state).discount;
   return D(next.cost).mul(getLocationDef(locationId).scale * (1 - discount));
 }
 
@@ -31,10 +30,10 @@ export function isNextQualityUnlocked(state: GameState, locationId: string): boo
 }
 
 /** Kauft die nächste Qualitätsstufe; gibt den alten State zurück, wenn gesperrt, ausgebaut oder zu teuer. */
-export function buyQuality(state: GameState, locationId: string, discount = 0): GameState {
+export function buyQuality(state: GameState, locationId: string): GameState {
   if (!isNextQualityUnlocked(state, locationId)) return state;
   const loc = getLocation(state, locationId);
-  const cost = getNextQualityCost(state, locationId, discount);
+  const cost = getNextQualityCost(state, locationId);
   if (!cost || loc.coins.lt(cost)) return state;
   return withLocation(state, locationId, {
     ...loc,

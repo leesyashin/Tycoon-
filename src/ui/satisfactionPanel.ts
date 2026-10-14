@@ -8,7 +8,15 @@ import { fmtSigned, fmtSmall } from './format';
 import type { PanelContent } from './panel';
 
 type Part = keyof Omit<SatisfactionBreakdown, 'target'>;
-const PARTS: Part[] = ['base', 'decor', 'quality', 'teaMaster', 'waitPressure', 'cleanliness'];
+const PARTS: Part[] = [
+  'base',
+  'decor',
+  'quality',
+  'teaMaster',
+  'zen',
+  'waitPressure',
+  'cleanliness',
+];
 
 /** Zufriedenheits-Detail (GAME_DESIGN § 7.3): Einzelbeiträge zum Ziel, damit klar ist, was drückt und was hebt. */
 export function createSatisfactionPanel(store: Store): PanelContent {

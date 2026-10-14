@@ -7,6 +7,7 @@ import {
   type CafeLayout,
   type GridPos,
 } from '@data/layouts';
+import { getTheme } from '@data/themes';
 import { STATIONS, getStationDef } from '@data/stations';
 import { getLocation, type GameState } from '@core/GameState';
 import type { Store } from '@core/store';
@@ -43,6 +44,8 @@ export class CafeScene extends Phaser.Scene {
   private store!: Store;
   private layout!: CafeLayout;
   private locationId = '';
+  /** Reset-Zähler des gezeigten Standorts; ändert er sich, wird der Raum neu aufgebaut. */
+  private prestigeCount = 0;
   private crowd!: CustomerCrowd;
   private controls!: CameraControls;
   private stations: StationView[] = [];
@@ -68,11 +71,28 @@ export class CafeScene extends Phaser.Scene {
     super('CafeScene');
   }
 
+  /** Läuft vor jedem `create`, auch bei `scene.restart()`: die Szene-Instanz bleibt dieselbe. */
+  init(): void {
+    this.stations = [];
+    this.agentSprites = [];
+    this.popups = [];
+    this.rates = null;
+    this.ratesAge = Infinity;
+    this.labelZoom = 0;
+    this.ambienceImages = [];
+    this.ambienceKey = '';
+    this.terraceLevel = -1;
+    this.moodSprites = [];
+    this.staffViews = [];
+    this.cleanerWait = 0;
+  }
+
   create(): void {
     this.store = getStore(this);
     this.debugSpawn = Number(this.registry.get(REGISTRY.debugSpawn) ?? 0) || 0;
     const state = this.store.getState();
     this.locationId = state.activeLocationId;
+    this.prestigeCount = getLocation(state, this.locationId).prestigeCount;
     this.layout = getLayout(this.locationId);
     this.crowd = new CustomerCrowd(this.layout, this.locationId);
 
@@ -109,7 +129,8 @@ export class CafeScene extends Phaser.Scene {
     this.updateRoomBounds(getLocation(state, this.locationId).ambience['terrace'] ?? 0);
     this.controls = new CameraControls(this, this.room);
     this.fitCamera();
-    this.scale.on('resize', () => this.fitCamera());
+    const onResize = (): void => this.fitCamera();
+    this.scale.on('resize', onResize);
 
     this.input.on('pointerup', (p: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) =>
       this.onPointerUp(p, over),
@@ -117,14 +138,23 @@ export class CafeScene extends Phaser.Scene {
     if (import.meta.env.DEV) this.input.keyboard?.on('keydown-B', () => this.debugBuy());
     const onLang = (): void => this.relabel();
     this.game.events.on(UI_EVENTS.langChanged, onLang);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () =>
-      this.game.events.off(UI_EVENTS.langChanged, onLang),
-    );
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.game.events.off(UI_EVENTS.langChanged, onLang);
+      this.scale.off('resize', onResize);
+    });
     this.refreshStations(state);
   }
 
   update(_time: number, deltaMs: number): void {
     const state = this.store.getState();
+    // Standortwechsel oder Franchise-Reset: Raum, Stationen und Kunden komplett neu aufbauen.
+    if (
+      state.activeLocationId !== this.locationId ||
+      getLocation(state, this.locationId).prestigeCount !== this.prestigeCount
+    ) {
+      this.scene.restart();
+      return;
+    }
     this.scaleLabels();
     this.ratesAge += deltaMs;
     if (!this.rates || this.ratesAge >= RATES_REFRESH_MS) {
@@ -194,6 +224,7 @@ export class CafeScene extends Phaser.Scene {
 
   private drawRoom(): void {
     const n = this.layout.gridSize;
+    const theme = getTheme(this.locationId);
     for (let gy = 0; gy < n; gy++) {
       for (let gx = 0; gx < n; gx++) {
         const p = toScreen(gx, gy);
@@ -201,14 +232,15 @@ export class CafeScene extends Phaser.Scene {
         this.add
           .image(p.x, p.y, isEntrance ? TEX.entrance : (gx + gy) % 2 ? TEX.tileA : TEX.tileB)
           .setOrigin(0.5, 0)
-          .setDepth(DEPTH.floor);
+          .setDepth(DEPTH.floor)
+          .setTint(isEntrance ? 0xffffff : theme.floorTint);
       }
     }
     const g = this.add.graphics().setDepth(DEPTH.wall);
     const o = toScreen(0, 0);
     const r = toScreen(n, 0);
     const l = toScreen(0, n);
-    g.fillStyle(0xe8dcc0, 1);
+    g.fillStyle(theme.wallLeft, 1);
     g.fillPoints(
       [
         new Phaser.Geom.Point(o.x, o.y - WALL_H),
@@ -218,7 +250,7 @@ export class CafeScene extends Phaser.Scene {
       ],
       true,
     );
-    g.fillStyle(0xd4c6a6, 1);
+    g.fillStyle(theme.wallRight, 1);
     g.fillPoints(
       [
         new Phaser.Geom.Point(o.x, o.y - WALL_H),

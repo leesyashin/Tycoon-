@@ -177,7 +177,9 @@ describe('Modifiers', () => {
       incomeMult: 1,
       priceMult: 1,
       speedMult: 1,
+      prestigeMult: 1,
       discount: 0,
+      satisfactionBonus: 0,
       staffSpeedMult: Object.fromEntries(STATIONS.map((d) => [d.id, 1])),
     });
   });

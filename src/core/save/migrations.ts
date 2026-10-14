@@ -68,6 +68,16 @@ export const migrations: ((raw: Json) => Json)[] = [
     stats: createStats(),
     quests: { date: '', items: [], bonusClaimed: false },
   }),
+  // v4 → v5: Bestwert des Café-Levels je Standort (Prestige S6: überlebt den Reset, Freischaltung).
+  (raw) => {
+    const locations = (raw['locations'] as Record<string, Json> | undefined) ?? {};
+    const next: Record<string, Json> = {};
+    for (const [id, loc] of Object.entries(locations)) {
+      const level = typeof loc['level'] === 'number' ? loc['level'] : 1;
+      next[id] = { ...loc, bestLevel: level };
+    }
+    return { ...raw, schemaVersion: 5, locations: next };
+  },
 ];
 
 export class SaveError extends Error {}
