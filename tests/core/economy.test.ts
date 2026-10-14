@@ -179,7 +179,14 @@ describe('Café-Level und Käufe', () => {
   });
   it('Café-Level-Aufstieg schaltet Stationen frei', () => {
     let s = withCoins('1e30');
-    s = buyStation(s, 'berlin', 'matchaBar', cafeLevelThreshold(5));
+    // Matcha-Bar startet auf Level 1; ein Kauf fehlt noch bis Café-Level 5.
+    const base = getLocation(s, 'berlin');
+    const level = cafeLevelThreshold(5) - 1;
+    s = withLocation(s, 'berlin', {
+      ...base,
+      stations: { ...base.stations, matchaBar: { level, unlocked: true } },
+    });
+    s = buyStation(s, 'berlin', 'matchaBar', 1);
     const loc = getLocation(s, 'berlin');
     expect(loc.level).toBe(5);
     expect(loc.stations['bakery']?.unlocked).toBe(true);

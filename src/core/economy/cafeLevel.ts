@@ -15,12 +15,15 @@ export function stationLevelSum(loc: LocationState): number {
   return sum;
 }
 
-/** Café-Level aus der Summe aller Stations-Level (GAME_DESIGN § 5.3, Stufen in `BALANCE.cafeLevel`). */
-export function computeCafeLevel(loc: LocationState): number {
-  const sum = stationLevelSum(loc);
+/** Café-Level zu einer Summe von Stations-Leveln (GAME_DESIGN § 5.3, Stufen in `BALANCE.cafeLevel`). */
+export function cafeLevelFromSum(sum: number): number {
   let level = 1;
   while (level < BALANCE.cafeLevel.max && sum >= cafeLevelThreshold(level + 1)) level++;
   return level;
+}
+
+export function computeCafeLevel(loc: LocationState): number {
+  return cafeLevelFromSum(stationLevelSum(loc));
 }
 
 /** Fortschritt zum nächsten Café-Level: `done` von `need` Stations-Leveln (am Maximum done = need). */
