@@ -457,6 +457,12 @@ Setze S9 „Balancing, Tutorial, Release“ um und bereite v1.0.0 vor. Branch: s
 
 ```markdown
 # STATUS
+## Loop
+state: idle | running | blocked | done
+current: S<N> oder -
+branch: session/s<N>-<kurzname> oder -
+started: <ISO 8601 UTC> oder -
+next: S<N>
 ## Letzte Session: S<N> – <Name> (<Datum>, PR #<n>)
 ## Fertig
 - …
@@ -469,6 +475,8 @@ Setze S9 „Balancing, Tutorial, Release“ um und bereite v1.0.0 vor. Branch: s
 ## Balancing-Snapshot (Sim-Ausgabe)
 | Meilenstein | Zielzeit | Ist |
 ```
+
+Der Block `## Loop` wird vom autonomen Session-Loop benutzt (siehe `docs/ROUTINE.md`); von Hand gestartete Sessions lassen ihn unverändert.
 
 Zusätzlich: Conventional Commits (`feat:`, `fix:`, `chore:`, `test:`, `docs:`), kleine Commits, PR-Beschreibung = Abnahme-Checkliste aus dem jeweiligen Session-Abschnitt.
 
