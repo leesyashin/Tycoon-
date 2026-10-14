@@ -1,11 +1,25 @@
 # Matcha Café Empire
 
-Idle-/Tycoon-Browserspiel nach dem Vorbild von *Idle Hotel Empire Tycoon*, nur mit Matcha-Cafés statt Hotels.
+Idle-/Tycoon-Browserspiel (Matcha-Cafés statt Hotels). Vite + TypeScript + Phaser 3, DOM-Overlay für die UI, i18n DE/EN, lokale Saves.
 
-Aktueller Stand: **Planungsphase**. Der Code wird in mehreren Sessions mit Claude Opus 5.5 gebaut.
+## Start
 
-- `docs/PLAN.md` – Architektur und Session-Plan (S0–S9) mit Startprompts für Opus
-- `docs/GAME_DESIGN.md` – Spieldesign, Stationen, Währungen, Standorte, Formeln
-- `docs/ROUTINE.md` – Prompts für den autonomen Session-Loop (Routine, jede Session in einem neuen Chat)
-- `CLAUDE.md` – Projektregeln, die jede Session befolgt
-- `docs/STATUS.md` – wird ab Session S0 als Übergabe-Datei geführt
+```
+pnpm install
+pnpm dev          # http://localhost:5173/Tycoon-/  (?lang=de|en zum Umschalten)
+pnpm check        # lint + typecheck + test
+pnpm e2e          # Playwright (einmalig: pnpm exec playwright install chromium)
+pnpm build        # Produktions-Build nach dist/
+pnpm sim --hours 2
+```
+
+Deploy: GitHub Pages unter https://leesyashin.github.io/Tycoon-/ (Workflow `pages.yml`, bei Push auf `main`).
+
+## Doku
+
+- `CLAUDE.md` – Projektregeln
+- `docs/PLAN.md` – Architektur und Session-Plan (S0–S9)
+- `docs/GAME_DESIGN.md` – Spieldesign und Formeln
+- `docs/STATUS.md` – Übergabe zwischen Sessions
+- `docs/ROUTINE.md` – autonomer Session-Loop
+- `docs/ASSETS.md` – Herkunft/Lizenz aller Assets
