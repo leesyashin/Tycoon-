@@ -14,6 +14,9 @@ import type { Store } from '@core/store';
 import { computeLocationRates, mood, tapCafe, type LocationRates } from '@core/customers';
 import { buyStation, getBulkCost, isStationUnlocked, needsTerrace } from '@core/economy';
 import { formatNumber } from '@core/math/format';
+import { getEventOverlay } from '@core/events';
+import { equippedSkinTints } from '@core/leaves';
+import type { EventOverlay } from '@data/events';
 import { Decimal } from '@core/math/bignum';
 import { getLang, t } from '@i18n/index';
 import { CustomerCrowd } from './agents/crowd';
@@ -35,7 +38,12 @@ interface StationView {
   shownLevel: number;
   /** Gezeigter Sperrzustand: frei, Café-Level fehlt oder Terrasse fehlt. */
   shownLock: 'open' | 'level' | 'terrace' | '';
+  /** Gezeigte Skin-Tönung (0xffffff = keine). */
+  shownTint: number;
 }
+
+/** Größe des Event-Farbfilters: deckt jeden Kamera-Ausschnitt ab, egal wie weit gezoomt. */
+const OVERLAY_SIZE = 20_000;
 
 /** Tiefe nach Grid-Position; Feinsortierung innerhalb einer Diagonale über `bias`. */
 const isoDepth = (x: number, y: number, bias = 0): number => (x + y) * 10 + bias;
@@ -66,6 +74,11 @@ export class CafeScene extends Phaser.Scene {
   private staffViews: { stationId: string; sprite: Phaser.GameObjects.Image }[] = [];
   private cleaner!: Phaser.GameObjects.Image;
   private cleanerWait = 0;
+  private eventTint!: Phaser.GameObjects.Rectangle;
+  private fx: Partial<
+    Record<NonNullable<EventOverlay['particles']>, Phaser.GameObjects.Particles.ParticleEmitter>
+  > = {};
+  private overlayKey = '';
 
   constructor() {
     super('CafeScene');
@@ -85,6 +98,8 @@ export class CafeScene extends Phaser.Scene {
     this.moodSprites = [];
     this.staffViews = [];
     this.cleanerWait = 0;
+    this.fx = {};
+    this.overlayKey = '';
   }
 
   create(): void {
@@ -127,6 +142,7 @@ export class CafeScene extends Phaser.Scene {
 
     this.room = new Phaser.Geom.Rectangle();
     this.updateRoomBounds(getLocation(state, this.locationId).ambience['terrace'] ?? 0);
+    this.createEventFx();
     this.controls = new CameraControls(this, this.room);
     this.fitCamera();
     const onResize = (): void => this.fitCamera();
@@ -163,6 +179,7 @@ export class CafeScene extends Phaser.Scene {
       this.refreshStations(state);
       this.createAmbience(state);
       this.refreshStaff(state);
+      this.refreshEventFx(state);
     }
     this.moveCleaner(deltaMs / 1000);
     const { purchases } = this.crowd.update(deltaMs / 1000, this.visibleRates(this.rates));
@@ -274,7 +291,14 @@ export class CafeScene extends Phaser.Scene {
       const label = this.makeText(13, '#ffffff')
         .setPosition(w.x, w.y - STATION_BOX_H + TILE_H / 2 - 2)
         .setDepth(DEPTH.label);
-      this.stations.push({ id: p.stationId, sprite, label, shownLevel: -1, shownLock: '' });
+      this.stations.push({
+        id: p.stationId,
+        sprite,
+        label,
+        shownLevel: -1,
+        shownLock: '',
+        shownTint: -1,
+      });
     }
   }
 
@@ -334,7 +358,13 @@ export class CafeScene extends Phaser.Scene {
   /** Gekauft = farbiger Block + Level-Badge, sonst Umriss mit „Kaufen“ oder Freischalt-Level. */
   private refreshStations(state: GameState): void {
     const loc = getLocation(state, this.locationId);
+    const tints = equippedSkinTints(state);
     for (const v of this.stations) {
+      const tint = tints[v.id] ?? 0xffffff;
+      if (tint !== v.shownTint) {
+        v.shownTint = tint;
+        v.sprite.setTint(tint);
+      }
       const level = loc.stations[v.id]?.level ?? 0;
       const unlocked = isStationUnlocked(state, this.locationId, v.id);
       const lock = unlocked
@@ -359,6 +389,66 @@ export class CafeScene extends Phaser.Scene {
               : t('scene.station.locked', { level: getStationDef(v.id).unlockCafeLevel }),
         );
       }
+    }
+  }
+
+  /** Farbfilter und Partikel für Events (rein kosmetisch, GAME_DESIGN § 12). */
+  private createEventFx(): void {
+    const c = this.room;
+    this.eventTint = this.add
+      .rectangle(c.centerX, c.centerY, OVERLAY_SIZE, OVERLAY_SIZE, 0xffffff, 0)
+      .setDepth(DEPTH.overlay - 1)
+      .setVisible(false);
+    const zone = new Phaser.Geom.Rectangle(c.x, c.y - c.height * 0.2, c.width, c.height * 0.2);
+    const emitZone = { type: 'random' as const, source: zone, quantity: 1 };
+    const fallLife = Math.max(800, (c.height * 1.2 * 1000) / 420);
+    this.fx = {
+      rain: this.add.particles(0, 0, TEX.rain, {
+        emitZone,
+        speedY: { min: 380, max: 460 },
+        speedX: { min: -30, max: -10 },
+        lifespan: fallLife,
+        frequency: 25,
+        alpha: { start: 0.7, end: 0.2 },
+        emitting: false,
+      }),
+      petals: this.add.particles(0, 0, TEX.petal, {
+        emitZone,
+        speedY: { min: 40, max: 80 },
+        speedX: { min: -30, max: 30 },
+        lifespan: (c.height * 1.2 * 1000) / 60,
+        frequency: 220,
+        rotate: { min: 0, max: 360 },
+        emitting: false,
+      }),
+      sparkle: this.add.particles(0, 0, TEX.sparkle, {
+        emitZone: {
+          type: 'random' as const,
+          source: new Phaser.Geom.Rectangle(c.x, c.y, c.width, c.height),
+          quantity: 1,
+        },
+        lifespan: 900,
+        frequency: 180,
+        scale: { start: 1, end: 0 },
+        alpha: { start: 0.9, end: 0 },
+        emitting: false,
+      }),
+    };
+    for (const e of Object.values(this.fx)) e.setDepth(DEPTH.overlay - 1);
+  }
+
+  private refreshEventFx(state: GameState): void {
+    const o = getEventOverlay(state, this.locationId);
+    const key = o ? `${String(o.color)}:${String(o.alpha)}:${o.particles ?? ''}` : '';
+    if (key === this.overlayKey) return;
+    this.overlayKey = key;
+    this.eventTint.setVisible(!!o);
+    if (o) this.eventTint.setFillStyle(o.color, o.alpha);
+    // Bei „weniger Bewegung“ bleibt nur der Farbfilter.
+    const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    for (const [kind, emitter] of Object.entries(this.fx)) {
+      if (o?.particles === kind && !still) emitter.start();
+      else emitter.stop();
     }
   }
 

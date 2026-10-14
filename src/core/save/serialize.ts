@@ -1,8 +1,18 @@
 import { BALANCE } from '@data/balance';
+import { getCalendarEventDef, getRandomEventDef } from '@data/events';
+import { BOOST_RULES, LEAF_DROPS, getSkinDef } from '@data/leaves';
+import { FREE_BOOST } from '@data/monetization';
+import { hashString } from '../math/random';
 import { D, Decimal, isDecimalNaN } from '../math/bignum';
 import {
   SCHEMA_VERSION,
+  createEventSchedule,
   createStats,
+  type ActiveBoost,
+  type ActiveEvent,
+  type EventSchedule,
+  type LeafDropState,
+  type SkinState,
   type GameState,
   type LocationState,
   type QuestItem,
@@ -12,6 +22,8 @@ import {
 import { migrate, SaveError } from './migrations';
 
 type Json = Record<string, unknown>;
+
+const BOOST_MAX = BOOST_RULES.maxMult;
 
 function isObj(v: unknown): v is Json {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -96,6 +108,74 @@ function reviveQuests(raw: unknown): QuestState {
   };
 }
 
+/** Nur bekannte Events an vorhandenen Standorten; Zeiten müssen Zahlen sein. */
+function reviveEvents(raw: unknown, locations: Record<string, LocationState>): ActiveEvent[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ActiveEvent[] = [];
+  for (const e of raw as unknown[]) {
+    if (!isObj(e) || typeof e['id'] !== 'string' || typeof e['locationId'] !== 'string') continue;
+    if (!getRandomEventDef(e['id']) || !locations[e['locationId']]) continue;
+    const until = num(e['until'], NaN);
+    if (Number.isNaN(until)) continue;
+    out.push({
+      id: e['id'],
+      locationId: e['locationId'],
+      startedAt: num(e['startedAt'], until),
+      until,
+    });
+  }
+  return out;
+}
+
+/** Boost-Multiplikatoren nie unter 1 oder unendlich – ein kaputter Save soll nichts vervielfachen. */
+function reviveBoosts(raw: unknown): ActiveBoost[] {
+  if (!Array.isArray(raw)) return [];
+  const mult = (v: unknown): number => Math.max(1, Math.min(BOOST_MAX, num(v, 1)));
+  const out: ActiveBoost[] = [];
+  for (const b of raw as unknown[]) {
+    if (!isObj(b) || typeof b['id'] !== 'string') continue;
+    const until = num(b['until'], NaN);
+    if (Number.isNaN(until)) continue;
+    out.push({
+      id: b['id'],
+      until,
+      spawnMult: mult(b['spawnMult']),
+      incomeMult: mult(b['incomeMult']),
+      speedMult: mult(b['speedMult']),
+    });
+  }
+  return out;
+}
+
+function reviveSchedule(raw: unknown, createdAt: number): EventSchedule {
+  const r = isObj(raw) ? raw : {};
+  const fallback = createEventSchedule(hashString(String(createdAt)));
+  return {
+    seed: Math.floor(num(r['seed'], fallback.seed)) >>> 0,
+    count: Math.max(0, Math.floor(num(r['count'], 0))),
+    nextAt: num(r['nextAt'], fallback.nextAt),
+  };
+}
+
+function reviveLeafDrops(raw: unknown): LeafDropState {
+  const r = isObj(raw) ? raw : {};
+  return {
+    date: typeof r['date'] === 'string' ? r['date'] : '',
+    count: Math.min(LEAF_DROPS.maxPerDay, Math.max(0, Math.floor(num(r['count'], 0)))),
+    fraction: Math.min(1, Math.max(0, num(r['fraction'], 0))),
+  };
+}
+
+function reviveSkins(raw: unknown): SkinState {
+  const r = isObj(raw) ? raw : {};
+  const ids = (v: unknown): string[] =>
+    Array.isArray(v)
+      ? [...new Set(v.filter((x): x is string => typeof x === 'string' && !!getSkinDef(x)))]
+      : [];
+  const owned = ids(r['owned']);
+  return { owned, equipped: ids(r['equipped']).filter((id) => owned.includes(id)) };
+}
+
 export function deserialize(text: string): GameState {
   let parsed: unknown;
   try {
@@ -142,8 +222,19 @@ export function deserialize(text: string): GameState {
       lifetimeEarned: dec(meta['lifetimeEarned'], 'lifetimeEarned'),
       unlockedLocations,
       metaUpgrades,
+      skins: reviveSkins(meta['skins']),
     },
     locations: revived,
+    activeEvents: reviveEvents(raw['activeEvents'], revived),
+    calendarEvents: Array.isArray(raw['calendarEvents'])
+      ? (raw['calendarEvents'] as unknown[]).filter(
+          (x): x is string => typeof x === 'string' && !!getCalendarEventDef(x),
+        )
+      : [],
+    eventSchedule: reviveSchedule(raw['eventSchedule'], num(raw['createdAt'], 0)),
+    boosts: reviveBoosts(raw['boosts']),
+    freeBoostAt: num(raw['freeBoostAt'], num(raw['playtimeSec'], 0) + FREE_BOOST.intervalSec),
+    leafDrops: reviveLeafDrops(raw['leafDrops']),
     tap: reviveTap(raw['tap']),
     stats: reviveStats(raw['stats']),
     quests: reviveQuests(raw['quests']),

@@ -5,6 +5,8 @@ import { applyOffline } from './economy/offline';
 import { autoBuyStep } from './economy/actions';
 import { advanceCleanliness } from './staff/effects';
 import { HIGH_SATISFACTION } from '@data/achievements';
+import { stepEvents } from './events/schedule';
+import { accrueLeafDrops, expectedLeafDrops } from './customers/drops';
 
 /**
  * Ein Simulationsschritt beliebiger Länge; die Rate-Formeln sind linear, die Zufriedenheit nähert sich exakt.
@@ -17,6 +19,7 @@ export function tick(state: GameState, dtMs: number): GameState {
   const locations: Record<string, LocationState> = {};
   let earnedTotal = state.meta.lifetimeEarned;
   let served = 0;
+  let expectedDrops = 0;
   const keep = 1 - BALANCE.satisfaction.approachPerSec;
   for (const id of Object.keys(state.locations)) {
     const loc = getLocation(state, id);
@@ -33,6 +36,7 @@ export function tick(state: GameState, dtMs: number): GameState {
     };
     earnedTotal = earnedTotal.add(gain);
     served += rates.served * dt;
+    expectedDrops += expectedLeafDrops(id, rates.served * dt);
   }
   const activeSat = getLocation(state, state.activeLocationId).satisfaction;
   const highSec =
@@ -49,10 +53,11 @@ export function tick(state: GameState, dtMs: number): GameState {
       highSatisfactionSec: highSec,
       highSatisfactionBestSec: Math.max(state.stats.highSatisfactionBestSec, highSec),
     },
-    activeEvents: state.activeEvents.filter((e) => e.until > playtimeSec),
     boosts: state.boosts.filter((b) => b.until > playtimeSec),
     tap: { ...state.tap, hype: Math.max(0, state.tap.hype - BALANCE.tap.hypeDecayPerSec * dt) },
   };
+  next = accrueLeafDrops(next, expectedDrops);
+  next = stepEvents(next);
   for (const id of Object.keys(next.locations)) next = autoBuyStep(next, id);
   return next;
 }

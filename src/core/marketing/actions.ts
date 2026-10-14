@@ -1,6 +1,6 @@
 import { BALANCE } from '@data/balance';
 import { getLocationDef } from '@data/locations';
-import { getLocation, withLocation, type GameState } from '../GameState';
+import { getLocation, spendLeaves, withLocation, type GameState } from '../GameState';
 import { Decimal, D } from '../math/bignum';
 import { collectModifiers } from '../economy/modifiers';
 import { computeLocationRates } from '../customers/rates';
@@ -67,10 +67,7 @@ export function skipCampaignCooldown(state: GameState, locationId: string): Game
   const loc = getLocation(state, locationId);
   const price = BALANCE.marketing.skipCooldownLeaves;
   if (campaignStatus(loc, state.playtimeSec).phase !== 'cooldown') return state;
-  if (state.meta.goldenLeaves.lt(price)) return state;
-  const next = withLocation(state, locationId, {
-    ...loc,
-    marketing: { level: loc.marketing.level },
-  });
-  return { ...next, meta: { ...next.meta, goldenLeaves: next.meta.goldenLeaves.sub(price) } };
+  const paid = spendLeaves(state, price);
+  if (!paid) return state;
+  return withLocation(paid, locationId, { ...loc, marketing: { level: loc.marketing.level } });
 }

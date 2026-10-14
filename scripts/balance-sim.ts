@@ -5,6 +5,7 @@ import { AMBIENCE } from '@data/ambience';
 import { BALANCE } from '@data/balance';
 import { createInitialState, getLocation, withLocation, type GameState } from '@core/GameState';
 import { tick } from '@core/GameLoop';
+import { getEventResolveCost, resolveEvent } from '@core/events';
 import { buyStation, getBulkCost, isStationUnlocked, needsTerrace } from '@core/economy/actions';
 import { buyQuality, getNextQualityCost, isNextQualityUnlocked } from '@core/progression';
 import {
@@ -210,6 +211,18 @@ function maybeCampaign(state: GameState, id: string): GameState {
   return gain > cost.toNumber() ? after : state;
 }
 
+/** Lieferengpass beheben, wenn sich die Münzen das leisten können (Greedy nimmt die 5 🍃 mit). */
+function maybeResolveEvents(state: GameState): GameState {
+  let cur = state;
+  for (let i = cur.activeEvents.length - 1; i >= 0; i--) {
+    const cost = getEventResolveCost(cur, i);
+    const ev = cur.activeEvents[i];
+    if (!cost || !ev || getLocation(cur, ev.locationId).coins.lt(cost)) continue;
+    cur = resolveEvent(cur, i);
+  }
+  return cur;
+}
+
 const hours = arg('hours', 2);
 let state = createInitialState(0, 'en');
 const reached = new Map<string, number>();
@@ -276,8 +289,19 @@ function shouldReset(s: GameState, id: string, t: number): boolean {
   return stalled && gain >= Math.max(RESET_MIN_ZEN, zenEarned);
 }
 
+const eventsSeen = new Map<string, number>();
+const leavesAt = new Map<number, number>();
 for (let t = 0; t < hours * 3600; t += STEP_MS / 1000) {
+  const count = state.eventSchedule.count;
   state = tick(state, STEP_MS);
+  if (state.eventSchedule.count > count) {
+    const id = state.activeEvents[state.activeEvents.length - 1]?.id ?? '?';
+    eventsSeen.set(id, (eventsSeen.get(id) ?? 0) + 1);
+    mark('firstEvent', t);
+  }
+  state = maybeResolveEvents(state);
+  const hour = Math.floor(t / 3600);
+  if (!leavesAt.has(hour)) leavesAt.set(hour, state.stats.leavesEarned);
   for (const id of state.meta.unlockedLocations) {
     const before = state;
     state = maybeCampaign(state, id);
@@ -333,6 +357,7 @@ const rows: [string, string, string][] = [
     `${fmt('firstReset')}${firstResetZen.length ? ` (${String(firstResetZen[0])} Zen)` : ''}`,
   ],
   ['Kyoto freigeschaltet', '3–4 h', fmt('unlock:kyoto')],
+  ['Erstes Zufalls-Event', '20–45 min', fmt('firstEvent')],
   ['Tokio freigeschaltet', '–', fmt('unlock:tokyo')],
 ];
 console.log(
@@ -348,6 +373,19 @@ console.log(
       .join(', ') || '—'
   }`,
 );
+leavesAt.set(Math.ceil(hours), state.stats.leavesEarned);
+const perHour = [...leavesAt.entries()]
+  .sort(([a], [b]) => a - b)
+  .slice(1)
+  .map(([h, v]) => `h${String(h)} ${String(v - (leavesAt.get(h - 1) ?? 0))}`);
+console.log(
+  `Events: ${String(state.stats.events)} abgeschlossen (${
+    [...eventsSeen.entries()].map(([k, v]) => `${k} ${String(v)}`).join(', ') || '—'
+  }); Influencer-Blätter heute ${String(state.leafDrops.count)}`,
+);
+console.log(
+  `Goldene Blätter verdient ${String(state.stats.leavesEarned)} (je Stunde: ${perHour.join(', ')}; ohne Erfolge/Quests, die laufen nur in der App)`,
+);
 for (const id of state.meta.unlockedLocations) {
   const l = getLocation(state, id);
   console.log(
@@ -359,7 +397,7 @@ console.log(
   `Ende: Café-Level ${String(loc.level)}, Münzen ${formatNumber(loc.coins)}, Einkommen/s ${formatNumber(getIncomePerSec(state, LOC))}`,
 );
 console.log(
-  `Qualität ${String(loc.quality)}, Goldene Blätter (Café-Level) ${state.meta.goldenLeaves.toString()}, Zufriedenheit ${loc.satisfaction.toFixed(1)}, Sauberkeit ${loc.cleanliness.toFixed(1)}, Kampagnen ${String(campaigns)}, Marketing-Level ${String(loc.marketing.level)}`,
+  `Qualität ${String(loc.quality)}, Goldene Blätter ${state.meta.goldenLeaves.toString()}, Zufriedenheit ${loc.satisfaction.toFixed(1)}, Sauberkeit ${loc.cleanliness.toFixed(1)}, Kampagnen ${String(campaigns)}, Marketing-Level ${String(loc.marketing.level)}`,
 );
 console.log(
   `Personal: ${

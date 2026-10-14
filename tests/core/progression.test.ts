@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  SCHEMA_VERSION,
   createInitialState,
   getLocation,
   withLocation,
@@ -288,10 +289,13 @@ describe('Daily Quests (GAME_DESIGN § 13.2)', () => {
       );
     }
     expect(days.size).toBeGreaterThan(3);
-    // Deaktivierte Quests (Events, S7) werden nie gezogen.
+    // Seit S7 gibt es Events: „Beende ein Event“ ist im Pool und wird an manchen Tagen gezogen.
+    const drawn = new Set<string>();
     for (let d = 1; d <= 28; d++) {
-      expect(pickDailyQuests(`2026-04-${String(d)}`).map((q) => q.id)).not.toContain('event1');
+      for (const q of pickDailyQuests(`2026-04-${String(d)}`)) drawn.add(q.id);
     }
+    expect(drawn).toContain('event1');
+    expect(QUESTS.every((q) => q.enabled)).toBe(true);
   });
   it('Reset um lokale Mitternacht, nicht um UTC-Mitternacht', () => {
     const berlin = -60;
@@ -404,7 +408,7 @@ describe('Save v4', () => {
     delete v3['stats'];
     v3['quests'] = { date: '', items: [] };
     const m = migrate(v3);
-    expect(m['schemaVersion']).toBe(5);
+    expect(m['schemaVersion']).toBe(SCHEMA_VERSION);
     const back = deserialize(JSON.stringify(m));
     expect(back.stats.customersServed).toBe(0);
     expect(back.quests).toEqual({ date: '', items: [], bonusClaimed: false });

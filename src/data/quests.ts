@@ -6,7 +6,7 @@ export interface QuestDef {
   id: string;
   kind: QuestKind;
   target: number;
-  /** `false`, solange das System dahinter fehlt (Events kommen in S7); dann wird die Quest nie gezogen. */
+  /** `false`, solange das System dahinter fehlt; dann wird die Quest nie gezogen. */
   enabled: boolean;
 }
 
@@ -21,7 +21,7 @@ export const QUESTS: readonly QuestDef[] = [
   { id: 'buy20', kind: 'levelsBought', target: 20, enabled: true },
   { id: 'satisfaction80', kind: 'satisfaction', target: 80, enabled: true },
   { id: 'campaign1', kind: 'campaigns', target: 1, enabled: true },
-  { id: 'event1', kind: 'events', target: 1, enabled: false },
+  { id: 'event1', kind: 'events', target: 1, enabled: true },
   { id: 'tap100', kind: 'taps', target: 100, enabled: true },
 ];
 

@@ -4,30 +4,43 @@ current: S7
 branch: session/s7-events
 started: 2026-10-14T21:36:24Z
 next: S7
-## Letzte Session: S6 – Standorte und Prestige (2026-10-14, PR #9)
+## Letzte Session: S7 – Events, Boosts, Premium-Währung, Monetarisierungs-Interface (2026-10-14, PR #10)
 ## Fertig
-- `data/prestige.ts`: Zen-Formel-Konstanten, Reset ab Café-Level 10, alle 7 Meta-Upgrades aus GAME_DESIGN § 11.3 (Kosten, Wachstum, Max, Effekt je Stufe)
-- `core/prestige/`: `computeZenGain` (§ 11.2), `franchiseReset` (setzt nur den `LocationState` zurück; `meta`, `prestigeCount` und neuer `bestLevel` bleiben; Start-Kapital, Schnellstart, `stats.resets`), Meta-Upgrades kaufen, `getMetaEffects`, `affordableMetaLevels` (Reset-Vorschau)
-- Meta-Effekte zentral: `collectModifiers` hat jetzt `prestigeMult` (globales Einkommen), `discount` (wirkt auf Stationen, Ambiente, Personal, Marketing, Qualität) und `satisfactionBonus` (eigener Posten „Stammkundschaft (Zen)“ im Zufriedenheits-Detail); Offline-Effizienz und Tap-Stärke lesen ihren Wert aus `data/prestige.ts`
-- `core/progression/locations.ts`: Freischalt-Kette über Café-Level-Bestwert des Vorgängers + Zen (Zen wird verbraucht), `unlockLocation`, `switchLocation`; neue Standorte starten mit `startCoins × Skalierung`; alle freigeschalteten Standorte produzieren parallel (Tick und Offline, war schon so – jetzt getestet)
-- Café-Level-Belohnung nach Reset: Münzen ja, Goldene Blätter nur für Level über dem Bestwert (Offen-Punkt aus S5 entschieden)
-- Standorte-Panel (Nav „Standorte“) mit Tabs „Standorte“ (Café-Level, Einkommen, Münzen, Resets, Bedingung mit bisherigem Bestwert, Eröffnen / Hierher wechseln / Franchise-Reset) und „Zen-Shop“ (Stufe, Effekt in Zahlen, Kosten); Zen-Stand oben im Panel
-- Reset-Dialog mit Vorschau: was zurückgesetzt wird, „Du bekommst X Zen (danach insgesamt Y)“, „+Z % Einkommen an allen Standorten“ (so viele Stufen Globales Einkommen, wie das Zen kauft), was erhalten bleibt
-- Stations-Namen und -Beschreibungen für alle 6 Standorte (DE/EN, z. B. Kyoto „Usucha-Tresen“, „Wagashi-Küche“, „Teezeremonie-Raum“), Thema je Standort als Text; Platzhalter-Skin je Standort (`data/themes.ts`: Boden-Tönung, Wandfarben)
-- Szene baut sich bei Standortwechsel und Reset neu auf (`scene.restart()`, `init()` setzt den Instanz-Zustand zurück, Resize-Listener wird beim Shutdown entfernt); andere offene Panels schließen beim Wechsel; Toasts für Eröffnen, Wechseln, Reset
-- Save-Schema v5 (`bestLevel` je Standort) + Migration v4→v5 + Härtung (`unlockedLocations` nur mit Standort-Zustand, kaputte Meta-Upgrade-Stufen, `prestigeCount`); `mce.save.v4` in `LEGACY_KEYS`. Die Mehr-Standort-Migration aus PLAN („v1 → v2“) existiert seit S1 als v0→v1
-- Tests: 204 Unit-Tests (neu `tests/core/prestige.test.ts`, 31 Tests: Zen-Formel inkl. Skalierung und Richtwert, Reset erhält `meta` vollständig und lässt andere Standorte unberührt, Start-Kapital, Schnellstart, Blätter nach Reset, alle Meta-Effekte, Rabatt-Deckel, Freischalt-Kette inkl. Bestwert nach Reset, paralleles Einkommen online/offline, Save v5), i18n-Test verlangt Stations-Texte für alle Standorte und Meta-Upgrade-Texte; Coverage core 99.8 % Zeilen (prestige 100 %); e2e 16 grün (neu: Standort eröffnen/wechseln/Neuladen, Reset mit Vorschau/Abbrechen/Bestätigen + Zen-Shop-Kauf; axe prüft Zen-Shop und Reset-Dialog)
-- `pnpm sim`: Greedy spielt alle freigeschalteten Standorte, setzt zurück (wenn das den nächsten Standort freischaltet, sonst erst nach 60 min ohne Café-Level-Aufstieg und ≥ 20 Zen), eröffnet Standorte und kauft Meta-Upgrades; neue Meilensteine „Erster Franchise-Reset“, „Kyoto/Tokio freigeschaltet“
+- `data/events.ts`: 5 Zufalls-Events (§ 12.1: Hitzewelle, Influencer-Besuch, Lieferengpass, Food-Blogger, Regentag) mit Wirkung, Belohnung, Szene-Overlay; 3 Kalender-Events (§ 12.2: Hanami, Sommer-Eis, Neujahr); Intervall/Dauer-Konstanten
+- `core/events/`: deterministischer Scheduler (`drawEvent(seed, n)`, `stepEvents` im Tick, ein Event zur Zeit), Abschluss mit Blättern/Statistik/Nachwirkung (`settleEvents`), Lieferengpass beheben (`resolveEvent`, 5 min Einkommen), Offline-Fortschritt (`advanceEventsOffline` in `applyOffline`), Kalender aus lokalem Datum (`refreshCalendarEvents` in `progressionStep`), Effekte je Standort (`collectEventEffects`: Spawn, Preise je Station, Trinkgeld, Zufriedenheit, Qualitäts-Abzug), Szene-Overlay (`getEventOverlay`)
+- Boost-System (§ 12.3): `addBoost` (gleiche Quelle verlängert, verschiedene multiplizieren), Deckel ×12 je Typ in `collectModifiers`; Gratis-Boost-Timer (`freeBoostAt`, `claimFreeBoost`)
+- Goldene Blätter (§ 10): neue Quellen Events (3–8 🍃) und Influencer-Drops (Erwartungswert, 10/Tag); `spendLeaves` (nie negativ) für alle Ausgaben; `core/leaves/`: Zeitsprung 1/4/8 h (5/15/25 🍃, 100 %, alle Standorte, `creditIncome` aus Offline herausgelöst), Boost ×2 30 min (8 🍃), Quest sofort erledigen (4 🍃), Kampagnen-Abklingzeit (3 🍃, schon S4), 2 Skins (Sakura-Bar, Neon-Kasse, 30 🍃)
+- `core/monetization/`: `MonetizationProvider` (isAvailable/showRewarded/purchase), `NoopProvider`, `createMonetizationProvider()`; `MONETIZATION_ENABLED = false` in `data/monetization.ts`. „Gratis-Boost“-Knopf ruft `provider.showRewarded('freeBoost')`, `core` bucht den Boost
+- HUD: „+“-Kreis am Blätter-Stand öffnet den Blätter-Shop (UI_STYLE § 3.1), Boost-Pillen mit Restzeit (§ 3.2/3.5), Gratis-Boost-Knopf, Kalender-Event-Chip; Event-Karte rechts über der Szene (§ 3.7, wippt), öffnet das Event-Panel (Wirkung, Ort, Restzeit, Belohnung, „Beheben“)
+- Blätter-Shop-Panel (§ 16.8): Zeitsprung mit Münz-Vorschau, Boosts, Abkürzungen (Abklingzeit, offene Quests), Skins (kaufen/an/ab); Premium-Zeilen mit Gold-Kante
+- Toasts: Event-Start (Ankündigung mit Wirkung), Event-Ende (+🍃), Influencer-Blatt, Gratis-Boost
+- Szene: Farbfilter je Event, Partikel (Regen, Kirschblüten, Funkeln; aus bei reduzierter Bewegung), Skin-Tönung der Stationen
+- Quest „Beende ein Event“ aktiv; Event-Achievements erreichbar; Zufriedenheits-Detail hat den Posten „Events“
+- Save-Schema v6 + Migration v5→v6 + Härtung
+- Tests: 250 Unit-Tests (neu `tests/core/events.test.ts` 24 Tests: Scheduler deterministisch per Seed, gleiche Folge über 3 h, Intervalle/Dauern, jedes Event in Wirkung und Abschluss, Standort-Bindung, Offline-Abschluss, Kalender inkl. Jahreswechsel/Zeitzone, Boost-Stacking und ×12-Deckel, Gratis-Boost; `tests/core/leaves.test.ts` 21 Tests: Blätter-Buchhaltung inkl. 200 zufälliger Käufe ohne negativen Stand, Zeitsprung, Boost, Quest, Skins, Drops mit Tagesdeckel, No-op-Provider, Save v6 inkl. Härtung), i18n-Test für Events/Skins/Boosts; Coverage core 99,7 % Zeilen (events 100 %, leaves 98,6 %); e2e 21 grün (neu `tests/e2e/events.spec.ts`: Blätter-Shop, Skin, Event beheben, Offline-Abschluss, Gratis-Boost + kein Request an fremde Hosts; axe prüft Blätter-Shop, Event-Panel und HUD mit Boost-Pillen)
+- `pnpm sim`: spielt Events mit (behebt Lieferengpässe), meldet „Erstes Zufalls-Event“, Event-Zählung je Art und Blätter je Stunde
+- Abnahme: kein Netzwerk-Call und kein SDK im Bundle (e2e prüft Requests; Bundle enthält kein AdMob/Stripe), Flag `false`; Events laufen offline weiter bzw. werden beim Laden abgeschlossen (Unit + e2e)
+
+## Monetarisierung: wie ein echter Provider eingehängt würde
+- Einziger Einstiegspunkt ist `MonetizationProvider` (`src/core/monetization/provider.ts`). Spielcode ruft nur `isAvailable()`, `showRewarded(placement)` und `purchase(sku)`; Belohnungen bucht immer `core` (z. B. `claimFreeBoost`), nie der Provider.
+- Neuer Provider (z. B. `AdMobProvider`, `WebAdsProvider`, `StripeProvider`) als eigene Datei außerhalb von `core` (er braucht DOM/SDK), implementiert das Interface. `createMonetizationProvider()` lädt ihn nur bei `MONETIZATION_ENABLED === true` per dynamischem `import()`, sonst bleibt es beim `NoopProvider` – so landet das SDK bei ausgeschaltetem Flag nicht im Bundle.
+- Rewarded Ad: `showRewarded('freeBoost')` öffnet die Werbung und löst erst nach vollständigem Ansehen mit `{ rewarded: true }` auf; Abbruch → `{ rewarded: false }`. Der Spielzeit-Timer (`freeBoostAt`) bleibt die Obergrenze.
+- Käufe: `purchase(sku)` → Zahlungsdialog des Anbieters; erst nach Server-Bestätigung (Webhook/Receipt-Prüfung, nicht im Client) `{ ok: true }`. Gutschrift über eine neue `core`-Action (z. B. `grantLeaves`) mit Idempotenz-Schlüssel im Save. Erstattungen/Abstürze sind laut GAME_DESIGN § 10 nicht Teil von v1.
+- Vor dem Einschalten: Datenschutz/Consent (DSGVO), Lizenz des SDK in `docs/ASSETS.md`/STATUS „Entscheidungen“, e2e „keine fremden Requests“ anpassen.
 ## Offen / bekannte Bugs
+- Kundentypen: nur der Influencer-Blätter-Drop ist im Rate-Modell (Erwartungswert, S7). Merch-Chance (Tourist), Trinkgeld (Stammgast), Influencer-Hype ×1.5 und Kritiker fehlen weiter → S9 (Balancing).
+- HUD zeigt Zen weiter nicht (nur Standorte-Panel). Kandidat für den UI-Skin in S8 (HUD-Pille § 3.1 hat Platz für drei Währungen).
+- Event-Karte zeigt nur ein Event (das am aktiven Standort, sonst irgendeins); das Event-Panel listet alle. Banner zum Event-Start ist ein Info-Toast – ein eigenes Banner-Element kommt mit dem UI-Skin (S8).
+- Offline beendete Events werden still abgeschlossen (Blätter sind da, aber der Offline-Dialog nennt sie nicht). Idee: Zeile „Während du weg warst: Hitzewelle (+5 🍃)“ im Offline-Dialog.
+- Skins sind nur eine Tönung des Platzhalter-Sprites; echte Skin-Sprites mit S8. Skins sind global (alle Standorte), nicht je Standort.
+- Balance-Sim spielt Events mit (inkl. Beheben des Lieferengpasses), gibt aber keine Blätter aus (kein Zeitsprung/Boost) und kennt weder Erfolge noch Quests (laufen nur über `progressionStep` in der App). Blätter/h im Sim also nur Café-Level + Events + Influencer: 11–15/h; mit Erfolgen und Quests liegt die Frühphase im Richtwert 15–25/h (nicht gemessen) → S9.
+- Kalender-Events wirken auch auf Offline-Einnahmen und den Zeitsprung (sie gelten tage-/wochenweise, keine Spielzeit-Timer); Neujahr verdoppelt also auch Offline. Bewusst so, siehe Entscheidungen.
+- Kein Weg, ein laufendes Zufalls-Event vorzeitig zu beenden oder die Event-Häufigkeit einzustellen (Settings) – nicht im Design.
 - Balancing Prestige: Erster Reset bringt im Sim 40 Zen (Richtwert 20–30), weil er erst bei 3 h 22 min kommt (Café-Level 14). Berlin stockt ab ~3 h 30 bei Café-Level 14 (Stationskosten mit Wachstum 1.14–1.21 explodieren, Qualität 4 kostet 500 M); Café-Level 15 wird ohne Reset nie erreicht → S9 (Kurve späte Café-Level, ggf. Kyoto zurück auf 15).
 - Freischalt-Café-Level der Standorte ab Tokio stehen weiter auf 15 (Design); ob das mit der neuen Kurve passt, ist ungeprüft – Sim spielt bisher nur bis Kyoto sinnvoll → S9.
 - Alle Standorte nutzen weiter `DEFAULT_LAYOUT` (gleicher Grundriss); eigene Grundrisse je Standort und echte Skins → S8.
-- HUD zeigt Zen nicht (nur im Standorte-Panel); Blätter-Shop/Boost-Leiste in S7 könnten ihn mit aufnehmen.
 - Kein „Café-Level-Fortschritt anderer Standorte“-Hinweis im HUD (z. B. Badge, wenn ein anderer Standort etwas Kaufbares hat) – Idee für S9.
 - Achievement-Fortschritt „Café-Level“/„Stations-Level“ nimmt das aktuelle Level aller Standorte; nach einem Reset fällt der Balken noch nicht erreichter Stufen zurück (Erreichtes bleibt). Für Café-Level könnte S9 `bestLevel` nehmen.
-- Kundentypen sind nur kosmetisch; ihre Effekte (Merch-Chance, Trinkgeld, Influencer-Hype + 1 % 🍃-Drop, Kritiker) gehören als Erwartungswert ins Rate-Modell – auch in S5 nicht gemacht (nicht im Auftrag). Vorschlag: S7 (zusammen mit Events/Blätter-Quellen) oder S9.
-- Quest „Beende ein Event“ und die Event-Achievements sind angelegt, aber deaktiviert bzw. unerreichbar, bis S7 Events baut (`QUESTS[…].enabled`, `stats.events` hochzählen). (`stats.resets` zählt seit S6.)
-- „Sofort-Fertigstellung Quest (4 🍃)“ fehlt – gehört zum Blätter-Shop (S7).
 - Balancing: Mit Café-Level-Jagd laufen frühe Meilensteine noch zu schnell (Iced-Bar 5,4 min statt 10–15, Bäckerei 22 min statt ~30); Café-Level 10 passt. Greedy startet nie eine Kampagne, Reinigungskraft bleibt auf Stufe 1, Café-Level 15 wird in 2 h nicht erreicht → S9.
 - Ohne Café-Level-Jagd pumpt der Greedy eine Station (neue Stationen bekommen auf Level 1 kaum Kunden-Anteil) – Hinweis für S9, ob neue Stationen attraktiver werden sollen.
 - Achievement-Prüfung und Quest-Tageswechsel laufen 1×/s per `setInterval` in `main.ts` (Wanduhr); im Hintergrund-Tab drosselt der Browser das, nachgeholt wird beim nächsten Aufruf.
@@ -37,7 +50,6 @@ next: S7
 - Pinch-Zoom ist nur logisch umgesetzt, nicht auf echtem Touch-Gerät getestet.
 - `pages.yml` läuft weiter bei jedem Push auf main und schlägt fehl, solange Pages nicht aktiviert ist – erwartet, ignorieren (siehe Entscheidungen).
 - PWA-Icon ist nur ein SVG-Platzhalter (PNG 192/512 in S8/S9).
-- HUD hat noch keinen Boost-Timer/Event-Banner (GAME_DESIGN § 16.1) – kommt mit Events in S7.
 - Ein nicht lesbarer Spielstand wird unter `mce.save.v4.corrupt` beiseitegelegt; die IndexedDB-Backups (`mce-backups`) haben noch keine Wiederherstellen-UI.
 - SFX/Musik-Schalter speichern nur die Einstellung; Audio selbst kommt in S8.
 - Bundle 381 KB gzip JS (Phaser ist der Großteil), Ziel < 2 MB eingehalten.
@@ -109,14 +121,31 @@ next: S7
 - Reset-Vorschau „+Y %“ = so viele Stufen „Globales Einkommen“, wie das Zen nach dem Reset bezahlt, × 10 %.
 - Reset-Bestätigung ist ein einzelner Dialog (mit Abbrechen), nicht doppelt wie beim Löschen – der Reset ist gewollter Spielfortschritt.
 - Balance-Sim: Meta-Upgrade-Priorität globales Einkommen, Schnellstart, Start-Kapital, Rabatt, Basis-Zufriedenheit (immer das günstigste); Offline-Effizienz und Tap-Stärke kauft der Greedy nicht (spielt weder offline noch tippt er). Zen für den nächsten Standort wird zurückgehalten, sobald dessen Café-Level-Bedingung erfüllt ist.
-## Nächste Session: S7
-Startpunkt: PLAN.md § 3, Abschnitt S7 (Events, Boosts, Premium-Währung, MonetizationProvider No-op, Zeitsprung-Shop) und GAME_DESIGN §§ 10, 12.
-- Boosts/Events laufen schon über `ActiveBoost`/`ActiveEvent` (Zeiten in `playtimeSec`) und `collectModifiers`; Offline rechnet ohne sie (`withoutTemporaryBoosts`).
-- Events: `stats.events` hochzählen und `QUESTS[…].enabled` für „Beende ein Event“ aktivieren; Event-Achievements sind angelegt.
-- Zeitsprung muss alle Standorte parallel vorspulen (wie `applyOffline`, aber ohne Offline-Effizienz?) – Entscheidung dokumentieren.
-- Blätter-Shop: „Sofort-Fertigstellung Quest (4 🍃)“ aus S5-Offen; Kundentypen-Effekte (Influencer-🍃-Drop) als Erwartungswert sind Kandidat.
-- HUD: Boost-Timer und Event-Banner (GAME_DESIGN § 16.1) fehlen noch; Zen könnte dort mit angezeigt werden.
-- Fallen: Neue UI-Texte in beide JSONs. Save-Schema-Änderung → `SCHEMA_VERSION` 6 + Migration + Test + `mce.save.v5` in `LEGACY_KEYS`. Panels halten ihren Standort beim Öffnen fest und werden bei Standortwechsel geschlossen (`notifyLocations` in `ui/app.ts`). Die Szene startet bei Wechsel/Reset neu – neue Instanz-Felder in `CafeScene.init()` zurücksetzen. e2e lokal mit `PW_CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome pnpm e2e`; `reloadWithSave` kann jetzt auch `bestLevel`, `earnedThisRun`, `zen` setzen. Die Balance-Sim ist empfindlich: nach Änderungen `pnpm sim --hours 4` laufen lassen.
+- Zufalls-Events laufen **je Standort**: ein Event startet am gerade aktiven Standort und wirkt nur dort (`ActiveEvent.locationId`); Kalender-Events wirken überall. So hat „Lieferengpass beheben (5 min Einkommen)“ eine eindeutige Kasse und der Influencer-Ansturm (−10 Zufriedenheit) einen Ort.
+- Event-Plan deterministisch: `eventSchedule { seed, count, nextAt }`, das n-te Event zieht `drawEvent(seed, n)` (mulberry32). Seed neuer Spiele = Hash von `createdAt`; Neuladen würfelt nichts neu. Abstand 20–45 min Start-zu-Start, immer nur ein Zufalls-Event gleichzeitig.
+- Influencer-Besuch dauert fest 2 min (Design: „Spawn ×2.5 für 2 min, danach −10“); die Nachwirkung −10 Zufriedenheit wird beim Ende einmalig abgezogen. Alle anderen 3–10 min.
+- Lieferengpass: Qualität −1 wirkt auf Preis **und** Zufriedenheits-Beitrag der Qualität. Beheben kostet 5 min aktuelles Einkommen des Standorts (mindestens `startCoins`) und beendet das Event sofort mit 5 🍃; ohne Beheben endet es ohne Blätter, zählt aber als abgeschlossenes Event (Quest/Erfolg).
+- Abnahme „Events laufen offline weiter“: Offline (und beim Tab-Lump) steht die Spielzeit still, Event-Timer werden aber um die Abwesenheit verkürzt (`advanceEventsOffline`) und abgelaufene Events beim Laden abgeschlossen (Belohnung, Statistik). Der Event-Plan läuft nur in aktiver Spielzeit (Design: „alle 20–45 min aktive Spielzeit“). Offline-Einnahmen rechnen weiter ohne Event-/Boost-Multiplikatoren.
+- Boosts bleiben offline eingefroren (wie seit S4 für Hype/Kampagne); nur Events laufen in Echtzeit. Grund: ein gekaufter 30-min-Boost soll nicht verfallen, weil man den Tab schließt.
+- Boost-Deckel ×12 (GAME_DESIGN § 12.3) gilt je Typ über Events, Boosts und aktive Kampagne zusammen (`BOOST_RULES.maxMult`); dauerhafte Multiplikatoren (Qualität, Zen) zählen nicht dazu.
+- Gleiche Boost-Quelle verlängert um die volle Dauer (`addBoost`), nicht auf die volle Dauer – ein zweiter 30-min-Kauf ergibt 60 min. Hype behält sein S2-Verhalten (zurück auf 10 s).
+- Gratis-Boost (No-op-Monetarisierung): ×2 Einkommen für 10 min, alle 20 min aktive Spielzeit (`data/monetization.ts`, `data/leaves.ts`). Dauer stand nicht im Design. Erster nach 20 min Spielzeit. Knopf erscheint im HUD und im Blätter-Shop, sobald bereit.
+- Zeitsprung = Einkommen aller Standorte zu 100 % mit der Rate ohne zeitlich begrenzte Boosts (wie Offline, aber ohne Cap und ohne Effizienz). Spielzeit, Event- und Boost-Timer laufen dabei nicht – es ist Geld, keine Zeitreise. Zählt zu `earnedThisRun` (also auch zum Zen).
+- „Sofort-Fertigstellung einer Kampagne“ (PLAN) = „Kampagnen-Abklingzeit beenden“ (GAME_DESIGN § 10, 3 🍃) – gab es seit S4 im Marketing-Panel, jetzt auch im Blätter-Shop.
+- Quest sofort erledigen (4 🍃) setzt die Quest auf erledigt; abholen (3 🍃 + ggf. Bonus) muss man selbst. Technisch: Basiswert der Zähler-Quest wird so verschoben, dass der Fortschritt am Ziel bleibt.
+- Skins kosten 30 🍃, werden beim Kauf angelegt und lassen sich ab-/anlegen (`meta.skins.owned/equipped`). Wirkung nur Tönung der Station in der Szene.
+- Influencer-Drops als Erwartungswert im Tick: bediente Kunden × Influencer-Anteil (standortabhängig) × 1 %, Bruchteile sammeln sich in `leafDrops.fraction`, Deckel 10 pro lokalem Tag (Tageswechsel in `progressionStep`). Die sichtbaren Influencer-Figuren lassen nichts fallen (Figuren bleiben kosmetisch).
+- Event-Belohnungen und der Erfolg „erstes Event“ (5 🍃) kommen zusammen; Event-Quest „Beende ein Event“ ist aktiv (`QUESTS[…].enabled`).
+- Save-Schema v6 (`mce.save.v6`): `ActiveEvent` neu `{ id, locationId, startedAt, until }` (alte Events verworfen – es gab keine), `calendarEvents`, `eventSchedule`, `freeBoostAt`, `leafDrops`, `meta.skins`. Migration v5→v6 + Härtung (unbekannte Events/Skins raus, Boost-Multiplikatoren auf 1..12 geklemmt, Drop-Zähler gedeckelt). `mce.save.v5` in `LEGACY_KEYS`.
+- `[hidden] { display: none !important }` global in `style.css`: Klassen mit eigenem `display` (Flex-Zeilen, Pillen, Event-Karte) überstimmten sonst das `hidden`-Attribut.
+- Event-Karte wippt (`@keyframes bob`), bei `prefers-reduced-motion` nicht; Event-Partikel (Regen, Blüten, Funkeln) laufen dann ebenfalls nicht, nur der Farbfilter. e2e emuliert `reducedMotion`, weil Playwright ein dauerhaft animiertes Element nie als „stabil“ klickt.
+- PRNG/Hash (`mulberry32`, FNV-1a) aus `progression/quests.ts` nach `core/math/random.ts` gezogen, damit Events und Quests denselben nutzen.
+## Nächste Session: S8
+Startpunkt: PLAN.md § 3, Abschnitt S8 (Grafik und Audio) und `docs/UI_STYLE.md` § 2–4 und § 7 (Umsetzungs-Checkliste).
+- UI-Skin: S7 hat die S7-Bausteine schon mit den Ziel-Klassen angelegt (`.boost-pill`, `.event-card`, `.hud-plus`); beim Umbau auf `.hud-pill`/`.actionbar` die `data-testid`s behalten (`hud-leaf-shop`, `hud-free-boost`, `hud-boost-*`, `event-card`, `leaf-*`, `event-resolve-*`).
+- Szene: Event-Overlay (`getEventOverlay`) liefert Farbe/Alpha/Partikel-Art; Partikel-Texturen `fx-rain`, `fx-petal`, `fx-sparkle` sind Platzhalter in `scenes/placeholders.ts`. Skins tönen heute nur (`equippedSkinTints`) – mit echten Sprites eigene Texturen je Skin.
+- Audio: SFX für Kauf, Event-Start/-Ende, Blatt-Drop, Boost; Musik-Schalter existiert seit S3.
+- Fallen: `[hidden]` ist global `display:none !important` – neue Komponenten mit eigenem `display` brauchen nichts extra. Neue Instanz-Felder in `CafeScene.init()` zurücksetzen (Szene startet bei Wechsel/Reset neu; `fx`, `overlayKey` gibt es schon). Neue UI-Texte in beide JSONs. e2e lokal: `PW_CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome pnpm e2e`; animierte Elemente in e2e mit `page.emulateMedia({ reducedMotion: 'reduce' })` klicken. Bundle (393 KB gzip JS) im Blick behalten.
 ## Balancing-Snapshot (Sim-Ausgabe, `pnpm sim --hours 4`)
 Balance-Sim: 4 h, Greedy-Spieler (Stationen, Personal, Ambiente, Qualität, Marketing, Reset, Zen), Meilensteine Berlin erster Run
 | Meilenstein | Zielzeit | Ist |
@@ -125,20 +154,23 @@ Balance-Sim: 4 h, Greedy-Spieler (Stationen, Personal, Ambiente, Qualität, Mark
 | Zweite Station (Kasse) | 1–2 min | 1m 41s |
 | Erster Personal-Kauf | ~5 min | 5m 24s |
 | Erste Reinigungskraft | – | 5m 24s |
-| Erste Kampagne | – | — |
+| Erste Kampagne | – | 1h 24m |
 | Iced-Bar (Café-Level 3) | 10–15 min | 5m 24s |
 | Bäckerei (Café-Level 5) | ~30 min | 21m 40s |
-| Café-Level 10 | ~90 min | 1h 27m |
+| Café-Level 10 | ~90 min | 1h 22m |
 | Café-Level 15 | – | — |
 | Qualität Stufe 1 (Café Grade) | – | 6m 21s |
-| Qualität Stufe 2 (Premium Grade) | – | 32m 41s |
-| Qualität Stufe 3 (Ceremonial Grade) | – | 1h 43m |
-| Erster Franchise-Reset | ~3 h (20–30 Zen) | 3h 22m (40 Zen) |
-| Kyoto freigeschaltet | 3–4 h | 3h 22m |
+| Qualität Stufe 2 (Premium Grade) | – | 32m 54s |
+| Qualität Stufe 3 (Ceremonial Grade) | – | 1h 36m |
+| Erster Franchise-Reset | ~3 h (20–30 Zen) | 3h 14m (41 Zen) |
+| Kyoto freigeschaltet | 3–4 h | 3h 14m |
+| Erstes Zufalls-Event | 20–45 min | 32m 17s |
 | Tokio freigeschaltet | – | — |
-Prestige: 1 Resets, Zen verdient 40, übrig 8; Meta: globalIncome 2, startCapital 1
-Standort berlin: Café-Level 6 (Bestwert 14, Resets 1), Einkommen/s 2.70 K
-Standort kyoto: Café-Level 6 (Bestwert 6, Resets 0), Einkommen/s 67.40 K
-Ende: Café-Level 6, Münzen 14.49 K, Einkommen/s 2.70 K
-Qualität 2, Goldene Blätter (Café-Level) 17, Zufriedenheit 84.7, Sauberkeit 60.0, Kampagnen 0, Marketing-Level 12
-Personal: cleaner 1, barista 6, socialMedia 6; Ambiente: seats 6, decor 30, wifi 18, music 15
+Prestige: 1 Resets, Zen verdient 41, übrig 9; Meta: globalIncome 2, startCapital 1
+Events: 6 abgeschlossen (supplyShortage 1, heatwave 2, foodBlogger 2, rainyDay 1); Influencer-Blätter heute 10
+Goldene Blätter verdient 52 (je Stunde: h1 14, h2 15, h3 12, h4 11; ohne Erfolge/Quests, die laufen nur in der App)
+Standort berlin: Café-Level 8 (Bestwert 14, Resets 1), Einkommen/s 4.76 K
+Standort kyoto: Café-Level 8 (Bestwert 8, Resets 0), Einkommen/s 119.02 K
+Ende: Café-Level 8, Münzen 338.74 K, Einkommen/s 4.76 K
+Qualität 2, Goldene Blätter 52, Zufriedenheit 85.0, Sauberkeit 60.0, Kampagnen 2, Marketing-Level 14
+Personal: cleaner 1, barista 11, socialMedia 7; Ambiente: seats 8, decor 30, wifi 20, music 18

@@ -94,7 +94,7 @@ describe('tick', () => {
   it('entfernt abgelaufene Events und Boosts', () => {
     const s = {
       ...fresh(),
-      activeEvents: [{ id: 'e', until: 1, spawnMult: 2, incomeMult: 1 }],
+      activeEvents: [{ id: 'heatwave', locationId: 'berlin', startedAt: 0, until: 1 }],
       boosts: [{ id: 'b', until: 100, spawnMult: 1, incomeMult: 1, speedMult: 1 }],
     };
     const n = tick(s, 2000);

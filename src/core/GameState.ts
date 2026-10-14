@@ -2,8 +2,11 @@ import { Decimal, D } from './math/bignum';
 import { BALANCE } from '@data/balance';
 import { STATIONS } from '@data/stations';
 import { START_LOCATION_ID, getLocationDef } from '@data/locations';
+import { EVENT_CONFIG } from '@data/events';
+import { FREE_BOOST } from '@data/monetization';
+import { hashString, rng } from './math/random';
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export interface Settings {
   lang: 'de' | 'en';
@@ -12,12 +15,35 @@ export interface Settings {
   numberFormat: 'short' | 'scientific';
 }
 
-/** `until` ist in `playtimeSec` gemessen (monoton, manipulationsarm). */
+/**
+ * Laufendes Zufalls-Event (GAME_DESIGN § 12.1) an einem Standort; Wirkung kommt aus `data/events`.
+ * Zeiten in `playtimeSec` (monoton, manipulationsarm).
+ */
 export interface ActiveEvent {
   id: string;
+  locationId: string;
+  startedAt: number;
   until: number;
-  spawnMult: number;
-  incomeMult: number;
+}
+
+/** Deterministischer Event-Plan: das n-te Event zieht aus `seed` und `count`. */
+export interface EventSchedule {
+  seed: number;
+  count: number;
+  /** Spielzeit, ab der das nächste Zufalls-Event startet. */
+  nextAt: number;
+}
+
+/** Influencer-Blätter (GAME_DESIGN § 7.5): Erwartungswert sammelt sich in `fraction`, Deckel pro Tag. */
+export interface LeafDropState {
+  date: string;
+  count: number;
+  fraction: number;
+}
+
+export interface SkinState {
+  owned: string[];
+  equipped: string[];
 }
 
 export interface ActiveBoost {
@@ -108,6 +134,7 @@ export interface MetaState {
   achievements: Record<string, { unlockedAt: number }>;
   lifetimeEarned: Decimal;
   unlockedLocations: string[];
+  skins: SkinState;
 }
 
 export interface GameState {
@@ -120,7 +147,13 @@ export interface GameState {
   activeLocationId: string;
   locations: Record<string, LocationState>;
   activeEvents: ActiveEvent[];
+  /** IDs der laufenden Kalender-Events (lokales Datum, `progressionStep`); wirken an allen Standorten. */
+  calendarEvents: string[];
+  eventSchedule: EventSchedule;
   boosts: ActiveBoost[];
+  /** Spielzeit, ab der der Gratis-Boost (No-op-Monetarisierung) wieder bereitsteht. */
+  freeBoostAt: number;
+  leafDrops: LeafDropState;
   quests: QuestState;
   tap: TapState;
   stats: Stats;
@@ -169,6 +202,13 @@ export function createTapState(): TapState {
   return { hype: 0, windowStart: 0, windowTaps: 0 };
 }
 
+/** Erster Event-Termin aus dem Seed; `now` als Seed macht jedes neue Spiel anders, aber reproduzierbar. */
+export function createEventSchedule(seed: number): EventSchedule {
+  const r = rng(seed)();
+  const { intervalMinSec: lo, intervalMaxSec: hi } = EVENT_CONFIG;
+  return { seed, count: 0, nextAt: lo + r * (hi - lo) };
+}
+
 export function createInitialState(now: number, lang: 'de' | 'en' = 'en'): GameState {
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -183,11 +223,16 @@ export function createInitialState(now: number, lang: 'de' | 'en' = 'en'): GameS
       achievements: {},
       lifetimeEarned: D(0),
       unlockedLocations: [START_LOCATION_ID],
+      skins: { owned: [], equipped: [] },
     },
     activeLocationId: START_LOCATION_ID,
     locations: { [START_LOCATION_ID]: createLocationState() },
     activeEvents: [],
+    calendarEvents: [],
+    eventSchedule: createEventSchedule(hashString(String(now))),
     boosts: [],
+    freeBoostAt: FREE_BOOST.intervalSec,
+    leafDrops: { date: '', count: 0, fraction: 0 },
     quests: { date: '', items: [], bonusClaimed: false },
     tap: createTapState(),
     stats: createStats(),
@@ -198,6 +243,13 @@ export function getLocation(state: GameState, id: string): LocationState {
   const loc = state.locations[id];
   if (!loc) throw new Error(`Location not in state: ${id}`);
   return loc;
+}
+
+/** Goldene Blätter ausgeben; `null`, wenn sie nicht reichen – der Stand wird nie negativ. */
+export function spendLeaves(state: GameState, amount: number): GameState | null {
+  if (!Number.isFinite(amount) || amount < 0) return null;
+  if (state.meta.goldenLeaves.lt(amount)) return null;
+  return { ...state, meta: { ...state.meta, goldenLeaves: state.meta.goldenLeaves.sub(amount) } };
 }
 
 /** Goldene Blätter gutschreiben (Statistik zählt mit). */

@@ -84,4 +84,23 @@ describe('i18n-Abdeckung der Spieldaten', () => {
     for (const q of QUESTS) need(`quest.${q.kind}`);
     expect(missing).toEqual([]);
   });
+
+  it('jedes Event, jeder Skin und jeder Boost hat Texte', async () => {
+    const { RANDOM_EVENTS, CALENDAR_EVENTS } = await import('../src/data/events');
+    const { SKINS, BOOSTS } = await import('../src/data/leaves');
+    const missing: string[] = [];
+    const need = (k: string): void => {
+      if (!keys.has(k)) missing.push(k);
+    };
+    for (const e of [...RANDOM_EVENTS, ...CALENDAR_EVENTS]) {
+      need(`event.${e.id}.name`);
+      need(`event.${e.id}.desc`);
+    }
+    for (const sk of SKINS) {
+      need(`skin.${sk.id}.name`);
+      need(`skin.${sk.id}.desc`);
+    }
+    for (const b of Object.values(BOOSTS)) need(`hud.boost.${b.id}`);
+    expect(missing).toEqual([]);
+  });
 });
