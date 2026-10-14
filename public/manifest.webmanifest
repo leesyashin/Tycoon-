@@ -1,0 +1,11 @@
+{
+  "name": "Matcha Café Empire",
+  "short_name": "Matcha Café",
+  "start_url": "/Tycoon-/",
+  "scope": "/Tycoon-/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1d2a17",
+  "theme_color": "#5a7d3a",
+  "icons": [{ "src": "assets/ui/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

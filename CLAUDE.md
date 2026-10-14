@@ -3,11 +3,13 @@
 Idle-/Tycoon-Browserspiel (Matcha-Cafés statt Hotels). Web-App mit Vite + TypeScript + Phaser 3, DOM-Overlay für UI, i18n DE/EN, lokale Saves, Monetarisierung nur als No-op-Interface.
 
 ## Pflichtlektüre zu Session-Beginn
+
 1. `docs/STATUS.md` – was die letzte Session hinterlassen hat
 2. `docs/PLAN.md` – Architektur (§ 2) und der Abschnitt der aktuellen Session (§ 3)
 3. `docs/GAME_DESIGN.md` – nur die dort referenzierten Paragraphen
 
 ## Befehle
+
 ```
 pnpm install        Abhängigkeiten
 pnpm dev            Dev-Server
@@ -19,6 +21,7 @@ pnpm build          Produktions-Build (base: /Tycoon-/)
 ```
 
 ## Harte Regeln
+
 - `src/core` importiert **nie** aus `phaser` oder dem DOM. Alles dort ist pur und getestet.
 - Einzige Quelle der Wahrheit ist `GameState`. Szene und UI lesen, schreiben nur über Actions in `core`.
 - Währungen sind immer `Decimal` (break_infinity.js), nie `number`.
@@ -31,6 +34,7 @@ pnpm build          Produktions-Build (base: /Tycoon-/)
 - Keine neuen Abhängigkeiten ohne Eintrag unter „Entscheidungen“ in `docs/STATUS.md`.
 
 ## Arbeitsweise
+
 - Branch pro Session: `session/sN-kurzname`, Draft-PR mit Abnahme-Checkliste aus `docs/PLAN.md`.
 - Conventional Commits, kleine Commits.
 - `docs/STATUS.md` am Ende jeder Session aktualisieren (Struktur in PLAN.md § 4). Ohne aktualisierte STATUS.md ist die Session nicht fertig.
@@ -38,6 +42,7 @@ pnpm build          Produktions-Build (base: /Tycoon-/)
 - Mobile zuerst (Portrait), Desktop danach. 60 fps auf Mittelklasse-Handy ist das Ziel.
 
 ## Code-Stil
+
 - TypeScript strict, ESLint (typescript-eslint strict) + Prettier.
 - Funktionen in `core` sind pure Funktionen `(state, …) → newState` oder mutieren einen klar übergebenen Draft; keine globalen Singletons außer dem Store.
 - Dateinamen: `camelCase.ts` für Module, `PascalCase.ts` für Klassen/Szenen.
