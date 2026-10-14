@@ -14,7 +14,7 @@ Stand: 2026-10-14 · Auftraggeber: Vincent · Repo: `leesyashin/tycoon-`
 |---|---|
 | Plattform | Web-App (Browser + PWA fürs Handy) |
 | Stack | Vite + TypeScript + **Phaser 3** für die Iso-Szene, HTML/CSS-Overlay für Menüs |
-| Grafik | Isometrisches Pixel-Art (2:1-Diamant-Tiles). Platzhalter zuerst, echte Sprites in Session 8 |
+| Grafik | Isometrisches **Flat-Shaded-Low-Poly** (2:1-Diamant-Tiles, flache Lokalfarben, keine Texturen/Outlines) nach dem Vorbild; UI-Stil 1:1 nach `docs/UI_STYLE.md`. Platzhalter zuerst, echte Sprites in Session 8 |
 | Umfang | Vollständiges Spiel: Stationen, Personal, Kunden-Sim, Zufriedenheit, Marketing, Qualitätsstufen, Achievements, Quests, mehrere Standorte, Prestige, Events, Sound |
 | Sprache | i18n von Anfang an: Deutsch + Englisch, umschaltbar |
 | Speichern | Nur lokal (localStorage, versioniertes Schema, Export/Import als Datei). Kein Backend |
@@ -103,7 +103,7 @@ Idle Hotel Empire Tycoon: Man leitet ein Hotel, baut Zimmer und Einrichtungen, s
 |---|---|
 | Node / Paketmanager | Node 22 LTS, `pnpm` |
 | Build | Vite 6, `base: '/Tycoon-/'` (Repo-Name hat Bindestrich am Ende, GitHub Pages braucht exakt diesen Pfad) |
-| Phaser | Phaser 3.8x, WebGL mit Canvas-Fallback, `pixelArt: true`, `roundPixels: true` |
+| Phaser | Phaser 3.8x, WebGL mit Canvas-Fallback, `pixelArt: false`, `antialias: true` (Flat-Shaded-Vektor-Sprites, siehe UI_STYLE § 4) |
 | Große Zahlen | `break_infinity.js` (Decimal). Anzeige: `1.23 K / M / B / T / aa / ab …`, Format pro Sprache |
 | Tick | Fester Tick 100 ms in `core`. Render-Loop via Phaser `update()`. Bei Tab-Wechsel: Catch-up über `visibilitychange` |
 | Offline | Beim Laden: `elapsed = min(now - lastSave, offlineCap)`, Einnahmen = Rate × elapsed × Offline-Effizienz (Start 50 %, upgradebar) |
@@ -112,7 +112,7 @@ Idle Hotel Empire Tycoon: Man leitet ein Hotel, baut Zimmer und Einrichtungen, s
 | i18n | Flache Key-Struktur `screen.element.text`, Platzhalter `{count}`, Plural über `Intl.PluralRules`. Jeder sichtbare String kommt aus `t()`. Lint-Regel/Test: `de.json` und `en.json` haben identische Keys |
 | Iso | 2:1-Tiles, Basis 64×32 px, Grid 12×12 pro Café (erweiterbar), Depth = `y + x`-Sortierung. Eigener Helper, kein Plugin |
 | Assets Phase 1 | Programmatisch erzeugte Platzhalter (Phaser `Graphics` → `generateTexture`). Session 8 ersetzt sie |
-| Assets final | Pixel-Art, CC0/kompatible Lizenzen (z. B. Kenney-Packs, Lizenz jeweils in `docs/ASSETS.md` eintragen) oder selbst gezeichnete/generierte Sprites. **Keine** Assets aus dem Original-Spiel |
+| Assets final | Flat-Shaded-Iso-Sprites (SVG → PNG 2×), CC0/kompatible Lizenzen (z. B. Kenney-Iso-Packs, Lizenz jeweils in `docs/ASSETS.md` eintragen) oder selbst gezeichnete/generierte Sprites. Stilregeln in `docs/UI_STYLE.md` § 4. **Keine** Assets aus dem Original-Spiel |
 | Monetarisierung | `interface MonetizationProvider { isAvailable(); showRewarded(placement): Promise<RewardResult>; purchase(sku): Promise<PurchaseResult> }`. Im Build nur `NoopProvider`. Feature-Flag `MONETIZATION_ENABLED=false` |
 | Tests | Vitest für `core` (Ziel: Formeln, Save-Migration, Offline, Prestige 100 % abgedeckt). Playwright: App lädt, Start-Café sichtbar, ein Kauf funktioniert, Reload behält Stand |
 | Lint/Format | ESLint (typescript-eslint, strict) + Prettier. `pnpm check` = lint + typecheck + test |
@@ -169,14 +169,14 @@ interface LocationState {
 | S5 | Progression | Qualitätsstufen, Café-Level, Meilensteine, Achievements, Daily Quests, Café-Erweiterung | 1 Session |
 | S6 | Standorte + Prestige | 6 Standorte, Freischaltung, Franchise-Reset, Zen, Meta-Upgrades | 1 Session |
 | S7 | Events, Boosts, Premium | Zeit-Events, Boost-System, Goldene Blätter, MonetizationProvider (No-op), Zeitsprung-Shop | 1 Session |
-| S8 | Grafik + Audio | Echte Pixel-Art-Assets, Animationen, Partikel, SFX/Musik, Juice | 1–2 Sessions |
+| S8 | Grafik + Audio | UI-Skin nach `docs/UI_STYLE.md`, Flat-Shaded-Iso-Assets, Animationen, Partikel, SFX/Musik, Juice | 1–2 Sessions |
 | S9 | Balancing, Tutorial, Release | Balance-Sim, Onboarding, PWA, Performance, Bugfixing, v1.0 | 1–2 Sessions |
 
 Gesamt: ca. 11–14 Sessions. Reihenfolge ist verbindlich, S2 und S3 können bei Bedarf parallel in zwei Branches laufen (Schnittstelle: `GameState` aus S1).
 
 ### Regeln für jede Session
 
-1. Zuerst lesen: `CLAUDE.md` → `docs/STATUS.md` → eigener Abschnitt hier → relevante Teile von `docs/GAME_DESIGN.md`.
+1. Zuerst lesen: `CLAUDE.md` → `docs/STATUS.md` → eigener Abschnitt hier → relevante Teile von `docs/GAME_DESIGN.md`. Sobald die Session UI baut oder ändert: `docs/UI_STYLE.md` (§ 2 Tokens, § 3 Komponenten).
 2. Branch `session/sN-kurzname` von `main`. Am Ende Draft-PR mit Checkliste der Abnahmekriterien.
 3. `pnpm check` muss grün sein, bevor gepusht wird.
 4. `docs/STATUS.md` am Ende aktualisieren: Was ist fertig, was ist offen, bekannte Bugs, Entscheidungen, nächste Schritte. Das ist die einzige Übergabe zur nächsten Session.
@@ -359,8 +359,8 @@ Setze S5 „Progression“ um. Branch: session/s5-progression.
 
 **Aufgaben**
 - Alle 6 Standorte in `data/locations.ts` + Layouts (§ 3): eigene Münz-Balance, eigene Stations-Varianten (Namen/Preise/Skins), Freischaltung über Café-Level des Vorgängers + Zen.
-- Standort-Übersicht (Weltkarte als stilisierte Liste/Karte), Wechsel zwischen Standorten, alle Standorte produzieren parallel (Offline inklusive).
-- Franchise-Reset (§ 11): Standort zurücksetzen → Zen nach Formel, Bestätigungsdialog mit Vorschau „Du bekommst X Zen, das sind +Y % …“.
+- Standort-Übersicht (Weltkarte als stilisierte Liste/Karte), Wechsel zwischen Standorten, alle Standorte produzieren parallel (Offline inklusive). UI: Vollbild-Screen mit dunkler Weltkarte und weißen Karten nach UI_STYLE § 3.9, Nav-Kreis „Standorte“ nach § 3.5.
+- Franchise-Reset (§ 11): Standort zurücksetzen → Zen nach Formel, Bestätigungsdialog (UI_STYLE § 3.12) mit Vorschau „Du bekommst X Zen, das sind +Y % …“.
 - Meta-Upgrades mit Zen (§ 11.3): globaler Einkommens-Multiplikator, Start-Kapital, Offline-Effizienz, Kaufrabatt, Tap-Stärke.
 - Migration Save v1 → v2 (mehrere Standorte).
 - Tests: Zen-Formel, Reset erhält `meta`, Freischalt-Kette, Migration.
@@ -383,8 +383,8 @@ Setze S6 „Standorte + Prestige“ um. Branch: session/s6-prestige.
 
 **Aufgaben**
 - Event-System (§ 12): zufällige und kalendarische Events mit Dauer, Modifikatoren (z. B. Hitzewelle: Iced-Bar ×3), Ankündigungs-Banner, Szene-Overlay (Farbfilter/Partikel).
-- Boost-System: zeitlich begrenzte Multiplikatoren, stapelbar nach Regeln, sichtbar im HUD mit Restzeit.
-- Goldene Blätter (§ 10): Quellen (Achievements, Quests, Events, seltene Kunden-Drops), Ausgaben: Zeitsprung 1 h/4 h/8 h, Boost ×2 für 30 min, Sofort-Fertigstellung einer Kampagne, kosmetische Skins (Vorbereitung, 2 Beispiele).
+- Boost-System: zeitlich begrenzte Multiplikatoren, stapelbar nach Regeln, sichtbar im HUD mit Restzeit (Boost-Pille in der Bottom-Bar, UI_STYLE § 3.5; Event-Karte am rechten Rand, § 3.7; Status-Pille, § 3.2).
+- Goldene Blätter (§ 10): Quellen (Achievements, Quests, Events, seltene Kunden-Drops), Ausgaben: Zeitsprung 1 h/4 h/8 h, Boost ×2 für 30 min, Sofort-Fertigstellung einer Kampagne, kosmetische Skins (Vorbereitung, 2 Beispiele). Blätter-Shop öffnet über den „+“-Kreis der HUD-Pille (UI_STYLE § 3.1); Premium-Kacheln nach § 3.8.
 - `monetization/`: Interface + `NoopProvider`. UI-Buttons „Boost ansehen“ rufen `provider.showRewarded()`; `NoopProvider` liefert den Boost nach einem Timer (z. B. alle 20 min ein Gratis-Boost). Feature-Flag `MONETIZATION_ENABLED`. Ein Doku-Abschnitt in STATUS.md, wie ein echter Provider (AdMob/Web-Ads, Stripe) später eingehängt würde.
 - Tests: Event-Scheduler deterministisch via Seed, Boost-Stacking, Blätter-Buchhaltung ohne negative Beträge.
 
@@ -402,25 +402,31 @@ Setze S7 „Events, Boosts, Premium, MonetizationProvider (No-op)“ um. Branch:
 
 ### S8 – Grafik und Audio
 
-**Ziel:** Vom Platzhalter zum Pixel-Art-Café, das man gerne anschaut.
+**Ziel:** Vom Platzhalter zum Flat-Shaded-Café im Look des Vorbilds, inklusive UI-Skin 1:1 nach `docs/UI_STYLE.md`.
+
+**Pflichtlektüre zusätzlich:** `docs/UI_STYLE.md` vollständig (Tokens § 2, Komponenten § 3, Szene § 4, Checkliste § 7).
 
 **Aufgaben**
-- Asset-Beschaffung: CC0-/kompatibel lizenzierte Iso-Pixel-Art-Packs prüfen und in `docs/ASSETS.md` mit Quelle und Lizenz eintragen. Fehlende Sprites (Matcha-Bar, Chasen, Kunden-Typen) selbst als 32×32/64×64-Pixel-Art erzeugen (programmatisch oder von Hand gezeichnet, als PNG committed). Keine Assets aus kommerziellen Spielen.
-- Texture-Atlas (TexturePacker-frei: `free-tex-packer-core` oder Vite-Plugin), Lazy-Loading pro Standort.
-- Sprites: Boden/Wände pro Standort-Thema, alle Stationen in 3 Ausbaustufen (Level 1/25/100 ändern die Optik), Ambiente, Kunden-Typen mit 4-Richtungs-Walk (2–4 Frames), Personal.
-- Animationen: Dampf über Matcha, Münz-Flug ins HUD, Kauf-Pop, Level-up-Shine, Kunden-Emotes.
+- UI-Skin (UI_STYLE § 7, Reihenfolge einhalten): `:root`-Tokens in `src/ui/style.css` durch § 2 ersetzen; `UI_THEME` in `src/data/ui.ts` spiegelt dieselben Werte für Phaser. HUD-Pille, Status-Pille, Qualitäts-Pille, runde Buttons rechts, Bottom-Bar (ersetzt `.nav`), Avatar, Stations-Bottom-Sheet mit Detailkarte und Icon-Grid, Verwaltungs-Screen mit Karten-Tabs und Statistik-Balken, weiße Dialoge und Toasts. `data-testid`s bleiben stabil, damit die e2e-Tests weiterlaufen.
+- Schriften lokal (`public/assets/fonts/`, WOFF2, OFL): Poppins für Zahlen/Buttons, Didact Gothic für Titel. Keine Pixel-Font. Lizenz in `docs/ASSETS.md`.
+- Icons als Inline-SVG-Sprite (`public/assets/ui/icons.svg`), gefüllte Glyphen, MIT/OFL-Quelle oder selbst gezeichnet, Eintrag in `docs/ASSETS.md`. Emoji nur noch als Fallback.
+- Asset-Beschaffung Szene: CC0-/kompatibel lizenzierte Flat-Shaded-Iso-Packs prüfen (z. B. Kenney) und in `docs/ASSETS.md` eintragen. Fehlende Sprites (Matcha-Bar, Chasen, Kunden-Typen, Personal) selbst als SVG zeichnen und als PNG 2× exportieren. Stilregeln UI_STYLE § 4: eine Lokalfarbe je Fläche, drei Helligkeitsstufen, keine Texturen, keine Outlines, Dollhouse-Schnitt. Keine Assets aus kommerziellen Spielen.
+- Phaser auf `pixelArt: false`, `antialias: true`; Texture-Atlas (TexturePacker-frei: `free-tex-packer-core` oder Vite-Plugin), Lazy-Loading pro Standort.
+- Sprites: Boden/Wände pro Standort-Thema, alle Stationen in 3 Ausbaustufen (Level 1/25/100 ändern die Optik), Ambiente, Kunden-Typen mit 4-Richtungs-Walk (2 Frames, Blockfiguren), Personal in Schürze.
+- Szene-Effekte (UI_STYLE § 4): Tag/Nacht-Overlay (kosmetisch), Fortschrittsringe über bedienten Kunden, Warteschlangen-Tafel an der Kasse, Kauf-Plopp, Level-up-Shine, Dampf über Matcha, Münz-Flug ins HUD, Kunden-Emotes.
 - Audio: Howler oder Phaser-Audio; SFX (Kauf, Münze, Tap, Freischaltung, Fehler), Lo-fi-Hintergrundmusik-Loop (CC0), Lautstärke in Settings, Autoplay-Policy beachten (erst nach erster Interaktion).
-- UI-Skin: Pixel-Font (z. B. „Press Start 2P“ nur für Titel, lesbare Sans für Fließtext), Panel-Rahmen, Icons.
 
 **Abnahmekriterien**
 - Keine programmatischen Platzhalter mehr im Spiel sichtbar.
-- Alle Assets in `docs/ASSETS.md` mit Lizenz gelistet.
+- Alle Punkte der Checkliste UI_STYLE § 7 abgehakt; Screenshots DE/EN (390×844 und 1280×720) im PR.
+- axe-e2e grün (Kontrastregeln UI_STYLE § 2.1), Touch-Ziele ≥ 44 px, `prefers-reduced-motion` respektiert.
+- Alle Assets und Fonts in `docs/ASSETS.md` mit Lizenz gelistet.
 - Bundle-Budget eingehalten (§ 2.3), 60 fps auf Mittelklasse-Android.
 
 **Startprompt für Opus**
 ```
-Lies CLAUDE.md, docs/STATUS.md, docs/PLAN.md (S8) und docs/ASSETS.md.
-Setze S8 „Grafik + Audio“ um. Lizenz jeder Datei dokumentieren. Branch: session/s8-art.
+Lies CLAUDE.md, docs/STATUS.md, docs/PLAN.md (S8), docs/UI_STYLE.md und docs/ASSETS.md.
+Setze S8 „Grafik + Audio“ um: UI-Skin 1:1 nach UI_STYLE.md, Flat-Shaded-Iso-Assets. Lizenz jeder Datei dokumentieren. Branch: session/s8-art.
 ```
 
 ---
@@ -491,7 +497,7 @@ Zusätzlich: Conventional Commits (`feat:`, `fix:`, `chore:`, `test:`, `docs:`),
 | Balancing fühlt sich falsch an | Headless-Sim ab S1, Richtwerte in GAME_DESIGN § 15, Balancing-Pass in S9, alle Zahlen in `src/data` |
 | Asset-Lizenzen unklar | `docs/ASSETS.md` ist Pflicht ab S0; CC0 bevorzugen; nichts aus dem Original |
 | Save-Brüche zwischen Sessions | `schemaVersion` + Migration ab S1, Tests für jede Migration, IndexedDB-Backup |
-| Mobile-Performance | Objekt-Pool, max. 40 Agenten, Atlas, `pixelArt`-Rendering, Profiling in S9 |
+| Mobile-Performance | Objekt-Pool, max. 40 Agenten, Atlas, Sprites in 2× ohne Laufzeit-Skalierung, Profiling in S9 |
 | Session-Kontext geht verloren | STATUS.md-Protokoll, kleine PRs, keine ungeschriebenen Entscheidungen |
 | Scope-Creep | Jede Session hat Abnahmekriterien; Neues wandert in STATUS.md „Offen“, nicht in den Branch |
 
