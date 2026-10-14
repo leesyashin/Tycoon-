@@ -249,6 +249,8 @@ describe('Influencer-Drops (GAME_DESIGN § 7.5)', () => {
     s = accrueLeafDrops(s, 5);
     expect(leaves(s)).toBe(LEAF_DROPS.maxPerDay);
     expect(refreshLeafDropDay(s, '2026-10-14')).toBe(s);
+    // Uhr zurückgestellt: der Deckel bleibt (S9).
+    expect(refreshLeafDropDay(s, '2026-10-13')).toBe(s);
     s = refreshLeafDropDay(s, '2026-10-15');
     s = accrueLeafDrops(s, 1);
     expect(leaves(s)).toBe(LEAF_DROPS.maxPerDay + 1);

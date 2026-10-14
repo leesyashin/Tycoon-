@@ -9,6 +9,7 @@ import {
   deserialize,
   exportFilename,
   exportSave,
+  forwardTime,
   importSave,
   loadGame,
   loadWithOffline,
@@ -263,5 +264,27 @@ describe('Save v8 (Tutorial, Café-Level-Stufen, S9)', () => {
     expect(deserialize(JSON.stringify(raw)).tutorial).toEqual({ step: 0, done: false });
     raw['tutorial'] = { step: 999, done: false };
     expect(deserialize(JSON.stringify(raw)).tutorial.done).toBe(true);
+  });
+});
+
+describe('Uhr-Manipulation (S9)', () => {
+  it('Uhr vor- und zurückstellen bringt die Offline-Zeit nicht zweimal', () => {
+    const st = new MemStorage();
+    saveGame(st, createInitialState(0), 1000);
+    const day = 24 * 3_600_000;
+    // Uhr +1 Tag: einmal Offline-Einnahmen (gedeckelt), dann wird bei „zurückgestellter“ Uhr gespeichert.
+    const first = loadWithOffline(st, 1000 + day);
+    expect(first?.offline.earned.gt(0)).toBe(true);
+    if (!first) throw new Error('kein Stand');
+    saveGame(st, first.state, 2000);
+    expect(loadGame(st)?.lastSavedAt).toBe(1000 + day);
+    // Wieder +1 Tag ab der echten Zeit: der Zeitstempel steht schon dort, also nichts.
+    const again = loadWithOffline(st, 1000 + day);
+    expect(again?.offline.earned.toNumber()).toBe(0);
+  });
+  it('forwardTime ignoriert ungültige Uhrzeiten', () => {
+    expect(forwardTime(500, Number.NaN)).toBe(500);
+    expect(forwardTime(500, 400)).toBe(500);
+    expect(forwardTime(500, 600)).toBe(600);
   });
 });

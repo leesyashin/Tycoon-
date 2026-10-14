@@ -306,6 +306,8 @@ describe('Daily Quests (GAME_DESIGN § 13.2)', () => {
     expect(midnight.quests.date).toBe('2026-03-11');
     s = refreshQuests(s, T - 3_000_000, berlin); // 22:40 UTC = 23:40 Berlin, gleicher Tag
     expect(refreshQuests(s, T - 3_000_000, berlin)).toBe(s);
+    // Uhr einen Tag zurück: keine neuen Aufgaben (S9).
+    expect(refreshQuests(midnight, T - 3_600_000 - 86_400_000, berlin)).toBe(midnight);
     // Derselbe Zeitpunkt ist in New York noch der 10. → kein Reset.
     const ny = refreshQuests(fresh(), T - 3_600_000, 300);
     expect(refreshQuests(ny, T, 300)).toBe(ny);

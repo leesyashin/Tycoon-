@@ -21,7 +21,9 @@ export default defineConfig({
   build: { chunkSizeWarningLimit: 1500 },
   plugins: [
     VitePWA({
-      registerType: 'autoUpdate',
+      // Update-Hinweis statt stillem Austausch (src/ui/pwa.ts); Registrierung macht der Code selbst.
+      registerType: 'prompt',
+      injectRegister: false,
       manifest: false, // public/manifest.webmanifest wird direkt verlinkt
       workbox: { globPatterns: ['**/*.{js,css,html,png,svg,json,woff2,webmanifest}'] },
     }),

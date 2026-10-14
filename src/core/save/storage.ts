@@ -24,8 +24,17 @@ const LEGACY_KEYS = [
   'mce.save.v0',
 ];
 
+/**
+ * Zeitstempel laufen nur vorwärts: wer die Uhr vor- und wieder zurückstellt, bekommt die Offline-Zeit
+ * nicht ein zweites Mal (PLAN S9 „Uhr-Manipulation begrenzen“).
+ */
+export function forwardTime(lastSavedAt: number, now: number): number {
+  if (!Number.isFinite(now)) return lastSavedAt;
+  return Math.max(lastSavedAt, now);
+}
+
 export function saveGame(storage: StorageLike, state: GameState, now: number): GameState {
-  const stamped = { ...state, lastSavedAt: now };
+  const stamped = { ...state, lastSavedAt: forwardTime(state.lastSavedAt, now) };
   storage.setItem(SAVE_KEY, serialize(stamped));
   return stamped;
 }
@@ -46,7 +55,10 @@ export function loadWithOffline(
   const loaded = loadGame(storage);
   if (!loaded) return null;
   const offline = catchUpOffline(loaded, now);
-  return { state: { ...offline.state, lastSavedAt: now }, offline };
+  return {
+    state: { ...offline.state, lastSavedAt: forwardTime(loaded.lastSavedAt, now) },
+    offline,
+  };
 }
 
 /** Entfernt alle Spielstände (auch alte Schlüssel), damit ein Neustart nicht wieder migriert. */

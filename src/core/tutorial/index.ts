@@ -27,6 +27,11 @@ export function advanceTutorial(state: GameState): GameState {
   return { ...state, tutorial: { step, done: step >= TUTORIAL_STEPS.length } };
 }
 
+/** „Tutorial wiederholen“ aus den Einstellungen. */
+export function restartTutorial(state: GameState): GameState {
+  return { ...state, tutorial: { step: 0, done: false } };
+}
+
 export function skipTutorial(state: GameState): GameState {
   if (state.tutorial.done) return state;
   return { ...state, tutorial: { ...state.tutorial, done: true } };
@@ -38,7 +43,7 @@ export function skipTutorial(state: GameState): GameState {
  */
 export function checkTutorial(state: GameState): GameState {
   let s = state;
-  for (let def = currentTutorialStep(s); def && isTutorialStepComplete(s, def); ) {
+  for (let def = currentTutorialStep(s); def && isTutorialStepComplete(s, def);) {
     s = advanceTutorial(s);
     def = currentTutorialStep(s);
   }

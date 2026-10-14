@@ -1,6 +1,9 @@
 {
+  "id": "/Tycoon-/",
   "name": "Matcha Café Empire",
   "short_name": "Matcha Café",
+  "description": "Idle tycoon game: build a matcha café empire.",
+  "lang": "en",
   "start_url": "/Tycoon-/",
   "scope": "/Tycoon-/",
   "display": "standalone",

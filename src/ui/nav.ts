@@ -98,7 +98,7 @@ export function createNav(onSelect: (id: NavTarget) => void): Nav {
   );
   const bar = h(
     'nav',
-    { class: 'actionbar', 'aria-label': t('nav.label') },
+    { class: 'actionbar', 'aria-label': t('nav.label'), 'data-testid': 'actionbar' },
     shop,
     h('div', { class: 'actionbar-right' }, hype, ...BAR.map((i) => button(i))),
   );

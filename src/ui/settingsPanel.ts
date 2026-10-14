@@ -10,6 +10,13 @@ export interface SaveActions {
   exportSave(): void;
   importSave(text: string): void;
   deleteSave(): void;
+  restartTutorial(): void;
+  /** Gültige Sicherungen (IndexedDB), neueste zuerst. */
+  listBackups(): Promise<{ savedAt: number; label: string }[]>;
+  restoreBackup(savedAt: number): void;
+  /** Install-Prompt des Browsers verfügbar (PWA)? */
+  canInstall(): boolean;
+  install(): void;
 }
 
 /** Settings (GAME_DESIGN § 16.10). Sprache wirkt sofort; `app.ts` reagiert auf `settings.lang`. */
@@ -110,6 +117,43 @@ export function createSettingsPanel(
     'data-testid': 'settings-delete',
   });
   on(deleteBtn, 'click', () => actions.deleteSave());
+  const tutorialBtn = h('button', {
+    class: 'btn',
+    type: 'button',
+    text: t('settings.tutorial'),
+    'data-testid': 'settings-tutorial',
+  });
+  on(tutorialBtn, 'click', () => actions.restartTutorial());
+  const installBtn = h('button', {
+    class: 'btn btn-primary',
+    type: 'button',
+    text: t('settings.install'),
+    'data-testid': 'settings-install',
+  });
+  installBtn.hidden = !actions.canInstall();
+  on(installBtn, 'click', () => actions.install());
+
+  // Sicherungen laden asynchron (IndexedDB); bis dahin bzw. ohne Sicherung ein Hinweis.
+  const backupList = h('ul', { class: 'backup-list', 'data-testid': 'settings-backups' });
+  backupList.append(h('li', { class: 'muted', text: t('settings.backupsNone') }));
+  void actions
+    .listBackups()
+    .then((list) => {
+      if (list.length === 0) return;
+      backupList.replaceChildren(
+        ...list.map((b, i) => {
+          const btn = h('button', {
+            class: 'btn',
+            type: 'button',
+            text: t('settings.backupRestore'),
+            'data-testid': `settings-backup-${String(i)}`,
+          });
+          on(btn, 'click', () => actions.restoreBackup(b.savedAt));
+          return h('li', { class: 'backup-row' }, h('span', { text: b.label }), btn);
+        }),
+      );
+    })
+    .catch(() => undefined);
 
   const el = h(
     'div',
@@ -133,6 +177,14 @@ export function createSettingsPanel(
       deleteBtn,
     ),
     h(
+      'fieldset',
+      {},
+      h('legend', { text: t('settings.backups') }),
+      h('p', { class: 'muted', text: t('settings.backupsHint') }),
+      backupList,
+    ),
+    h('div', { class: 'btn-row' }, tutorialBtn, installBtn),
+    h(
       'p',
       { class: 'muted' },
       h('a', {
@@ -148,6 +200,7 @@ export function createSettingsPanel(
   const view: View = {
     el,
     update(s: GameState) {
+      installBtn.hidden = !actions.canInstall();
       // Nur setzen, wenn abweichend, sonst springt ein offenes Select zurück.
       if (lang.el.value !== s.settings.lang) lang.el.value = s.settings.lang;
       if (numberFormat.el.value !== s.settings.numberFormat)

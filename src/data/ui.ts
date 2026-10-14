@@ -3,6 +3,9 @@ export const UI_CONFIG = {
   autosaveMs: 10_000,
   /** Takt für Quest-Tageswechsel und Achievement-Prüfung (Wanduhr-abhängig). */
   progressionMs: 1_000,
+  /** Splash (S9): Ausblenden dauert so lange; spätestens nach splashMaxMs ist er weg. */
+  splashFadeMs: 300,
+  splashMaxMs: 8_000,
   /** Wie oft das Overlay höchstens neu rendert. */
   renderMs: 200,
   toastMs: 3_500,

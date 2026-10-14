@@ -1,22 +1,29 @@
 import Phaser from 'phaser';
 import { detectLang, t } from '@i18n/index';
 import { createInitialState, type GameState } from '@core/GameState';
-import { createStore } from '@core/store';
+import { createStore, type Store } from '@core/store';
 import { progressionStep } from '@core/progression';
 import { UI_CONFIG, UI_THEME } from '@data/ui';
-import { SAVE_KEY, loadWithOffline } from '@core/save';
+import { SAVE_KEY, loadWithOffline, serialize } from '@core/save';
 import type { OfflineResult } from '@core/economy';
 import { BootScene } from '@scenes/BootScene';
 import { CafeScene } from '@scenes/CafeScene';
 import { REGISTRY, UI_EVENTS } from '@scenes/registry';
 import { applyDocumentLang, startApp } from '@ui/app';
 import { browserStorage } from '@ui/persistence';
+import { installErrorBoundary } from '@ui/errorBoundary';
+import { startPwa } from '@ui/pwa';
 import { createAudio } from './audio/audio';
 import type { SfxId } from '@data/audio';
 import './ui/style.css';
 
 const storage = browserStorage();
 const query = new URLSearchParams(window.location.search);
+let liveStore: Store | null = null;
+// Zuerst, damit auch Fehler beim Laden/Aufbau den Export anbieten (dann der gespeicherte Rohtext).
+installErrorBoundary(() =>
+  liveStore ? serialize(liveStore.getState()) : (storage?.getItem(SAVE_KEY) ?? null),
+);
 
 let initial: GameState | null = null;
 let offline: OfflineResult | null = null;
@@ -45,6 +52,7 @@ initial = initial
   : createInitialState(Date.now(), lang);
 
 const store = createStore(initial);
+liveStore = store;
 const audio = createAudio(store);
 
 // Die Simulation läuft unabhängig von Phaser: Einnahmen hängen nie an der Szene.
@@ -74,6 +82,17 @@ const game = new Phaser.Game({
   scene: [BootScene, CafeScene],
 });
 game.registry.set(REGISTRY.store, store);
+// Splash weg, sobald die Café-Szene steht (Atlas geladen); Fallback, falls die Szene nie startet.
+const hideSplash = (): void => {
+  const splash = document.getElementById('splash');
+  if (!splash) return;
+  splash.classList.add('splash--hide');
+  window.setTimeout(() => splash.remove(), UI_CONFIG.splashFadeMs);
+};
+game.events.once(Phaser.Core.Events.READY, () => {
+  game.scene.getScene('CafeScene').events.once(Phaser.Scenes.Events.CREATE, hideSplash);
+});
+window.setTimeout(hideSplash, UI_CONFIG.splashMaxMs);
 // Nur kosmetisch: `?debugSpawn=100` zeigt so viele Kunden/s, um die Agenten-Grenze zu prüfen.
 game.registry.set(REGISTRY.debugSpawn, Number(query.get('debugSpawn') ?? 0));
 
@@ -96,7 +115,12 @@ if (root) {
   });
   game.events.on(UI_EVENTS.sfx, (id: SfxId) => audio.play(id));
   game.events.on(UI_EVENTS.openStation, (stationId: string) => app.openStation(stationId));
-  if (loadFailed) app.toastError(t('toast.loadFailed'));
+  // Nicht im Dev-Server: dort gibt es keinen Service Worker (und e2e soll nichts cachen).
+  if (import.meta.env.PROD) startPwa(app.pwa);
+  if (loadFailed) {
+    app.toastError(t('toast.loadFailed'));
+    void app.offerBackupAfterLoadFailure();
+  }
   if (offline) app.showOffline(offline);
 }
 progress();

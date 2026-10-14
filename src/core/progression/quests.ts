@@ -55,7 +55,8 @@ function questDef(id: string): QuestDef | undefined {
 /** Neuer Tag → neue Quests (unerledigte verfallen, nicht nachholbar). Sonst unverändert. */
 export function refreshQuests(state: GameState, now: number, tzOffsetMin: number): GameState {
   const date = localDateKey(now, tzOffsetMin);
-  if (state.quests.date === date) return state;
+  // Nur vorwärts: Zurückstellen der Uhr würfelt keine neuen Tagesaufgaben (`YYYY-MM-DD` sortiert als Text).
+  if (state.quests.date >= date) return state;
   const items: QuestItem[] = pickDailyQuests(date).map((q) => ({
     id: q.id,
     base: q.kind === 'satisfaction' ? 0 : questStat(state, q.kind),
