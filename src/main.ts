@@ -3,6 +3,7 @@ import { detectLang, t } from '@i18n/index';
 import { createInitialState, type GameState } from '@core/GameState';
 import { createStore, type Store } from '@core/store';
 import { progressionStep } from '@core/progression';
+import { skipTutorial } from '@core/tutorial';
 import { UI_CONFIG, UI_THEME } from '@data/ui';
 import { SAVE_KEY, loadWithOffline, serialize } from '@core/save';
 import type { OfflineResult } from '@core/economy';
@@ -50,6 +51,8 @@ applyDocumentLang(lang);
 initial = initial
   ? { ...initial, settings: { ...initial.settings, lang } }
   : createInitialState(Date.now(), lang);
+// `?tutorial=0` startet ohne Onboarding (e2e-Tests, die etwas anderes prüfen; wie `?debugSpawn`).
+if (query.get('tutorial') === '0') initial = skipTutorial(initial);
 
 const store = createStore(initial);
 liveStore = store;

@@ -31,7 +31,7 @@ test('Assets laden lokal: Atlanten, Schriften, Icon-Sprite – keine fehlenden F
   page.on('response', (r) => {
     if (r.status() >= 400) problems.push(`${String(r.status())} ${r.url()}`);
   });
-  await page.goto('?lang=de');
+  await page.goto('?lang=de&tutorial=0');
   await expect(page.getByTestId('hud')).toBeVisible();
   await page.waitForTimeout(1500);
   await expect.poll(() => urls.some((u) => u.endsWith('/assets/sprites/common.png'))).toBe(true);
@@ -47,7 +47,7 @@ test('Assets laden lokal: Atlanten, Schriften, Icon-Sprite – keine fehlenden F
 
 test('Touch-Ziele ≥ 44 px im Hochformat (HUD, Leiste, Stations-Panel)', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('?lang=de');
+  await page.goto('?lang=de&tutorial=0');
   await expect(page.getByTestId('hud')).toBeVisible();
   const check = async (): Promise<void> => {
     const small = await page.evaluate(() =>
@@ -79,7 +79,7 @@ test('Touch-Ziele ≥ 44 px im Hochformat (HUD, Leiste, Stations-Panel)', async 
 test('Stations-Panel: Icon-Grid und Pfeile wechseln das Objekt, Ambiente kaufbar', async ({
   page,
 }) => {
-  await page.goto('?lang=en');
+  await page.goto('?lang=en&tutorial=0');
   await expect(page.getByTestId('hud')).toBeVisible();
   await seedCoins(page, '5000');
   await page.getByTestId('nav-shop').click();
@@ -95,7 +95,7 @@ test('Stations-Panel: Icon-Grid und Pfeile wechseln das Objekt, Ambiente kaufbar
 });
 
 test('Verwaltung: Karten-Tabs wechseln Shop, Marketing, Personal, Statistik', async ({ page }) => {
-  await page.goto('?lang=de');
+  await page.goto('?lang=de&tutorial=0');
   await page.getByTestId('nav-shop').click();
   await expect(page.getByTestId('panel-shop')).toBeVisible();
   await page.getByTestId('manage-tab-marketing').click();
@@ -113,7 +113,7 @@ test('Verwaltung: Karten-Tabs wechseln Shop, Marketing, Personal, Statistik', as
 });
 
 test('Lautstärke-Regler wirken und bleiben nach Neuladen', async ({ page }) => {
-  await page.goto('?lang=de');
+  await page.goto('?lang=de&tutorial=0');
   await page.getByTestId('nav-settings').click();
   const music = page.getByTestId('settings-music-volume');
   await expect(music).toHaveValue('40');
@@ -129,7 +129,7 @@ test('Lautstärke-Regler wirken und bleiben nach Neuladen', async ({ page }) => 
 
 test('prefers-reduced-motion: keine CSS-Animationen und Übergänge', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('?lang=de');
+  await page.goto('?lang=de&tutorial=0');
   await expect(page.getByTestId('hud')).toBeVisible();
   const animated = await page.evaluate(
     () =>

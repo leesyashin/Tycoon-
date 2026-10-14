@@ -69,7 +69,7 @@ async function buyFirstUpgrade(page: Page): Promise<void> {
 test('Spielschleife ohne Debug-Tasten: kaufen, speichern, neu laden', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto('?lang=de');
+  await page.goto('?lang=de&tutorial=0');
   await buyFirstUpgrade(page);
   await page.reload();
   await page.getByTestId('nav-shop').click();
@@ -80,7 +80,7 @@ test('Spielschleife ohne Debug-Tasten: kaufen, speichern, neu laden', async ({ p
 });
 
 test('Ambiente lässt sich im Shop kaufen', async ({ page }) => {
-  await page.goto('?lang=en');
+  await page.goto('?lang=en&tutorial=0');
   await reloadWithSave(page, { coins: '1000' });
   await page.getByTestId('nav-shop').click();
   await page.getByTestId('shop-tab-ambience').click();
@@ -91,7 +91,7 @@ test('Ambiente lässt sich im Shop kaufen', async ({ page }) => {
 });
 
 test('Sprachwechsel ändert Texte und Zahlenformat sofort', async ({ page }) => {
-  await page.goto('?lang=de');
+  await page.goto('?lang=de&tutorial=0');
   // Bottom-Bar ohne sichtbare Beschriftung (UI_STYLE § 6.2): Name steckt im aria-label.
   await expect(page.getByTestId('nav-settings')).toHaveAttribute('aria-label', 'Einstellungen');
   await expect(page.getByTestId('hud-coins')).toContainText(/\d,\d/);
@@ -109,7 +109,7 @@ test('Sprachwechsel ändert Texte und Zahlenformat sofort', async ({ page }) => 
 });
 
 test('Offline-Dialog nach längerer Abwesenheit', async ({ page }) => {
-  await page.goto('?lang=de');
+  await page.goto('?lang=de&tutorial=0');
   await reloadWithSave(page, { ageMs: 2 * 3600 * 1000 });
   const dlg = page.getByTestId('dialog-offline');
   await expect(dlg).toBeVisible();
@@ -120,7 +120,7 @@ test('Offline-Dialog nach längerer Abwesenheit', async ({ page }) => {
 
 test('Export, Import und Löschen mit doppelter Bestätigung', async ({ page }) => {
   test.setTimeout(60_000);
-  await page.goto('?lang=de');
+  await page.goto('?lang=de&tutorial=0');
   await buyFirstUpgrade(page);
   await page.getByTestId('nav-settings').click();
   const [download] = await Promise.all([
@@ -160,7 +160,7 @@ test('Export, Import und Löschen mit doppelter Bestätigung', async ({ page }) 
 test('Barrierefreiheit: keine axe-Verstöße (WCAG 2 A/AA) in HUD und Panels', async ({ page }) => {
   // 15 axe-Scans brauchen auf dem CI-Runner mehr als die Standard-30 s.
   test.setTimeout(90_000);
-  await page.goto('?lang=de');
+  await page.goto('?lang=de&tutorial=0');
   const scan = async (): Promise<void> => {
     const r = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
     expect(
@@ -196,7 +196,7 @@ test('Barrierefreiheit: keine axe-Verstöße (WCAG 2 A/AA) in HUD und Panels', a
 });
 
 test('Personal einstellen: Stufe steigt, Effekt wird erklärt', async ({ page }) => {
-  await page.goto('?lang=en');
+  await page.goto('?lang=en&tutorial=0');
   await reloadWithSave(page, { coins: '100000', level: 4 });
   await page.getByTestId('nav-staff').click();
   const row = page.getByTestId('staff-row-barista');
@@ -214,7 +214,7 @@ test('Personal einstellen: Stufe steigt, Effekt wird erklärt', async ({ page })
 });
 
 test('Marketing: Kampagne starten, Abklingzeit läuft', async ({ page }) => {
-  await page.goto('?lang=en');
+  await page.goto('?lang=en&tutorial=0');
   await reloadWithSave(page, { coins: '100000', level: 2 });
   await page.getByTestId('nav-marketing').click();
   await expect(page.getByTestId('marketing-campaign-status')).toHaveText('Ready');
@@ -226,7 +226,7 @@ test('Marketing: Kampagne starten, Abklingzeit läuft', async ({ page }) => {
 });
 
 test('Zufriedenheits-Detail zeigt Beiträge', async ({ page }) => {
-  await page.goto('?lang=de');
+  await page.goto('?lang=de&tutorial=0');
   await page.getByTestId('hud-satisfaction').click();
   await expect(page.getByTestId('panel-satisfaction')).toBeVisible();
   await expect(page.getByTestId('sat-part-cleanliness')).toHaveText(/^\+[89]/);
@@ -236,7 +236,7 @@ test('Zufriedenheits-Detail zeigt Beiträge', async ({ page }) => {
 });
 
 test('Qualität kaufen: Preis-Stufe steigt, Produktname wechselt', async ({ page }) => {
-  await page.goto('?lang=en');
+  await page.goto('?lang=en&tutorial=0');
   await reloadWithSave(page, { coins: '100000', level: 3 });
   await page.getByTestId('nav-shop').click();
   await page.getByTestId('shop-tab-quality').click();
@@ -252,7 +252,7 @@ test('Qualität kaufen: Preis-Stufe steigt, Produktname wechselt', async ({ page
 });
 
 test('Erfolg löst einmal aus: Toast und Blätter, nach Neuladen nicht erneut', async ({ page }) => {
-  await page.goto('?lang=en');
+  await page.goto('?lang=en&tutorial=0');
   await reloadWithSave(page, { stats: { customersServed: 150 } });
   await expect(page.getByTestId('toasts')).toContainText('Achievement: Regular crowd I (+2 🍃)');
   await expect(page.getByTestId('hud-leaves')).toContainText('2');
@@ -269,7 +269,7 @@ test('Erfolg löst einmal aus: Toast und Blätter, nach Neuladen nicht erneut', 
 test('Tagesaufgabe erledigen und abholen', async ({ page }) => {
   // 100 Taps im Takt > 11 s plus Screen-Wechsel; auf dem CI-Runner knapp über 30 s.
   test.setTimeout(60_000);
-  await page.goto('?lang=en');
+  await page.goto('?lang=en&tutorial=0');
   await reloadWithSave(page, { questsToday: ['tap100', 'buy20', 'serve500'] });
   await page.getByTestId('nav-achievements').click();
   await page.getByTestId('progress-tab-quests').click();
@@ -300,7 +300,7 @@ test('Tagesaufgabe erledigen und abholen', async ({ page }) => {
 test('Standort eröffnen, wechseln und nach Neuladen dort bleiben', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto('?lang=en');
+  await page.goto('?lang=en&tutorial=0');
   await reloadWithSave(page, { level: 14, bestLevel: 14, zen: '12' });
   await page.getByTestId('nav-locations').click();
   await expect(page.getByTestId('zen-balance')).toHaveText('☯ Zen: 12');
@@ -325,8 +325,9 @@ test('Standort eröffnen, wechseln und nach Neuladen dort bleiben', async ({ pag
 });
 
 test('Franchise-Reset: Vorschau, Abbrechen, Bestätigen, Zen ausgeben', async ({ page }) => {
-  await page.goto('?lang=de');
-  await reloadWithSave(page, { level: 10, coins: '5000000', earnedThisRun: '64000000' });
+  await page.goto('?lang=de&tutorial=0');
+  // 178 M verdient → floor(1.8 × √178) = 24 Zen (PRESTIGE.zen.factor).
+  await reloadWithSave(page, { level: 10, coins: '5000000', earnedThisRun: '178000000' });
   await page.getByTestId('nav-locations').click();
   const reset = page.getByTestId('location-reset-berlin');
   await expect(reset).toHaveText('Franchise-Reset (+24 ☯)');
