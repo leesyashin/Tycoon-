@@ -9,8 +9,9 @@
 > (App-Store-Beschreibung, Codigames-Helpshift, Pocket Gamer, AppGamer, MrGuider). Farbwerte sind aus den
 > Screenshots gesampelt und auf glatte Token-Werte gerundet.
 >
-> Zielgruppe: S8 („Grafik und Audio“, UI-Skin) und jede Session, die neue Panels baut. Ersetzt die bisherigen
-> Dunkelgrün-Tokens in `src/ui/style.css`.
+> Zielgruppe: S8 („Grafik und Audio“, UI-Skin) und jede Session, die neue Panels baut (CLAUDE.md, Pflichtlektüre 4).
+> Ersetzt die bisherigen Dunkelgrün-Tokens in `src/ui/style.css`. Bis S8 die Tokens tauscht, bauen S5–S7 neue Screens
+> schon in der Komponentenstruktur aus § 3 (Pillen, Kreise, Karten, Chips) mit den bestehenden CSS-Variablen.
 
 ---
 
@@ -299,7 +300,7 @@ Jede Komponente: Aussehen im Vorbild → unsere Fassung → CSS-Klasse (Ziel) �
 
 ## 6. Entscheidungen und Abweichungen vom PLAN
 
-1. **Grafikstil: Flat-Shaded-Iso statt Pixel-Art.** PLAN § 0/§ 2.3/S8 nennen „isometrisches Pixel-Art“ und eine Pixel-Font. Das Vorbild ist Low-Poly-Flat-Shading ohne Pixel-Ästhetik. Für „1:1“ muss S8 auf flache Vektor-Iso-Sprites (SVG → PNG 2×, `pixelArt: false`) wechseln. **Empfehlung: übernehmen.** Offene Entscheidung für Vincent; bis dahin gilt dieses Dokument als Zielbild, PLAN S8 wird bei Zustimmung angepasst.
+1. **Grafikstil: Flat-Shaded-Iso statt Pixel-Art.** PLAN nannte ursprünglich „isometrisches Pixel-Art“ und eine Pixel-Font. Das Vorbild ist Low-Poly-Flat-Shading ohne Pixel-Ästhetik. **Entschieden (Vincent, 2026-10-14): Flat-Shaded.** PLAN § 0, § 2.3 und S8 sind entsprechend angepasst; `pixelArt: false`, Vektor-Iso-Sprites (SVG → PNG 2×).
 2. **Navigation ohne Labels.** Die untere Leiste bekommt nur Icons (wie Vorbild). Barrierefreiheit über `aria-label`, Tooltip auf Desktop, Onboarding in S9. Der e2e-Test `nav-*` bleibt über `data-testid` stabil.
 3. **Ein Verwaltungs-Screen mit Tabs** ersetzt vier Einzelpanels (Shop, Personal, Marketing, Statistik). Weniger Code, näher am Vorbild. Stations-Panel bleibt Bottom-Sheet.
 4. **Kapazität (⚡) als neues sichtbares System** nur, wenn GAME_DESIGN es bekommt (S9-Balancing). Bis dahin kein ⚡ im HUD – kein Platzhalter-Wert anzeigen.

@@ -7,6 +7,7 @@ Idle-/Tycoon-Browserspiel (Matcha-Cafés statt Hotels). Web-App mit Vite + TypeS
 1. `docs/STATUS.md` – was die letzte Session hinterlassen hat
 2. `docs/PLAN.md` – Architektur (§ 2) und der Abschnitt der aktuellen Session (§ 3)
 3. `docs/GAME_DESIGN.md` – nur die dort referenzierten Paragraphen
+4. `docs/UI_STYLE.md` – sobald die Session UI oder Szene-Optik baut oder ändert (§ 2 Tokens, § 3 Komponenten, § 4 Szene)
 
 ## Befehle
 
@@ -27,6 +28,7 @@ pnpm build          Produktions-Build (base: /Tycoon-/)
 - Währungen sind immer `Decimal` (break_infinity.js), nie `number`.
 - Kein Balancing-Wert hart im Code. Alles in `src/data/*`.
 - Jeder sichtbare String kommt aus `t()`; `de.json` und `en.json` haben identische Keys.
+- UI-Stil ist `docs/UI_STYLE.md` (Hotel-Empire-Look, Flat-Shaded). Neue UI-Elemente folgen den Komponenten in § 3; Farben, Radien und Schriften nur über die Tokens aus § 2, nie als Hex-Wert im Code. Grafikstil der Szene ist Flat-Shaded-Iso, kein Pixel-Art.
 - Kunden-Figuren in der Szene sind kosmetisch. Einnahmen entstehen nur aus dem Rate-Modell in `core`.
 - Save-Schema-Änderung = `schemaVersion` hochzählen + Migration + Test.
 - Assets nur mit dokumentierter Lizenz in `docs/ASSETS.md`. Nichts aus kommerziellen Spielen.

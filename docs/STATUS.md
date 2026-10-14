@@ -40,7 +40,6 @@ next: S5
 - Marketing-Plakat vorm Café (GAME_DESIGN § 9, „Visuell“) fehlt; der dichtere Kundenstrom ist sichtbar. Kandidat für S8.
 - Auto-Kauf und Sauberkeit laufen offline nicht (siehe Entscheidungen).
 - Personal-Figuren stehen neben der Station (Wandplätze haben kein „dahinter“); mit echten Sprites in S8 ggf. hinter die Theke.
-- UI-Stil: `docs/UI_STYLE.md` beschreibt den Hotel-Empire-Look (Tokens, Komponenten, Mapping) als Zielbild für S8. Offene Entscheidung Vincent: Flat-Shaded-Iso statt Pixel-Art (UI_STYLE § 6.1) – dann PLAN § 2.3/S8 anpassen.
 ## Entscheidungen, die vom Plan abweichen
 - Vorgabe Vincent (2026-10-14): Kein Deploy durch die Sessions. Sessions bauen nur das Spiel (`pnpm build` muss grün sein); Vincent deployt selbst. Pages-Deploy, „Pages-URL erreichbar“ und der Pages-Link in der Abschlussnachricht entfallen als Abnahmekriterium. Ein roter `pages`-Workflow auf main blockiert nichts.
 - Neue Dev-Abhängigkeit `@vitest/coverage-v8` – nötig, um das Abnahmekriterium „Coverage core ≥ 90 %“ zu messen.
