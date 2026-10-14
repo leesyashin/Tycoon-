@@ -1,9 +1,9 @@
 # STATUS
 ## Loop
-state: idle
-current: -
-branch: -
-started: -
+state: running
+current: S0
+branch: session/s0-setup
+started: 2026-10-14T19:32:22Z
 next: S0
 ## Letzte Session
 keine
