@@ -4,7 +4,7 @@ current: -
 branch: session/s10-service
 started: -
 next: S12
-## Letzte Session: Café mit Leben, Ampeln und Endausbau (2026-10-15, Branch `art/cafe-leben`)
+## Letzte Session: Café mit Leben, Ampeln und Endausbau (2026-10-15, Branch `art/cafe-leben`, PR #17)
 Vorgabe Vincent (2026-10-15): „Das Café nochmal überarbeiten, dass das einfach ein bisschen besser abläuft: Die
 Männchen vor den Maschinen sollen immer irgendwas dran machen, bei der Kaffeemaschine Dampf hochkommen – wie kleine
 Arbeiter. Die Kasse muss umgedreht sein, der Kassierer guckt auf die Kasse und kassiert ab. Die grünen Kreise, die sich
@@ -164,6 +164,7 @@ Startpunkt: PLAN.md „Phase 2“, Abschnitt S12, und die Punkte unter „Offen�
 - Szene-Feinschliff: Kamera-Zoom auf die angetippte Ausstattung, Sitzpose mit Armen auf dem Tisch, Figuren-Namen als Sprechblase (Baristas laufen und Verkäufer tippen seit `art/cafe-leben`).
 - Fallen: Café-Level hängt an `BALANCE.cafeLevel.steps` – nie `% 25` rechnen. Save-Schema v9. e2e-Specs öffnen mit `&tutorial=0`, außer sie testen das Tutorial. Phaser startet verzögert (`whenIdle`) – e2e, die auf Szene/Atlas warten, mit `expect.poll`. Neue Geräte, Theken und Tische in `scripts/art/equipment.ts` (Material-Leiter `TIER_STYLE`, Requisiten-Helfer wie `bowl`, `cake`, `cloche`, `plantPot`; neue Geräte-IDs auch in `DEVICES`), übrige Objekte in `scripts/art/sprites.ts`, Figuren in `scripts/art/figures.ts` (Figuren: Look als Daten in `CUSTOMER_LOOK_DEFS`/`STAFF_LOOK_DEFS`, Name zusätzlich in `CUSTOMER_LOOKS`/`STAFF_LOOKS` in `data/art.ts`) zeichnen und `PW_CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome pnpm art` laufen lassen (`tests/art.test.ts` prüft Frames und dass `common`/`furniture` zu den Zeichnungen passen). Kontaktbogen zum Prüfen: `pnpm tsx scripts/art/contact-sheet.ts stations out.png`. Optik-Schwellen nur in `data/art.ts` ändern. Neue Instanz-Felder in `CafeScene.init()` zurücksetzen. Stadtviertel: Grundriss, Häuser, Objekte, Fahrstreifen und Wege in `src/data/city.ts`, Zeichnungen in `scripts/art/city.ts` (Fassaden-Module im Themen-Atlas, Objekte im `city`-Atlas), Szene in `src/scenes/city/` – neue Objekt-Arten brauchen Frame + `propCanvas` in `CityView`; alles Stadt-Bauliche hat negative Tiefen (hinter dem Café). Personal sind Köpfe (`getStaffLevel` liefert die Anzahl); Rollen mit `headcount: false` (Filialleiter, Social Media) bleiben Stufen. `computeLocationRates(...).stages`/`bottleneck` für alles, was die Pipeline zeigt.
 - e2e lokal: `PW_CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome pnpm e2e`.
+- Spielbare Vorschau als claude.ai-Artefakt („Matcha Café Empire“, Version 3 mit diesem Stand): `npx vite build --base ./ --outDir <tmp>`, dann CSS mit eingebetteten Schriften (Data-URIs) in die Seite, Skripte, Sprites, UI-Icons und Lizenztexte als Begleitdateien; Service Worker und Manifest bleiben weg (laufen im Artefakt nicht).
 - S9-Hinweise (gelten weiter): Lighthouse messen mit `pnpm build && pnpm preview --port 4173`, dann `CHROME_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome pnpm dlx lighthouse "http://localhost:4173/Tycoon-/?lang=de" --form-factor=mobile --only-categories=performance --chrome-flags="--headless=new --no-sandbox"` (5 Läufe, Median).
 
 ## Balancing-Snapshot (Sim-Ausgabe, `pnpm sim --hours 4`, Phase 2 Pass 1)
