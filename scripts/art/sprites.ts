@@ -4,9 +4,10 @@
  * alles als PNG 2× in Texture-Atlanten. Stilregeln: UI_STYLE § 4 (Flat-Shaded-Iso, Dollhouse, Blockfiguren).
  */
 import { FRONT_PLANTER_H, SCENE_FX } from '@data/art';
-import { STATION_CANVAS } from './equipment';
+import { STATION_CANVAS, drawTable } from './equipment';
 import { IsoCanvas, Z_PER_TILE, shade, tint, type Vec3 } from './iso';
 import { C } from './palette';
+import { flatLeaf, polyline, strut, umbrella } from './shapes';
 
 export interface SpriteDef {
   name: string;
@@ -20,27 +21,6 @@ function canvas(): IsoCanvas {
   return new IsoCanvas(STATION_CANVAS.w, STATION_CANVAS.h, STATION_CANVAS.ox, STATION_CANVAS.oy);
 }
 
-/** Zimmerpflanze im Terrakotta-Topf: Topf als Kegelstumpf mit Rand, Blätter als gestaffelte Kuppeln. */
-function plant(c: IsoCanvas, u: number, v: number, z: number, s = 1) {
-  c.shadowDisc(u, v, z, 0.15 * s, 0.24);
-  c.frustum(u, v, z, 0.1 * s, 0.13 * s, 12 * s, C.terracotta, shade(C.terracotta, 0.8));
-  c.cylinder(
-    u,
-    v,
-    z + 12 * s,
-    0.135 * s,
-    1.6 * s,
-    tint(C.terracotta, 0.12),
-    shade(C.terracotta, 0.8),
-  );
-  c.disc(u, v, z + 13.6 * s, 0.11 * s, C.woodDeep);
-  c.box(u - 0.01 * s, v - 0.01 * s, z + 13 * s, 0.02 * s, 0.02 * s, 12 * s, C.woodDark);
-  c.dome(u - 0.08 * s, v + 0.02 * s, z + 17 * s, 0.09 * s, 8 * s, C.matchaDeep);
-  c.dome(u + 0.08 * s, v + 0.03 * s, z + 20 * s, 0.09 * s, 8 * s, C.matcha);
-  c.dome(u - 0.02 * s, v - 0.03 * s, z + 25 * s, 0.1 * s, 9 * s, shade(C.matcha, 0.92));
-  c.dome(u + 0.03 * s, v + 0.04 * s, z + 30 * s, 0.075 * s, 7 * s, tint(C.matcha, 0.15));
-}
-
 /** Kreis auf einer Front in der Ebene v (Lautsprecher-Membran), als Polygon in Iso-Koordinaten. */
 function frontCircle(c: IsoCanvas, u: number, v: number, z: number, r: number, color: string) {
   const pts: Vec3[] = [];
@@ -51,88 +31,130 @@ function frontCircle(c: IsoCanvas, u: number, v: number, z: number, r: number, c
   c.poly(pts, color);
 }
 
-/** Gartenstuhl der Terrasse. */
-function terraceChair(c: IsoCanvas, u: number, v: number, color: string, back: 'left' | 'right') {
-  c.shadow(u - 0.02, v - 0.02, 0, 0.2, 0.2, 0.2);
-  for (const [lx, ly] of [
-    [u, v],
-    [u + 0.13, v],
-    [u, v + 0.13],
-    [u + 0.13, v + 0.13],
-  ] as const)
-    c.box(lx, ly, 0, 0.03, 0.03, 8, shade(color, 0.8));
-  c.bevel(u, v, 8, 0.16, 0.16, 2.5, color, { b: 0.6 });
-  if (back === 'left') c.bevel(u, v, 10.5, 0.03, 0.16, 10, color, { b: 0.8 });
-  else c.bevel(u + 0.13, v, 10.5, 0.03, 0.16, 10, color, { b: 0.8 });
-}
-
 const AMBIENCE: Record<string, (c: IsoCanvas) => void> = {
+  // Geigenfeige im Terrakotta-Topf mit Untersetzer: großblättrig, Licht oben links
   decor(c) {
-    plant(c, 0.5, 0.5, 0, 1);
+    c.shadowDisc(0.5, 0.5, 0, 0.2, 0.26);
+    c.cylinder(0.5, 0.5, 0, 0.16, 1, shade(C.terracotta, 0.85), tint(C.terracotta, 0.15));
+    c.frustum(0.5, 0.5, 1, 0.1, 0.13, 11, C.terracotta, shade(C.terracotta, 0.8));
+    c.shine(0.5, 0.5, 1.5, 0.12, 10, C.terracotta, 0.25);
+    c.cylinder(0.5, 0.5, 11.6, 0.138, 1.8, tint(C.terracotta, 0.12), shade(C.terracotta, 0.8));
+    c.disc(0.5, 0.5, 13.4, 0.11, C.soil);
+    strut(c, [0.5, 0.5, 13], [0.49, 0.5, 34], C.woodDark, 1.4);
+    const leaves: [number, number, number, string][] = [
+      [Math.PI * 1.1, 17, -4, C.leafDeep],
+      [Math.PI * 0.35, 19, -5, C.leaf],
+      [Math.PI * 1.7, 21, -2, C.leaf],
+      [Math.PI * 0.8, 23, -3, C.leafMid],
+      [Math.PI * 0.05, 25, -3, C.leafMid],
+      [Math.PI * 1.35, 27, 1, C.leafMid],
+      [Math.PI * 0.55, 29, -1, C.leafLight],
+      [Math.PI * 1.9, 31, 1, C.leafMid],
+      [Math.PI * 1.15, 33, 3, C.leafLight],
+      [Math.PI * 0.3, 35, 2, C.leafLight],
+      [Math.PI * 1.55, 37, 4, C.leafSun],
+    ];
+    for (const [ang, z, tilt, col] of leaves)
+      flatLeaf(
+        c,
+        [0.49 + Math.cos(ang) * 0.02, 0.5 + Math.sin(ang) * 0.02, z],
+        ang,
+        0.21,
+        tilt,
+        0.7,
+        col,
+      );
   },
+  // Nussbaum-Sideboard mit Lamellentüren, Plattenspieler mit Platte und Tonarm, Plattenkiste, Standlautsprecher
   music(c) {
-    // Sideboard mit Plattenspieler und Platten, Standlautsprecher davor
-    c.shadow(0.22, 0.26, 0, 0.6, 0.5, 0.24);
-    c.bevel(0.24, 0.28, 0, 0.54, 0.44, 14, C.oak, { b: 1.2 });
-    c.wallV(0.27, 0.721, 2, 0.24, 10, shade(C.woodDeep, 0.9));
-    for (const [k, col] of [C.sakura, C.ink, C.matcha, C.cream, C.blue].entries())
-      c.wallV(0.28 + k * 0.045, 0.722, 2.5, 0.03, 8.5, col);
-    c.wallV(0.55, 0.721, 2, 0.2, 10, shade(C.oak, 0.85));
-    c.bevel(0.3, 0.34, 14, 0.36, 0.3, 2.5, C.ink, { b: 0.6 });
-    c.cylinder(0.46, 0.49, 16.5, 0.12, 0.8, C.ink, shade(C.ink, 1.4));
-    c.disc(0.46, 0.49, 17.4, 0.04, C.sakura);
-    c.box(0.6, 0.38, 16.5, 0.02, 0.18, 1.2, C.chrome);
-    c.shadow(0.06, 0.62, 0, 0.24, 0.2, 0.24);
-    c.bevel(0.08, 0.64, 0, 0.2, 0.16, 26, C.ink, { b: 1.2 });
+    c.shadow(0.2, 0.24, 0, 0.64, 0.52, 0.26);
+    for (const [u, v] of [
+      [0.27, 0.3],
+      [0.74, 0.3],
+      [0.27, 0.68],
+      [0.74, 0.68],
+    ] as const)
+      strut(c, [u, v, 0], [u, v, 3], C.brass, 1.1);
+    c.bevel(0.24, 0.28, 3, 0.56, 0.44, 12, C.walnut, { b: 1, edge: 0.25 });
+    for (let k = 0; k < 9; k++)
+      c.wallV(0.27 + k * 0.028, 0.721, 4.4, 0.016, 9, shade(C.walnutLight, 0.95));
+    c.wallV(0.53, 0.721, 4.4, 0.24, 9, shade(C.walnut, 0.82));
+    for (const [k, col] of [C.sakura, C.ink, C.matcha, C.cream, C.blue, C.gold].entries())
+      c.wallV(0.545 + k * 0.035, 0.722, 5, 0.026, 7.6, col);
+    c.box(0.53, 0.7, 12.4, 0.02, 0.022, 1, C.brass);
+    // Plattenspieler: Zarge, Teller mit Platte und Etikett, Tonarm
+    c.bevel(0.3, 0.33, 15, 0.38, 0.32, 2.6, C.walnutLight, { b: 0.6, edge: 0.3 });
+    c.cylinder(0.45, 0.49, 17.6, 0.12, 0.8, C.stainlessDark, C.rubber);
+    c.disc(0.45, 0.49, 18.42, 0.1, shade(C.rubber, 1.4));
+    c.disc(0.45, 0.49, 18.44, 0.075, C.rubber);
+    c.disc(0.45, 0.49, 18.46, 0.035, C.sakura);
+    c.disc(0.43, 0.47, 18.47, 0.02, tint(C.sakura, 0.5));
+    c.cylinder(0.62, 0.39, 17.6, 0.022, 1.6, C.stainless, C.stainlessLight);
+    strut(c, [0.62, 0.39, 19.2], [0.58, 0.55, 19], C.stainless, 0.8);
+    strut(c, [0.58, 0.55, 19], [0.52, 0.56, 18.7], C.stainless, 0.8);
+    c.box(0.36, 0.6, 17.6, 0.04, 0.03, 0.6, C.led);
+    // Standlautsprecher vorn links: Nussbaum-Wangen, Stoffbespannung, Hoch- und Tieftöner
+    c.shadow(0.05, 0.6, 0, 0.26, 0.22, 0.26);
+    c.bevel(0.07, 0.62, 0, 0.22, 0.18, 28, C.walnut, { b: 1.2, edge: 0.22 });
+    c.wallV(0.09, 0.801, 2, 0.18, 24, shade(C.ink, 1.15));
     for (const [zz, r] of [
-      [19, 0.045],
-      [9, 0.065],
+      [21, 0.04],
+      [10, 0.07],
     ] as const) {
-      frontCircle(c, 0.18, 0.801, zz, r, shade(C.ink, 1.6));
-      frontCircle(c, 0.18, 0.802, zz, r * 0.45, shade(C.ink, 0.8));
+      frontCircle(c, 0.18, 0.802, zz, r, shade(C.ink, 1.7));
+      frontCircle(c, 0.18, 0.803, zz, r * 0.7, shade(C.ink, 0.85));
+      frontCircle(c, 0.18, 0.804, zz, r * 0.25, shade(C.ink, 1.9));
     }
+    c.wallV(0.11, 0.8035, 2.6, 0.14, 0.6, C.brass);
   },
+  // Beistelltisch mit Router (drei Antennen, LEDs) und Steckdosenleiste mit Kabel
   wifi(c) {
-    // Beistelltisch mit Router (blinkende LED) und Steckdosenleiste
-    c.shadowDisc(0.5, 0.5, 0, 0.2, 0.24);
-    c.cylinder(0.5, 0.5, 0, 0.12, 1.2, C.ink);
-    c.cylinder(0.5, 0.5, 1.2, 0.03, 12, C.ink);
-    c.cylinder(0.5, 0.5, 13, 0.2, 2, C.oak, C.oakLight);
-    c.shadow(0.38, 0.42, 15, 0.26, 0.18, 0.2);
-    c.bevel(0.38, 0.42, 15, 0.26, 0.18, 4, C.white, { b: 1 });
-    c.box(0.42, 0.46, 19, 0.025, 0.025, 10, C.ink);
-    c.box(0.58, 0.46, 19, 0.025, 0.025, 10, C.ink);
-    c.wallV(0.42, 0.601, 16.5, 0.05, 1.4, C.apron);
-    c.wallV(0.5, 0.601, 16.5, 0.05, 1.4, C.apron);
-    c.shadow(0.2, 0.74, 0, 0.32, 0.1, 0.2);
-    c.bevel(0.2, 0.74, 0, 0.32, 0.1, 2, C.white, { b: 0.5 });
+    c.shadowDisc(0.5, 0.5, 0, 0.22, 0.26);
+    for (let k = 0; k < 3; k++) {
+      const a = (k / 3) * Math.PI * 2 + 0.5;
+      strut(
+        c,
+        [0.5 + Math.cos(a) * 0.15, 0.5 + Math.sin(a) * 0.15, 0],
+        [0.5 + Math.cos(a) * 0.05, 0.5 + Math.sin(a) * 0.05, 13],
+        C.ink,
+        1.3,
+      );
+    }
+    c.cylinder(0.5, 0.5, 13, 0.21, 1.8, C.oak, C.oakLight);
+    c.disc(0.5, 0.5, 14.82, 0.19, tint(C.oakLight, 0.15));
+    c.shadow(0.36, 0.42, 14.8, 0.3, 0.18, 0.22);
+    c.bevel(0.37, 0.42, 14.8, 0.28, 0.17, 3.6, C.white, { b: 1, edge: 0.3 });
+    for (const [u, v] of [
+      [0.41, 0.44],
+      [0.5, 0.45],
+      [0.59, 0.44],
+    ] as const) {
+      c.cylinder(u, v, 18.4, 0.018, 9, C.ink, tint(C.ink, 0.2));
+      c.cylinder(u, v, 18.4, 0.026, 1.2, C.ink, tint(C.ink, 0.3));
+    }
+    for (let k = 0; k < 4; k++)
+      c.wallV(0.4 + k * 0.05, 0.591, 16.2, 0.025, 1.1, k === 3 ? C.signalYellow : C.apron);
+    c.cylinder(0.64, 0.56, 14.8, 0.035, 3.6, C.cup, C.matchaFoam);
+    // Steckdosenleiste mit Kabel
+    polyline(
+      c,
+      [
+        [0.5, 0.58, 14.8],
+        [0.46, 0.68, 7],
+        [0.36, 0.76, 1],
+      ],
+      C.ink,
+      0.6,
+    );
+    c.shadow(0.18, 0.74, 0, 0.32, 0.11, 0.22);
+    c.bevel(0.19, 0.75, 0, 0.3, 0.09, 2, C.white, { b: 0.5 });
+    for (let k = 0; k < 3; k++) c.disc(0.24 + k * 0.08, 0.795, 2.01, 0.022, shade(C.white, 0.75));
+    c.box(0.45, 0.76, 2, 0.03, 0.06, 0.6, C.signalRed);
   },
   terrace(c) {
-    c.shadowDisc(0.5, 0.5, 0, 0.32, 0.18);
-    c.cylinder(0.5, 0.5, 0, 0.1, 1.2, C.ink);
-    c.cylinder(0.5, 0.5, 0, 0.03, 34, C.white);
-    c.cylinder(0.5, 0.5, 11, 0.2, 2, C.white, tint(C.wood, 0.4));
-    terraceChair(c, 0.15, 0.45, C.cobalt, 'left');
-    terraceChair(c, 0.6, 0.15, C.cobalt, 'right');
-    // Sonnenschirm (Achteck, zwei Farbflächen statt Streifen-Textur)
-    const [cx, cy] = c.p([0.5, 0.5, 34]);
-    const r = 26;
-    const pts = (a0: number, a1: number) =>
-      [`${cx.toFixed(1)},${(cy - 6).toFixed(1)}`]
-        .concat(
-          [a0, a1].map(
-            (a) =>
-              `${(cx + Math.cos(a) * r).toFixed(1)},${(cy + Math.sin(a) * r * 0.5).toFixed(1)}`,
-          ),
-        )
-        .join(' ');
-    for (let i = 0; i < 8; i++) {
-      const a0 = (i / 8) * Math.PI * 2;
-      const a1 = ((i + 1) / 8) * Math.PI * 2;
-      const lit = Math.sin((a0 + a1) / 2) > 0;
-      const col = i % 2 ? C.white : C.cobalt;
-      c.raw(`<polygon points="${pts(a0, a1)}" fill="${lit ? col : shade(col, 0.85)}"/>`);
-    }
+    c.shadowDisc(0.5, 0.5, 0, 0.5, 0.14, 3);
+    drawTable(c, 1);
+    umbrella(c, C.cobalt, C.white, 50);
   },
 };
 
