@@ -14,6 +14,7 @@
  * x + 1), Rechtecke halb offen. Farben als Hex-Strings: Boden, Dächer und ferne Häuser zeichnet die Szene als
  * Flächen, die Fassaden-Module rendert `pnpm art` (`scripts/art/city.ts`) in den Themen-Atlas.
  */
+import { getLayout } from './layouts';
 
 export interface GridRect {
   x0: number;
@@ -177,6 +178,10 @@ function detailed(i: number, j: number): boolean {
   return Math.abs(i + 1) + Math.abs(j + 1) <= 1 || (i === -2 && j === -2);
 }
 
+/** Hintere Raumecke des Cafés und seine Tür (alle Standorte nutzen denselben Grundriss). */
+const CAFE_ORIGIN = getLayout('berlin').origin;
+const CAFE_DOOR = getLayout('berlin').entrance;
+
 /** Die Spree: alles jenseits der vorderen Uferstraßen. */
 const RIVER_FROM = roadAt(1) + ROAD + SIDE;
 /** Kanal rechts neben dem Café-Block (zwischen Fahrbahn 0 und dem Kanalblock), mit Ufermauern. */
@@ -327,7 +332,9 @@ function streetProps(): PropDef[] {
     ...[13.6, 14.3].map((x) => ({ kind: 'bollard' as const, x, y: 14.8 })),
     { kind: 'cafeSign', x: 7.15, y: 12.15 },
     { kind: 'planter', x: 5.4, y: 12.25 },
-    { kind: 'planter', x: 12.25, y: 5.2 },
+    // Pflanzkübel links und rechts der Tür in der rechten Fassade
+    { kind: 'planter', x: 12.25, y: CAFE_DOOR.y - 0.8 },
+    { kind: 'planter', x: 12.25, y: CAFE_DOOR.y + 1.8 },
     { kind: 'pedLight', x: 12.4, y: 14.8, axis: 'u' },
     { kind: 'pedLight', x: 14.8, y: 12.4, axis: 'v' },
     // Autoampeln an allen vier Ecken der Kreuzung (Lichter zeigen zur Kamera: entlang x nach +x, entlang y nach +y)
@@ -464,12 +471,14 @@ function buildCity(): CityDef {
         }
       } else if (kind === 'cafe') {
         ground.push({ kind: 'courtyard', rect: zone });
-        // Café [0, 12)² im vorderen rechten Eck; Häuser dahinter und daneben (Obergeschosse über dem Café).
-        buildings.push(building({ x0, y0, x1: 0, y1: 0 }, 'hip', false, 5));
-        buildings.push(building({ x0: 0, y0, x1: 6, y1: 0 }, 'gable-u', false, 5));
-        buildings.push(building({ x0: 6, y0, x1: 12, y1: 0 }, 'hip', false, 5));
-        buildings.push(building({ x0, y0: 0, x1: 0, y1: 6 }, 'gable-v', false, 5));
-        buildings.push(building({ x0, y0: 6, x1: 0, y1: 12 }, 'hip', false, 5));
+        // Café im vorderen rechten Eck (Raum ab `CAFE_ORIGIN` bis zu den Fassaden bei 12); Altbauten dahinter und
+        // daneben reichen bis an seine Rückwände (Obergeschosse über dem Café).
+        const { x: cx, y: cy } = CAFE_ORIGIN;
+        buildings.push(building({ x0, y0, x1: cx, y1: cy }, 'hip', false, 5));
+        buildings.push(building({ x0: cx, y0, x1: 6, y1: cy }, 'gable-u', false, 5));
+        buildings.push(building({ x0: 6, y0, x1: 12, y1: cy }, 'hip', false, 5));
+        buildings.push(building({ x0, y0: cy, x1: cx, y1: 7 }, 'gable-v', false, 5));
+        buildings.push(building({ x0, y0: 7, x1: cx, y1: 12 }, 'hip', false, 5));
       } else if (kind === 'canal') {
         ground.push({ kind: 'grass', rect: { x0: CANAL.quay1, y0, x1: 31, y1 } });
         ground.push({ kind: 'courtyard', rect: { x0: 31, y0, x1, y1 } });

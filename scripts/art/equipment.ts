@@ -7,7 +7,7 @@
  * Koordinaten („Theken-Koordinaten“): x quer, y Tiefe (0 = hinten/Wand bzw. Personalseite, 1 = Gastraum),
  * z Höhe in Pixeln. Variante „a“: Front zeigt nach +v, „b“: nach +u (gespiegelt).
  */
-import { COUNTER_TOP_PX } from '@data/art';
+import { COUNTER_TOP_PX, counterPropsAt } from '@data/art';
 import { LAYOUTS } from '@data/layouts';
 import { IsoCanvas, SHADE, shade, tint, type Vec3 } from './iso';
 import { C } from './palette';
@@ -30,7 +30,7 @@ type P2 = readonly [number, number];
 /** Spiegelt Grid-Koordinaten, damit eine Zeichnung für beide Blickrichtungen taugt. */
 export class FacingCanvas extends IsoCanvas {
   constructor(
-    readonly facing: Facing,
+    public facing: Facing,
     w: number = STATION_CANVAS.w,
     h: number = STATION_CANVAS.h,
     ox: number = STATION_CANVAS.ox,
@@ -40,6 +40,17 @@ export class FacingCanvas extends IsoCanvas {
   }
   private uv(x: number, y: number): [number, number] {
     return this.facing === 'a' ? [x, y] : [y, x];
+  }
+  /** Zeichnet `draw` quer zur eigenen Blickrichtung (zweite Front eines Eckmoduls). */
+  turned(draw: () => void): this {
+    const own = this.facing;
+    this.facing = own === 'a' ? 'b' : 'a';
+    try {
+      draw();
+    } finally {
+      this.facing = own;
+    }
+    return this;
   }
   /** Farbe einer Fläche, die zum Gastraum zeigt (Front), bzw. zur Seite (+x). */
   frontShade(color: string): string {
@@ -719,6 +730,66 @@ function counterBase(c: FacingCanvas, tier: Tier) {
         [0.62, 0.2],
         [0.78, 0.4],
         [1, 0.48],
+      ],
+    ]);
+}
+
+/**
+ * Eckmodul der L-Theke: verbindet den langen Schenkel (entlang x, Front nach +y) mit dem kurzen (entlang y, Front
+ * nach +x). Korpus, Paneele, Fußstange und Platte laufen um die Ecke; die Nachbarmodule schließen links (x = 0) und
+ * hinten (y = 0) nahtlos an. Beide Fronten bekommen die Paneele ihrer Stufe, die Platte Fasen an beiden Kanten.
+ */
+function counterCorner(c: FacingCanvas, tier: Tier) {
+  const s = TIER_STYLE[tier];
+  /** Frontebene wie bei `counterBase`. */
+  const F = 0.78;
+  c.fshadow(-0.02, -0.02, 0, F + 0.08, F + 0.08, 0.24);
+  // Zwei Quader je Schicht: erst der Teil des kurzen Schenkels (weiter hinten), dann der des langen.
+  c.fbox(0.26, 0, 0, 0.5, 0.76, 2.5, s.plinth);
+  c.fbox(0, 0.26, 0, 0.76, 0.5, 2.5, s.plinth);
+  c.fbox(0.22, 0, 2.5, 0.56, F, 17.5, s.body);
+  c.fbox(0, 0.22, 2.5, F, 0.56, 17.5, s.body);
+  const doors = tier === 2 || tier === 5 ? 2 : 1;
+  c.turned(() => frontPanels(c, tier, F + 0.001, 0, F, 3.5, 19, doors));
+  frontPanels(c, tier, F + 0.001, 0, F, 3.5, 19, doors);
+  if (tier >= 3) {
+    const color = METAL[tier];
+    c.turned(() => {
+      c.fbox(0.2, F, 4.5, 0.025, 0.07, 1.2, color);
+      rail(c, 0, 0.85, 0.85, 4.6, color);
+    });
+    c.fbox(0.2, F, 4.5, 0.025, 0.07, 1.2, color);
+    c.fbox(F, F, 4.5, 0.07, 0.07, 1.2, color);
+    rail(c, 0, 0.88, 0.85, 4.6, color);
+  }
+  if (tier === 5) {
+    c.turned(() => ledUnder(c, 0, 0.8, 19.2, 0.8, 0.08));
+    ledUnder(c, 0, 0.8, 19.2, 0.88, 0.08);
+  }
+  // Platte als L mit Fasen an beiden Fronten (Kantenfarbe wie beim geraden Modul). Die Ecke ist symmetrisch,
+  // darum direkt in Grid-Koordinaten.
+  const plate = {
+    b: 1.2,
+    top: s.top,
+    left: shade(s.edge, SHADE.left),
+    right: shade(s.edge, SHADE.right),
+    edge: tier >= 4 ? 0.3 : 0.18,
+  };
+  c.bevel(0.19, 0, 20, 0.64, 0.83, 3, s.top, plate);
+  c.bevel(0, 0.19, 20, 0.83, 0.64, 3, s.top, plate);
+  if (tier >= 4)
+    veins(c, COUNTER_TOP, [
+      [
+        [0, 0.3],
+        [0.3, 0.42],
+        [0.46, 0.62],
+        [0.7, 0.72],
+      ],
+      [
+        [0.3, 0],
+        [0.42, 0.2],
+        [0.62, 0.3],
+        [0.72, 0.5],
       ],
     ]);
 }
@@ -2730,6 +2801,28 @@ export function stationFacings(id: string): readonly Facing[] {
   return across ? ['a', 'b'] : ['a'];
 }
 
+/** Thekenmodul: gerade (Front nach +y), quer (Front nach +x) oder Eckmodul. */
+export type CounterKind = Facing | 'corner';
+
+/**
+ * Gebrauchte Thekenmodule (Deko-Variante, Ausrichtung): jede Variante gerade, dazu, was die Grundrisse quer und als
+ * Ecke brauchen (Deko entlang der Theke nach `counterPropsAt`, unter Kasse und Ausgabe leer).
+ */
+export function counterKinds(): { variant: number; kind: CounterKind }[] {
+  const out = new Map<string, { variant: number; kind: CounterKind }>();
+  const add = (variant: number, kind: CounterKind): void => {
+    out.set(`${String(variant)}-${kind}`, { variant, kind });
+  };
+  for (const v of COUNTER_VARIANTS) add(v, 'a');
+  for (const l of Object.values(LAYOUTS)) {
+    l.counter.forEach((m, i) => {
+      add(counterPropsAt(i), m.corner ? 'corner' : m.facesX ? 'b' : 'a');
+    });
+    for (const p of l.stations) if (ON_COUNTER.includes(p.stationId)) add(0, p.facesX ? 'b' : 'a');
+  }
+  return [...out.values()];
+}
+
 /** Einzelbild für das DOM: Geräte auf der Theke mit ihrem Thekenmodul, sonst wie in der Szene. */
 export function stationIconSvg(id: string, tier: Tier): string {
   const draw = id === 'register' ? registerFront : DEVICES[id];
@@ -2767,16 +2860,15 @@ export function stationSprites(
       drawRegister(c, tier, true);
       out.push({ name: `station-register-${String(tier)}-${facing}-open`, svg: c.svg() });
     }
-  const counterFacings = new Set(ON_COUNTER.flatMap((id) => facings(id)));
-  counterFacings.add('a');
+  // Thekenmodule: jede Deko-Variante gerade („a“), quer („b“) und als Eckmodul nur, was ein Grundriss braucht.
   for (const tier of TIERS)
-    for (const variant of COUNTER_VARIANTS)
-      for (const facing of counterFacings) {
-        const c = canvas(facing);
-        counterBase(c, tier);
-        counterProps(c, tier, variant);
-        out.push({ name: `counter-${String(tier)}-${String(variant)}-${facing}`, svg: c.svg() });
-      }
+    for (const { variant, kind } of counterKinds()) {
+      const c = canvas(kind === 'b' ? 'b' : 'a');
+      if (kind === 'corner') counterCorner(c, tier);
+      else counterBase(c, tier);
+      counterProps(c, tier, variant);
+      out.push({ name: `counter-${String(tier)}-${String(variant)}-${kind}`, svg: c.svg() });
+    }
   // Leerer Bauplatz: gestrichelter Rahmen auf dem Boden (UI-Markierung, kein Objekt).
   const g = new IsoCanvas(STATION_CANVAS.w, STATION_CANVAS.h, STATION_CANVAS.ox, STATION_CANVAS.oy);
   g.flat(0.08, 0.08, 0, 0.84, 0.84, C.white, 0.25);

@@ -39,14 +39,42 @@ export function counterLookTier(cafeLevel: number): LookTier {
 }
 
 /**
- * Deko auf den Thekenmodulen je Spalte x (0 = leer, 1 = Becher/Glasglocke, 2 = Karte/Spender, 3 = Pflanze);
- * unter Kasse und Ausgabe liegt immer ein leeres Modul.
+ * Deko auf den Thekenmodulen entlang der Theke (Reihenfolge wie `layout.counter`: langer Schenkel von links, Ecke,
+ * kurzer Schenkel nach hinten; 0 = leer, 1 = Becher/Glasglocke, 2 = Karte/Spender, 3 = Pflanze): Pflanzen an
+ * den Enden, Menükarte zur Schlange; unter Kasse und Ausgabe liegt immer ein leeres Modul.
  */
-export const COUNTER_PROPS = [3, 0, 1, 0, 2, 0, 1, 0, 3, 2] as const;
+export const COUNTER_PROPS = [3, 0, 1, 0, 2, 0, 1, 2, 3] as const;
 
-export function counterPropsAt(x: number): number {
-  return COUNTER_PROPS[Math.abs(Math.trunc(x)) % COUNTER_PROPS.length] ?? 0;
+export function counterPropsAt(i: number): number {
+  return COUNTER_PROPS[Math.abs(Math.trunc(i)) % COUNTER_PROPS.length] ?? 0;
 }
+
+/**
+ * Das Lager füllt sich mit der Zahl gekaufter Geräte (mehr Produkte, mehr Vorräte): Stufe 1 Eckregal mit dem
+ * Nötigsten, 2 volle Regale und ein zweites an der Seitenwand, 3 dazu Säcke und Kisten auf der Palette. Schwellen =
+ * gekaufte Geräte der Barista-Theke. Rein kosmetisch, kein Vorrats-System.
+ */
+export const STORAGE_LOOK_DEVICES = [0, 3, 5] as const;
+
+export type StorageTier = 1 | 2 | 3;
+
+export function storageLookTier(devices: number): StorageTier {
+  return tierFor(devices, STORAGE_LOOK_DEVICES) as StorageTier;
+}
+
+/** Leinwand der getragenen Ware in logischen Pixeln; Bodenpunkt (u = v = z = 0) bei (ox, oy). */
+export const SUPPLY_CANVAS = { w: 24, h: 26, ox: 12, oy: 20 } as const;
+
+/** Was ein Barista aus dem Lager an sein Gerät trägt (Frame `supply-<id>` im Möbel-Atlas). */
+export const SUPPLY_ITEMS: Readonly<Record<string, string>> = {
+  matchaStation: 'tin',
+  coffeeMachine: 'beans',
+  iceBox: 'milk',
+  oven: 'flour',
+  displayCase: 'crate',
+  grinder: 'tin',
+  ceremonySet: 'tin',
+};
 
 /**
  * Der Raum wird mit dem Deko-Level edler (Endausbau): Boden (Terrazzo → Terrazzo mit Einschlüssen und
