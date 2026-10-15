@@ -35,6 +35,9 @@ export function startGame(o: GameOptions): GameHandle {
     // Kein MSAA: Sprites sind Quads mit weichen Textur-Kanten, MSAA bringt dort optisch nichts,
     // kostet auf schwachen GPUs (und im Software-Renderer) aber den Großteil der Füllrate.
     antialiasGL: false,
+    // Die Szene nutzt keine Pre-/Post-FX: deren Shader nicht beim Start kompilieren (spart ~1/3 des Boots).
+    disablePreFX: true,
+    disablePostFX: true,
     scale: { mode: Phaser.Scale.RESIZE, width: '100%', height: '100%' },
     scene: [BootScene, CafeScene],
   });

@@ -285,7 +285,14 @@ test('Tagesaufgabe erledigen und abholen', async ({ page }) => {
     await page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.6);
     await page.waitForTimeout(110);
   }
-  await expect(page.getByTestId('nav-badge-achievements')).toBeVisible();
+  // Unter Last stauen sich Klicks hinter einem langen Frame und fallen in dieselbe Spielsekunde –
+  // der Deckel verwirft dann einzelne. Nachtippen, bis die Quest erfüllt ist (höchstens 20 Mal).
+  const badge = page.getByTestId('nav-badge-achievements');
+  for (let i = 0; i < 20 && !(await badge.isVisible()); i++) {
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.6);
+    await page.waitForTimeout(250);
+  }
+  await expect(badge).toBeVisible();
   await page.getByTestId('nav-achievements').click();
   await page.getByTestId('progress-tab-quests').click();
   await expect(page.getByTestId('quest-claim-0')).toBeEnabled({ timeout: 5_000 });

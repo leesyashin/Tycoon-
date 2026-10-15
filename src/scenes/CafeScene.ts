@@ -173,11 +173,6 @@ export class CafeScene extends Phaser.Scene {
     );
     this.rings = this.add.graphics().setDepth(DEPTH.label - 2);
     this.createStaff();
-    for (let i = 0; i < POPUP_POOL; i++) {
-      this.popups.push(
-        this.makeText(12, UI_THEME.goldCss).setVisible(false).setDepth(DEPTH.overlay),
-      );
-    }
     for (let i = 0; i < EMOTE_POOL; i++) {
       this.emotes.push(
         this.sprite(0, 0, FRAME.emote('heart'))
@@ -826,10 +821,24 @@ export class CafeScene extends Phaser.Scene {
     this.game.events.emit(UI_EVENTS.sfx, 'coin');
   }
 
+  /**
+   * Pool wächst bei Bedarf bis `POPUP_POOL`: jeder Text ist ein eigenes Canvas mit GPU-Textur, 24 davon
+   * beim Start anzulegen kostete auf schwachen Geräten einen spürbaren Teil des Szenen-Aufbaus.
+   */
+  private freePopup(): Phaser.GameObjects.Text | null {
+    const free = this.popups.find((p) => !p.visible);
+    if (free || this.popups.length >= POPUP_POOL) return free ?? null;
+    const popup = this.makeText(12, UI_THEME.goldCss).setVisible(false).setDepth(DEPTH.overlay);
+    popup.setScale(Phaser.Math.Clamp(1 / this.cameras.main.zoom, 1, LABEL_MAX_SCALE));
+    this.popups.push(popup);
+    return popup;
+  }
+
   private coinPopup(gx: number, gy: number): void {
-    const popup = this.popups.find((p) => !p.visible);
     const r = this.rates;
-    if (!popup || !r || r.served <= 0) return;
+    if (!r || r.served <= 0) return;
+    const popup = this.freePopup();
+    if (!popup) return;
     // Anzeige: durchschnittlicher Umsatz pro bedientem Kunden; die Gutschrift passiert im Rate-Modell.
     const perCustomer = r.incomePerSec.div(new Decimal(r.served));
     const state = this.store.getState();
