@@ -35,7 +35,15 @@ export function startPwa(hooks: PwaHooks): void {
 
 async function registerServiceWorker(hooks: PwaHooks): Promise<void> {
   const base = import.meta.env.BASE_URL;
-  const reg = await navigator.serviceWorker.register(`${base}sw.js`, { scope: base });
+  let reg: ServiceWorkerRegistration | undefined;
+  try {
+    reg = await navigator.serviceWorker.register(`${base}sw.js`, { scope: base });
+  } catch {
+    // Service Worker gesperrt (Privatmodus, Richtlinie): Spiel läuft weiter, nur ohne Offline-Start.
+    return;
+  }
+  // Manche Umgebungen (z. B. blockierte Service Worker in Testbrowsern) liefern keine Registrierung.
+  if (!reg) return;
   // Erste Installation: Spiel ist danach offline startbar. Spätere: neue Version wartet auf „Jetzt“.
   const firstInstall = !navigator.serviceWorker.controller;
   const offer = (worker: ServiceWorker): void => {
