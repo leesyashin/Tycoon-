@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { cleanlinessEquilibrium } from '@core/staff';
 import { BALANCE } from '@data/balance';
 import { createInitialState, getLocation, withLocation } from '@core/GameState';
 import { runFrame, tick } from '@core/GameLoop';
@@ -18,14 +19,19 @@ const TIPS = 0.075 * 1.02;
 const START_INCOME = 0.2 * 3 * (1 + TIPS);
 
 describe('Rate-Modell', () => {
-  it('Start: Spawn durch Kapazität begrenzt, Durchsatz begrenzt Bedienung', () => {
+  it('Start: Spawn durch Kapazität begrenzt, Gründungsteam schafft mehr als die Nachfrage', () => {
     const r = computeLocationRates(fresh(), 'berlin');
     // min(Nachfrage, Sitzplätze 0.1×2) × (0.5+0.5); Influencer-Hype (10 % von 0.2/s) hebt nur die Nachfrage,
     // die Sitzplätze sind schon voll.
     expect(r.influencerHypeMult).toBeCloseTo(influencerHypeMult(0.2 * 0.1), 9);
     expect(r.influencerHypeMult).toBeGreaterThan(1);
     expect(r.spawnRate).toBeCloseTo(0.2, 9);
-    expect(r.totalThroughput).toBeCloseTo(0.25, 9);
+    // Bestellung: Handkasse 0.6/2 s = 0.3; Zubereitung: 1 Barista / 4 s = 0.25; Ausgabe: 1 Bedienung / 4.8 s.
+    expect(r.stages.order).toBeCloseTo(0.3, 9);
+    expect(r.stages.production).toBeCloseTo(0.25, 9);
+    expect(r.stages.service).toBeCloseTo(1 / 4.8, 9);
+    expect(r.totalThroughput).toBeCloseTo(1 / 4.8, 9);
+    expect(r.bottleneck).toBe('demand');
     expect(r.served).toBeCloseTo(0.2, 9);
     expect(r.waitPressure).toBe(0);
   });
@@ -111,22 +117,30 @@ describe('tick', () => {
     expect(n.boosts).toHaveLength(1);
   });
   it('ein 10-s-Tick entspricht 100 × 100 ms (Einkommen, eingeschwungener Zustand)', () => {
-    // Sauberkeit 100 bleibt mit Reinigung ≥ 3 konstant, Zufriedenheit steht auf ihrem Ziel (59):
-    // nur dann ist das Einkommen über den Schritt konstant und die Schrittweite egal.
+    // Sauberkeit im Gleichgewicht der Putzkräfte und Zufriedenheit auf ihrem Ziel: nur dann ist das
+    // Einkommen über den Schritt konstant und die Schrittweite egal.
     const s = fresh();
-    const steady = withLocation(s, 'berlin', {
+    let steady = withLocation(s, 'berlin', {
       ...getLocation(s, 'berlin'),
-      cleanliness: 100,
-      satisfaction: 59,
-      staff: { cleaner: 3 },
+      staff: { ...getLocation(s, 'berlin').staff, cleaner: 3 },
     });
+    for (let i = 0; i < 20; i++) {
+      const l = getLocation(steady, 'berlin');
+      const r = computeLocationRates(steady, 'berlin');
+      steady = withLocation(steady, 'berlin', {
+        ...l,
+        cleanliness: cleanlinessEquilibrium(l, r.served),
+        satisfaction: r.satisfaction.target,
+      });
+    }
+    const target = getLocation(steady, 'berlin').satisfaction;
     let a = steady;
     for (let i = 0; i < 100; i++) a = tick(a, 100);
     const b = tick(steady, 10_000);
-    expect(getLocation(a, 'berlin').satisfaction).toBeCloseTo(59, 6);
+    expect(getLocation(a, 'berlin').satisfaction).toBeCloseTo(target, 4);
     expect(getLocation(a, 'berlin').coins.toNumber()).toBeCloseTo(
       getLocation(b, 'berlin').coins.toNumber(),
-      6,
+      4,
     );
   });
 });

@@ -23,6 +23,7 @@ import {
   startCampaign,
 } from '@core/marketing';
 import { deserialize, serialize } from '@core/save';
+import { foundingStaff } from '@data/staff';
 
 const LOC = 'berlin';
 const M = BALANCE.marketing;
@@ -67,7 +68,8 @@ describe('Aktive Kampagne', () => {
     const expected = Math.max(income.toNumber() * M.campaignIncomeSec, M.campaignMinCost);
     expect(getCampaignCost(s, LOC).toNumber()).toBeCloseTo(expected);
     const big = make({
-      stations: { ...loc(s).stations, matchaBar: { level: 400, unlocked: true } },
+      stations: { ...loc(s).stations, matchaStation: { level: 400, unlocked: true } },
+      staff: { cashier: 20, barista: 20, waiter: 20 },
     });
     const bigIncome = computeLocationRates(big, LOC).incomePerSec.toNumber();
     expect(getCampaignCost(big, LOC).toNumber()).toBeCloseTo(bigIncome * M.campaignIncomeSec);
@@ -156,11 +158,14 @@ describe('Offline zählt keine zeitlich begrenzten Boosts', () => {
 
 describe('Save v3', () => {
   it('Marketing-Zustand, Sauberkeit und Auto-Kauf überleben Speichern/Laden', () => {
-    const s = startCampaign(make({ cleanliness: 42, autoBuy: true, staff: { manager: 1 } }), LOC);
+    const s = startCampaign(
+      make({ cleanliness: 42, autoBuy: true, staff: { ...foundingStaff(), manager: 1 } }),
+      LOC,
+    );
     const r = loc(deserialize(serialize(s)));
     expect(r.cleanliness).toBe(42);
     expect(r.autoBuy).toBe(true);
-    expect(r.staff).toEqual({ manager: 1 });
+    expect(r.staff).toEqual({ ...foundingStaff(), manager: 1 });
     expect(r.marketing).toEqual(loc(s).marketing);
   });
 
@@ -188,6 +193,7 @@ describe('Save v3', () => {
     const r = loc(deserialize(JSON.stringify(raw)));
     expect(r.cleanliness).toBe(100);
     expect(r.autoBuy).toBe(false);
-    expect(r.staff).toEqual({});
+    // Weniger als das Gründungsteam gibt es nie – sonst stünde die Pipeline.
+    expect(r.staff).toEqual(foundingStaff());
   });
 });

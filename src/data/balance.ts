@@ -38,13 +38,14 @@ export const BALANCE = {
     perSocialMedia: 0.05,
   },
 
-  checkout: {
-    base: 0.5,
-    levelExponent: 0.8,
-    perCashier: 0.2,
-    /** Durchsatz ohne gekaufte Kasse (Handkasse), damit der Start nicht bei 0 hängt. */
-    baselineThroughput: 0.3,
-  },
+  /** Ausstattung (GAME_DESIGN § 4): jedes Level über 1 macht das Gerät um diesen Anteil schneller. */
+  equipment: { speedPerLevel: 0.02 },
+
+  /** Bestelltheke (§ 7.2): Sekunden je Bestellung bei Tempo 1; ohne gekaufte Kasse zählt die Handkasse. */
+  order: { orderTime: 2, handRegisterSpeed: 0.6 },
+
+  /** Ausgabe (§ 7.2): Übergabe an der Theke oder Tischservice; Anteil der Gäste, die sich setzen. */
+  service: { handoverTime: 3, tableServiceTime: 6, dineInShare: 0.6 },
 
   tips: { satisfactionFactor: 0.15, perMusicLevel: 0.005 },
 
@@ -52,7 +53,6 @@ export const BALANCE = {
     base: 50,
     perDecor: 1,
     perQuality: 4,
-    perTeaMaster: 2,
     waitPressureWeight: 20,
     waitPressureMax: 2,
     cleanlinessNeutral: 70,
@@ -66,13 +66,14 @@ export const BALANCE = {
   cleanliness: {
     start: 100,
     max: 100,
+    /** Grund-Verschmutzung auch ohne Gäste … */
     decayPerMin: 2,
-    /** Jede Reinigungs-Stufe senkt den Verfall um diesen Anteil (ab Stufe 4 kein Verfall mehr). */
-    decayReductionPerCleaner: 0.25,
-    /** Ab Reinigungs-Stufe 1 fällt die Sauberkeit nicht unter diesen Wert. */
-    floorWithCleaner: 60,
-    regenFromCleanerLevel: 3,
-    regenPerMin: 5,
+    /** … plus so viele Punkte je bedientem Gast. */
+    dirtPerCustomer: 0.03,
+    /** Jede Putzkraft schafft so viele Punkte/min bei leerem Café … */
+    cleanPerCleanerPerMin: 5,
+    /** … und bis zu diesem Faktor mehr, je dreckiger es ist (× (1 − Sauberkeit/100)). */
+    dirtFactor: 2,
   },
 
   /** Marketing (GAME_DESIGN § 9). Zeiten in Spielsekunden (`playtimeSec`). */

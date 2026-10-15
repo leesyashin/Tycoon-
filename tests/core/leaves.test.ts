@@ -39,7 +39,7 @@ const make = (leaves = 0): GameState => {
   const s = createInitialState(0);
   const base = getLocation(s, LOC);
   const stations = { ...base.stations };
-  for (const id of ['matchaBar', 'checkout', 'togoWindow'])
+  for (const id of ['matchaStation', 'register', 'coffeeMachine'])
     stations[id] = { level: 10, unlocked: true };
   const n = withLocation(s, LOC, { ...base, level: 5, stations, satisfaction: 70 });
   return { ...n, meta: { ...n.meta, goldenLeaves: D(leaves) } };
@@ -210,7 +210,7 @@ describe('Skins (kosmetisch)', () => {
     const s = make(60);
     const a = buySkin(s, 'sakuraBar');
     expect(leaves(a)).toBe(30);
-    expect(equippedSkinTints(a)).toEqual({ matchaBar: SKINS[0]?.tint });
+    expect(equippedSkinTints(a)).toEqual({ matchaStation: SKINS[0]?.tint });
     expect(buySkin(a, 'sakuraBar')).toBe(a);
     const off = toggleSkin(a, 'sakuraBar');
     expect(equippedSkinTints(off)).toEqual({});

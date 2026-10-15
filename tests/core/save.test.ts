@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createInitialState, getLocation, SCHEMA_VERSION } from '@core/GameState';
+import { foundingStaff } from '@data/staff';
 import { D } from '@core/math';
 import { cafeLevelThreshold } from '@core/economy';
 import { tick } from '@core/GameLoop';
@@ -101,8 +102,11 @@ describe('Migration', () => {
     expect(s.schemaVersion).toBe(SCHEMA_VERSION);
     const loc = getLocation(s, 'berlin');
     expect(loc.coins.toNumber()).toBe(1234.5);
-    expect(loc.stations['matchaBar']).toEqual({ level: 7, unlocked: true });
-    expect(loc.stations['checkout']).toEqual({ level: 0, unlocked: false });
+    // Phase 2 benennt die Stationen um (v8 → v9) und ergänzt die Ausgabe-Station.
+    expect(loc.stations['matchaStation']).toEqual({ level: 7, unlocked: true });
+    expect(loc.stations['register']).toEqual({ level: 0, unlocked: false });
+    expect(loc.stations['servingStation']).toEqual({ level: 0, unlocked: false });
+    expect(loc.staff).toEqual(foundingStaff());
     expect(s.lastSavedAt).toBe(9);
     expect(s.meta.unlockedLocations).toEqual(['berlin']);
     expect(s.playtimeSec).toBe(60);
@@ -161,7 +165,7 @@ describe('Storage und Export', () => {
     delete v1['tap'];
     st.setItem('mce.save.v1', JSON.stringify(v1));
     expect(loadGame(st)?.tap.hype).toBe(0);
-    expect(SAVE_KEY).toBe('mce.save.v8');
+    expect(SAVE_KEY).toBe('mce.save.v9');
   });
   it('Laden bringt Offline-Einnahmen und setzt lastSavedAt', () => {
     const st = new MemStorage();
@@ -244,7 +248,7 @@ describe('Save v8 (Tutorial, Café-Level-Stufen, S9)', () => {
     const locs = raw['locations'] as Record<string, Record<string, unknown>>;
     const berlin = locs['berlin'] ?? {};
     const stations = berlin['stations'] as Record<string, { level: number; unlocked: boolean }>;
-    stations['matchaBar'] = { level: cafeLevelThreshold(4), unlocked: true };
+    stations['matchaStation'] = { level: cafeLevelThreshold(4), unlocked: true };
     berlin['level'] = 9;
     berlin['bestLevel'] = 9;
     const loc = getLocation(deserialize(JSON.stringify(raw)), 'berlin');
@@ -264,6 +268,72 @@ describe('Save v8 (Tutorial, Café-Level-Stufen, S9)', () => {
     expect(deserialize(JSON.stringify(raw)).tutorial).toEqual({ step: 0, done: false });
     raw['tutorial'] = { step: 999, done: false };
     expect(deserialize(JSON.stringify(raw)).tutorial.done).toBe(true);
+  });
+});
+
+describe('Save v9 (Phase 2: Ausstattung, Personal als Köpfe)', () => {
+  /** Echter v8-Spielstand: alte Stations-IDs, Personal als Stufen, Bäcker und Tee-Meister. */
+  const v8 = (): Record<string, unknown> => {
+    const raw = JSON.parse(serialize(createInitialState(0))) as Record<string, unknown>;
+    raw['schemaVersion'] = 8;
+    const berlin = (raw['locations'] as Record<string, Record<string, unknown>>)['berlin'] ?? {};
+    berlin['stations'] = {
+      matchaBar: { level: 40, unlocked: true },
+      checkout: { level: 12, unlocked: true },
+      togoWindow: { level: 9, unlocked: true },
+      icedBar: { level: 0, unlocked: true },
+      bakery: { level: 0, unlocked: false },
+      merchShelf: { level: 0, unlocked: false },
+      ceremonyCorner: { level: 0, unlocked: false },
+      workshopRoom: { level: 0, unlocked: false },
+    };
+    berlin['level'] = 3;
+    berlin['bestLevel'] = 3;
+    berlin['staff'] = { barista: 4, cashier: 2, baker: 1, teaMaster: 1, cleaner: 2, manager: 1 };
+    raw['tutorial'] = { step: 3, done: false };
+    return raw;
+  };
+  it('benennt die Ausstattung um, ergänzt die Ausgabe-Station und behält die Level', () => {
+    const s = deserialize(JSON.stringify(v8()));
+    expect(s.schemaVersion).toBe(SCHEMA_VERSION);
+    const loc = getLocation(s, 'berlin');
+    expect(loc.stations['matchaStation']).toEqual({ level: 40, unlocked: true });
+    expect(loc.stations['register']).toEqual({ level: 12, unlocked: true });
+    expect(loc.stations['coffeeMachine']).toEqual({ level: 9, unlocked: true });
+    expect(loc.stations['iceBox']).toEqual({ level: 0, unlocked: true });
+    expect(loc.stations['oven']).toEqual({ level: 0, unlocked: false });
+    expect(loc.stations['ceremonySet']).toEqual({ level: 0, unlocked: false });
+    expect(loc.stations['servingStation']).toEqual({ level: 0, unlocked: false });
+    expect(loc.stations['matchaBar']).toBeUndefined();
+    expect(loc.level).toBe(3);
+  });
+  it('übersetzt Personal-Stufen in Köpfe: Bäcker und Tee-Meister werden Baristas, Bedienungen wie Verkäufer', () => {
+    const loc = getLocation(deserialize(JSON.stringify(v8())), 'berlin');
+    expect(loc.staff).toEqual({
+      cashier: 2,
+      barista: 6,
+      waiter: 2,
+      cleaner: 2,
+      manager: 1,
+    });
+  });
+  it('ohne Personal gibt es mindestens das Gründungsteam; Köpfe sind gedeckelt', () => {
+    const raw = v8();
+    const berlin = (raw['locations'] as Record<string, Record<string, unknown>>)['berlin'] ?? {};
+    berlin['staff'] = { barista: 15, baker: 10 };
+    const loc = getLocation(deserialize(JSON.stringify(raw)), 'berlin');
+    expect(loc.staff).toEqual({ cashier: 1, barista: 20, waiter: 1 });
+  });
+  it('ein angefangenes Tutorial beginnt neu, ein erledigtes bleibt erledigt', () => {
+    expect(deserialize(JSON.stringify(v8())).tutorial).toEqual({ step: 0, done: false });
+    const raw = v8();
+    raw['tutorial'] = { step: 8, done: true };
+    expect(deserialize(JSON.stringify(raw)).tutorial.done).toBe(true);
+  });
+  it('liest den alten v8-Schlüssel', () => {
+    const st = new MemStorage();
+    st.setItem('mce.save.v8', JSON.stringify(v8()));
+    expect(getLocation(loadGame(st) ?? createInitialState(0), 'berlin').staff['waiter']).toBe(2);
   });
 });
 

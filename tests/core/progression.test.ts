@@ -91,7 +91,7 @@ describe('Matcha-Qualität (GAME_DESIGN § 8)', () => {
 describe('Freischalt-Tabelle und Café-Level (GAME_DESIGN § 5.3)', () => {
   it('sammelt Stationen, Ambiente, Personal, Qualität und Marketing je Level', () => {
     const at3 = getUnlocksAt(3).map((u) => `${u.kind}:${u.id}`);
-    expect(at3).toEqual(expect.arrayContaining(['station:icedBar', 'quality:1']));
+    expect(at3).toEqual(expect.arrayContaining(['station:iceBox', 'quality:1']));
     const at2 = getUnlocksAt(2).map((u) => `${u.kind}:${u.id}`);
     expect(at2).toEqual(expect.arrayContaining(['marketing:campaign', 'staff:cleaner']));
     expect(getUnlocksAt(8).map((u) => u.id)).toContain('terrace');
@@ -115,25 +115,25 @@ describe('Freischalt-Tabelle und Café-Level (GAME_DESIGN § 5.3)', () => {
   it('Level-Aufstieg gibt 30 s Einkommen und ab Level 5 Blätter, genau einmal', () => {
     // 24 Stations-Level = Café-Level 1; der nächste Kauf hebt auf Level 2.
     let s = patch(fresh(), { coins: D(1e9), satisfaction: 50 });
-    s = patch(s, { stations: { ...loc(s).stations, matchaBar: { level: 24, unlocked: true } } });
-    const before = buyStation(s, L, 'checkout', 0 as never);
+    s = patch(s, { stations: { ...loc(s).stations, matchaStation: { level: 24, unlocked: true } } });
+    const before = buyStation(s, L, 'register', 0 as never);
     expect(before).toBe(s);
     const income = computeLocationRates(
       patch(s, {
         level: 2,
-        stations: { ...loc(s).stations, checkout: { level: 1, unlocked: true } },
+        stations: { ...loc(s).stations, register: { level: 1, unlocked: true } },
       }),
       L,
     ).incomePerSec;
     const cost = 60;
-    const after = buyStation(s, L, 'checkout', 1);
+    const after = buyStation(s, L, 'register', 1);
     expect(loc(after).level).toBe(2);
     const reward = income.mul(CAFE_LEVEL_REWARD.incomeSeconds).toNumber();
     expect(loc(after).coins.toNumber()).toBeCloseTo(1e9 - cost + reward, 3);
     expect(after.meta.goldenLeaves.toNumber()).toBe(0);
     expect(after.stats.levelsBought).toBe(1);
     // Ein weiterer Kauf ohne Level-Aufstieg gibt nichts extra.
-    const again = buyStation(after, L, 'checkout', 1);
+    const again = buyStation(after, L, 'register', 1);
     expect(loc(again).level).toBe(2);
     expect(again.meta.lifetimeEarned.eq(after.meta.lifetimeEarned)).toBe(true);
   });
@@ -144,11 +144,11 @@ describe('Freischalt-Tabelle und Café-Level (GAME_DESIGN § 5.3)', () => {
   });
   it('Stationen ab Café-Level 9 brauchen Terrasse Stufe 1', () => {
     let s = patch(fresh(), { level: 9 });
-    expect(needsTerrace(s, L, 'ceremonyCorner')).toBe(true);
-    expect(needsTerrace(s, L, 'merchShelf')).toBe(false);
-    expect(isStationUnlocked(s, L, 'ceremonyCorner')).toBe(false);
+    expect(needsTerrace(s, L, 'grinder')).toBe(true);
+    expect(needsTerrace(s, L, 'displayCase')).toBe(false);
+    expect(isStationUnlocked(s, L, 'grinder')).toBe(false);
     s = patch(s, { ambience: { terrace: 1 } });
-    expect(isStationUnlocked(s, L, 'ceremonyCorner')).toBe(true);
+    expect(isStationUnlocked(s, L, 'grinder')).toBe(true);
   });
 });
 

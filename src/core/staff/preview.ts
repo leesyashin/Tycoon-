@@ -4,13 +4,13 @@ import { computeLocationRates } from '../customers/rates';
 import { cleanlinessEquilibrium, getStaffLevel } from './effects';
 
 export interface StaffHirePreview {
-  /** Sofortiger Zuwachs an Einkommen/s durch eine weitere Stufe (kann 0 sein, z. B. bei Nachfrage-Engpass). */
+  /** Sofortiger Zuwachs an Einkommen/s durch eine weitere Kraft (0, wenn der Engpass woanders liegt). */
   incomeDelta: Decimal;
   /** Änderung des Zufriedenheits-Ziels, sobald sich die Sauberkeit eingependelt hat. */
   satisfactionDelta: number;
 }
 
-/** Was eine weitere Stufe bewirkt – damit das Personal-Panel jeden Kauf mit Zahlen erklärt. */
+/** Was eine weitere Kraft bewirkt – damit das Personal-Panel jeden Kauf mit Zahlen erklärt. */
 export function previewStaffHire(
   state: GameState,
   locationId: string,
@@ -24,7 +24,8 @@ export function previewStaffHire(
   );
   const settled = (s: GameState): number => {
     const l = getLocation(s, locationId);
-    const eq = withLocation(s, locationId, { ...l, cleanliness: cleanlinessEquilibrium(l) });
+    const served = computeLocationRates(s, locationId).served;
+    const eq = withLocation(s, locationId, { ...l, cleanliness: cleanlinessEquilibrium(l, served) });
     return computeLocationRates(eq, locationId).satisfaction.target;
   };
   return {

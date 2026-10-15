@@ -5,6 +5,7 @@ import {
   type CustomerTypeId,
 } from '@data/customerTypes';
 import { BALANCE } from '@data/balance';
+import type { StationDef } from '@data/stations';
 
 /** Normierte Anteile der Kundentypen für einen Standort (GAME_DESIGN § 7.5). */
 export function customerTypeShares(locationId: string): Record<CustomerTypeId, number> {
@@ -55,9 +56,11 @@ export function influencerHypeMult(influencerRate: number): number {
   return 1 + (h.spawnMult - 1) * (1 - Math.exp(-influencerRate * h.durationSec));
 }
 
-/** Gewicht einer Station bei der Verteilung der Kunden (Touristen kaufen eher Merch). */
-export function stationDemandWeight(stationId: string, touristShare: number): number {
-  return stationId === CUSTOMER_EFFECTS.merchStationId
-    ? 1 + CUSTOMER_EFFECTS.touristMerchBonus * touristShare
-    : 1;
+/** Anteil der Gäste, die das Produkt der Linie bestellen; Touristen greifen eher zur Kuchenvitrine. */
+export function attachRate(def: StationDef, touristShare: number): number {
+  const bonus =
+    def.id === CUSTOMER_EFFECTS.touristStationId
+      ? 1 + CUSTOMER_EFFECTS.touristAttachBonus * touristShare
+      : 1;
+  return def.attachRate * bonus;
 }

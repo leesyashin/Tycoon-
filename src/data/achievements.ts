@@ -34,8 +34,8 @@ export interface AchievementDef {
 export const HIGH_SATISFACTION = { threshold: 90 } as const;
 /** „Nachtschicht“: lokale Stunde in [from, to). */
 export const NIGHT_SHIFT_HOURS = { from: 2, to: 4 } as const;
-/** „Blitzblank“: Sauberkeit mindestens so hoch, nach mindestens `minPlaytimeSec` Spielzeit. */
-export const SPOTLESS = { cleanliness: 100, minPlaytimeSec: 3600 } as const;
+/** „Blitzblank“: Sauberkeit mindestens so hoch (100 ist im Putz-Modell nie erreichbar), nach `minPlaytimeSec` Spielzeit. */
+export const SPOTLESS = { cleanliness: 95, minPlaytimeSec: 3600 } as const;
 
 const tiers = (
   kind: AchievementKind,

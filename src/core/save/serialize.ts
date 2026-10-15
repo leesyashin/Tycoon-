@@ -4,6 +4,7 @@ import { BOOST_RULES, LEAF_DROPS, getSkinDef } from '@data/leaves';
 import { FREE_BOOST } from '@data/monetization';
 import { AUDIO_DEFAULTS } from '@data/audio';
 import { TUTORIAL_STEPS } from '@data/tutorial';
+import { foundingStaff } from '@data/staff';
 import { hashString } from '../math/random';
 import { D, Decimal, isDecimalNaN } from '../math/bignum';
 import {
@@ -69,8 +70,21 @@ function reviveLocation(id: string, raw: unknown): LocationState {
     level,
     bestLevel: Math.max(level, Math.floor(num(raw['bestLevel'], level))),
     prestigeCount: Math.max(0, Math.floor(num(raw['prestigeCount'], 0))),
-    staff: isObj(raw['staff']) ? (raw['staff'] as Record<string, number>) : {},
+    staff: reviveStaff(raw['staff']),
   };
+}
+
+/** Nur ganze Zahlen ≥ 0; weniger als das Gründungsteam gibt es nie, sonst stünde die Pipeline (§ 6). */
+function reviveStaff(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (isObj(raw)) {
+    for (const [k, v] of Object.entries(raw)) {
+      const n = Math.floor(num(v, 0));
+      if (n > 0) out[k] = n;
+    }
+  }
+  for (const [id, n] of Object.entries(foundingStaff())) out[id] = Math.max(out[id] ?? 0, n);
+  return out;
 }
 
 function reviveTap(raw: unknown): GameState['tap'] {

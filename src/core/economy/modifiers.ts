@@ -1,6 +1,5 @@
 import { getLocation, type GameState } from '../GameState';
 import { campaignSpawnMult } from '../marketing/effects';
-import { staffSpeedMults } from '../staff/effects';
 import { qualityPriceMult } from '../progression/quality';
 import { getMetaEffects } from '../prestige/meta';
 import { collectEventEffects } from '../events/effects';
@@ -13,7 +12,7 @@ export interface Modifiers {
   incomeMult: number;
   /** Preis-Multiplikator der Matcha-Qualität (GAME_DESIGN § 8), abzüglich Lieferengpass. */
   priceMult: number;
-  /** Tempo-Boosts auf Kasse und Stationen. */
+  /** Tempo-Boosts auf alle drei Theken. */
   speedMult: number;
   /** Dauerhafter Einkommens-Multiplikator aller Standorte (Zen, `prestigeMult` GAME_DESIGN § 7.2). */
   prestigeMult: number;
@@ -21,9 +20,7 @@ export interface Modifiers {
   discount: number;
   /** Zusätzliche Basis-Zufriedenheit (Zen). */
   satisfactionBonus: number;
-  /** Tempo-Faktor aus Personal je Station (GAME_DESIGN § 6). */
-  staffSpeedMult: Record<string, number>;
-  /** Preis-Faktor je Station aus Events (Hitzewelle: Iced-Bar ×3). */
+  /** Preis-Faktor je Produktlinie aus Events (Hitzewelle: Eisfach ×3). */
   stationPriceMult: Record<string, number>;
   /** Faktor auf die Trinkgeld-Quote (Regentag). */
   tipMult: number;
@@ -62,7 +59,6 @@ export function collectModifiers(
     prestigeMult: meta.incomeMult,
     discount: meta.discount,
     satisfactionBonus: meta.satisfactionBonus,
-    staffSpeedMult: staffSpeedMults(loc),
     stationPriceMult: events.stationPriceMult,
     tipMult: events.tipMult,
     eventSatisfaction: events.satisfactionBonus,

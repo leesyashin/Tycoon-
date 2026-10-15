@@ -1,13 +1,14 @@
 import { Decimal, D } from './math/bignum';
 import { BALANCE } from '@data/balance';
 import { STATIONS } from '@data/stations';
+import { foundingStaff } from '@data/staff';
 import { START_LOCATION_ID, getLocationDef } from '@data/locations';
 import { EVENT_CONFIG } from '@data/events';
 import { FREE_BOOST } from '@data/monetization';
 import { AUDIO_DEFAULTS } from '@data/audio';
 import { hashString, rng } from './math/random';
 
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 export interface Settings {
   lang: 'de' | 'en';
@@ -182,7 +183,8 @@ export function createLocationState(locationId: string = START_LOCATION_ID): Loc
     level: 1,
     stations,
     ambience: {},
-    staff: {},
+    // Gründungsteam (GAME_DESIGN § 6): je ein Verkäufer, Barista und Bedienung, damit die Pipeline läuft.
+    staff: foundingStaff(),
     quality: 0,
     satisfaction: BALANCE.startSatisfaction,
     cleanliness: BALANCE.cleanliness.start,

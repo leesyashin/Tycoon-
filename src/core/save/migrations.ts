@@ -4,6 +4,8 @@ import { FREE_BOOST } from '@data/monetization';
 import { AUDIO_DEFAULTS } from '@data/audio';
 import { hashString } from '../math/random';
 import { cafeLevelFromSum } from '../economy/cafeLevel';
+import { STATIONS } from '@data/stations';
+import { STAFF_ROLES } from '@data/staff';
 
 type Json = Record<string, unknown>;
 
@@ -129,6 +131,60 @@ export const migrations: ((raw: Json) => Json)[] = [
       next[id] = { ...loc, level, bestLevel: Math.max(best, level) };
     }
     return { ...raw, schemaVersion: 8, locations: next, tutorial: { step: 0, done: true } };
+  },
+  // v8 → v9 (Phase 2, bedientes Café): Stationen heißen jetzt Ausstattung (neue IDs, Ausgabe-Station neu),
+  // Personal zählt als Köpfe. Bäcker und Tee-Meister werden Baristas; Verkäufer und Bedienungen bekommen die
+  // alte Kassierer-Stufe, damit ein großes Café nicht an einer einzelnen Bedienung hängt; mindestens das
+  // Gründungsteam. Ein angefangenes Tutorial beginnt neu (die Schritte sind andere).
+  (raw) => {
+    const RENAME: Record<string, string> = {
+      matchaBar: 'matchaStation',
+      checkout: 'register',
+      togoWindow: 'coffeeMachine',
+      icedBar: 'iceBox',
+      bakery: 'oven',
+      merchShelf: 'displayCase',
+      ceremonyCorner: 'grinder',
+      workshopRoom: 'ceremonySet',
+    };
+    const n = (v: unknown): number =>
+      typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.floor(v)) : 0;
+    const locations = (raw['locations'] as Record<string, Json> | undefined) ?? {};
+    const next: Record<string, Json> = {};
+    for (const [id, loc] of Object.entries(locations)) {
+      const oldStations = (loc['stations'] as Record<string, Json> | undefined) ?? {};
+      const stations: Record<string, Json> = {};
+      for (const [sid, st] of Object.entries(oldStations)) stations[RENAME[sid] ?? sid] = st;
+      const level = n(loc['level']);
+      for (const def of STATIONS) {
+        stations[def.id] ??= { level: 0, unlocked: level >= def.unlockCafeLevel };
+      }
+      const old = (loc['staff'] as Record<string, unknown> | undefined) ?? {};
+      const staff: Record<string, number> = {};
+      const cap = (role: string, v: number): number =>
+        Math.min(STAFF_ROLES.find((r) => r.id === role)?.maxLevel ?? v, v);
+      staff['cashier'] = cap('cashier', Math.max(1, n(old['cashier'])));
+      staff['barista'] = cap(
+        'barista',
+        Math.max(1, n(old['barista']) + n(old['baker']) + n(old['teaMaster'])),
+      );
+      staff['waiter'] = cap(
+        'waiter',
+        Math.max(1, old['waiter'] === undefined ? n(old['cashier']) : n(old['waiter'])),
+      );
+      for (const role of ['cleaner', 'manager', 'socialMedia']) {
+        const v = n(old[role]);
+        if (v > 0) staff[role] = cap(role, v);
+      }
+      next[id] = { ...loc, stations, staff };
+    }
+    const tutorial = (raw['tutorial'] as Json | undefined) ?? {};
+    return {
+      ...raw,
+      schemaVersion: 9,
+      locations: next,
+      tutorial: tutorial['done'] === true ? tutorial : { step: 0, done: false },
+    };
   },
 ];
 

@@ -4,16 +4,17 @@ import { createInitialState, getLocation, withLocation, type GameState } from '@
 import { D } from '@core/math';
 import { applyOffline } from '@core/economy';
 import {
+  attachRate,
   computeLocationRates,
   customerTypeShares,
   influencerHypeMult,
   regularTipMult,
-  stationDemandWeight,
   tipRate,
   tipSatisfactionTerm,
 } from '@core/customers';
+import { getStationDef } from '@data/stations';
 
-/** Café mit Matcha-Bar, Kasse und Merch-Regal an `locationId`. */
+/** Café mit Matcha-Station, Kasse und Kuchenvitrine an `locationId`, Personal für reichlich Durchsatz. */
 const withMerch = (locationId: string): GameState => {
   const s = createInitialState(0);
   const base = getLocation(s, 'berlin');
@@ -23,10 +24,11 @@ const withMerch = (locationId: string): GameState => {
     level: 10,
     stations: {
       ...base.stations,
-      matchaBar: { level: 20, unlocked: true },
-      checkout: { level: 40, unlocked: true },
-      merchShelf: { level: 20, unlocked: true },
+      matchaStation: { level: 20, unlocked: true },
+      register: { level: 40, unlocked: true },
+      displayCase: { level: 20, unlocked: true },
     },
+    staff: { cashier: 10, barista: 10, waiter: 10 },
   });
 };
 
@@ -53,15 +55,18 @@ describe('Kundentypen-Effekte (GAME_DESIGN § 7.5)', () => {
     expect(influencerHypeMult(0.2)).toBeCloseTo(1 + 0.5 * (1 - Math.exp(-1)), 9);
     expect(influencerHypeMult(0.5)).toBeGreaterThan(influencerHypeMult(0.1));
   });
-  it('Touristen ziehen Kunden zum Merch-Regal', () => {
-    expect(stationDemandWeight('matchaBar', 1)).toBe(1);
-    expect(stationDemandWeight(CUSTOMER_EFFECTS.merchStationId, 0.25)).toBeCloseTo(1.125, 9);
+  it('Touristen greifen eher zur Kuchenvitrine', () => {
+    const matcha = getStationDef('matchaStation');
+    const vitrine = getStationDef(CUSTOMER_EFFECTS.touristStationId);
+    expect(attachRate(matcha, 1)).toBe(matcha.attachRate);
+    expect(attachRate(vitrine, 0.25)).toBeCloseTo(vitrine.attachRate * 1.125, 9);
     const r = computeLocationRates(withMerch('berlin'), 'berlin');
-    const total = Object.values(r.perStation).reduce((a, b) => a + b, 0);
-    expect(total).toBeCloseTo(r.served, 9);
-    // Bali hat fast doppelt so viele Touristen: größerer Merch-Anteil bei gleichen Stationen.
+    // Jeder Gast bestellt Matcha; die Vitrine kommt bei einem Anteil der Gäste dazu.
+    expect(r.perStation['matchaStation']).toBeCloseTo(r.served, 9);
+    expect(r.perStation['displayCase']).toBeLessThan(r.served);
+    // Bali hat fast doppelt so viele Touristen: größerer Vitrinen-Anteil bei gleicher Ausstattung.
     const bali = computeLocationRates(withMerch('bali'), 'bali');
-    const share = (x: typeof r): number => (x.perStation['merchShelf'] ?? 0) / x.served;
+    const share = (x: typeof r): number => (x.perStation['displayCase'] ?? 0) / x.served;
     expect(customerTypeShares('bali').tourist).toBeGreaterThan(
       customerTypeShares('berlin').tourist,
     );
