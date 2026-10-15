@@ -2,7 +2,8 @@ import Phaser from 'phaser';
 import { CAMERA } from '@data/layouts';
 
 /**
- * Drag zum Verschieben, Pinch (2 Finger) und Mausrad zum Zoomen, mit Grenzen.
+ * Drag zum Verschieben, Pinch (2 Finger) und Mausrad zum Zoomen, mit Grenzen: Der ganze Kamera-Ausschnitt bleibt
+ * in `bounds` (dort ist überall Stadt zu sehen), herauszoomen geht nur so weit, wie der Ausschnitt hineinpasst.
  * `isDrag()` sagt der Szene, ob ein Pointer-Up ein Tap war oder das Ende einer Kamerabewegung.
  */
 export class CameraControls {
@@ -31,19 +32,29 @@ export class CameraControls {
   }
 
   /**
-   * Hält den Bildmittelpunkt im Raum. Eigene Klemmung statt `setBounds`, weil Phaser bei
-   * herausgezoomter Kamera (Ansicht größer als Raum) an die obere Kante statt mittig klemmt.
+   * Hält den Ausschnitt in den Grenzen. Eigene Klemmung statt `setBounds`, weil Phaser bei herausgezoomter
+   * Kamera (Ansicht größer als die Grenzen) an die obere Kante statt mittig klemmt.
    */
   clamp(): void {
     const cam = this.scene.cameras.main;
     const b = this.bounds;
-    const cx = Phaser.Math.Clamp(cam.scrollX + cam.width / 2, b.left, b.right);
-    const cy = Phaser.Math.Clamp(cam.scrollY + cam.height / 2, b.top, b.bottom);
+    const hw = cam.width / cam.zoom / 2;
+    const hh = cam.height / cam.zoom / 2;
+    const fit = (c: number, lo: number, hi: number) =>
+      lo > hi ? (lo + hi) / 2 : Phaser.Math.Clamp(c, lo, hi);
+    const cx = fit(cam.scrollX + cam.width / 2, b.left + hw, b.right - hw);
+    const cy = fit(cam.scrollY + cam.height / 2, b.top + hh, b.bottom - hh);
     cam.setScroll(cx - cam.width / 2, cy - cam.height / 2);
   }
 
+  /** Kleinster Zoom, bei dem der Ausschnitt noch ganz in die Grenzen passt. */
+  private minZoom(): number {
+    const cam = this.scene.cameras.main;
+    return Math.max(CAMERA.minZoom, cam.width / this.bounds.width, cam.height / this.bounds.height);
+  }
+
   setZoom(zoom: number): void {
-    this.scene.cameras.main.setZoom(Phaser.Math.Clamp(zoom, CAMERA.minZoom, CAMERA.maxZoom));
+    this.scene.cameras.main.setZoom(Phaser.Math.Clamp(zoom, this.minZoom(), CAMERA.maxZoom));
   }
 
   isDrag(): boolean {
@@ -88,7 +99,7 @@ export class CameraControls {
   /** Zoomt so, dass der Weltpunkt unter (sx, sy) stehen bleibt. */
   private zoomAt(zoom: number, sx: number, sy: number): void {
     const cam = this.scene.cameras.main;
-    const z = Phaser.Math.Clamp(zoom, CAMERA.minZoom, CAMERA.maxZoom);
+    const z = Phaser.Math.Clamp(zoom, this.minZoom(), CAMERA.maxZoom);
     const before = cam.getWorldPoint(sx, sy);
     cam.setZoom(z);
     cam.preRender();

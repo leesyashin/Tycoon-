@@ -31,7 +31,7 @@ export function nextStationLookLevel(level: number): number | null {
   return STATION_LOOK_LEVELS.find((l) => l > Math.max(level, 1)) ?? null;
 }
 
-/** Die Gästetheke wird mit dem Café-Level edler (Kiefer → … → Nachtblau/Gold), rein kosmetisch. */
+/** Die Gästetheke wird mit dem Café-Level edler (Kobalt-Lack/Edelstahl → … → Nachtblau/Gold), rein kosmetisch. */
 export const COUNTER_LOOK_CAFE_LEVELS = [1, 3, 6, 10, 15] as const;
 
 export function counterLookTier(cafeLevel: number): LookTier {
@@ -133,3 +133,11 @@ export function staffLookFor(role: StaffRoleId, index: number): string {
   const looks = STAFF_LOOKS[role];
   return looks[Math.abs(Math.trunc(index)) % looks.length] ?? looks[0] ?? role;
 }
+
+/**
+ * Große Deko über mehrere Kacheln (Läufer, Barhocker): Leinwand in logischen Pixeln, Bodenpunkt der Kachel
+ * (u = v = 0) bei (ox, oy); die Szene setzt den Ursprung auf die untere Kachelecke (oy + 32).
+ */
+export const DECOR_BIG = { w: 224, h: 208, ox: 112, oy: 88 } as const;
+/** Deko-Frames, die die große Leinwand nutzen. */
+export const DECOR_BIG_FRAMES: readonly string[] = ['deco-rug-blue', 'deco-stools'];

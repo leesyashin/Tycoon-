@@ -5,7 +5,9 @@
  *   pnpm dev --port 5175 &  PW_CHROMIUM=… pnpm tsx scripts/screenshots.ts http://localhost:5175/Tycoon-/ docs/screenshots/s10
  * Umgebungsvariablen: SHOT_WAIT_MS (Wartezeit), SHOT_SPAWN (Gäste je Sekunde), SHOT_SCALE (Pixelverhältnis),
  * SHOT_STAGE (`grown` = Standard mit Panels; `start`, `mid`, `lux` = nur das Café in dieser Ausbaustufe, um die
- * Optik-Stufen der Ausstattung zu zeigen: Start / Café-Level 7 / alles über Level 100, Café-Level 16).
+ * Optik-Stufen der Ausstattung zu zeigen: Start / Café-Level 7 / alles über Level 100, Café-Level 16),
+ * SHOT_HOUR (Café-Uhrzeit 0–23, z. B. 23 für Nacht), SHOT_ZOOM (Mausrad-Rasten, negativ = heranzoomen, positiv =
+ * heraus, um das Stadtviertel zu zeigen), SHOT_PAN („dx,dy“: Kamera ziehen), SHOT_TAG (Zusatz im Dateinamen).
  */
 import { mkdirSync } from 'node:fs';
 import { chromium } from '@playwright/test';
@@ -17,6 +19,11 @@ const waitMs = Number(process.env['SHOT_WAIT_MS'] ?? 9000);
 const spawn = Number(process.env['SHOT_SPAWN'] ?? 0);
 /** Geräte-Pixelverhältnis (2 = doppelt so große PNGs, Figuren in Atlas-Auflösung). */
 const scale = Number(process.env['SHOT_SCALE'] ?? 1);
+const hour = process.env['SHOT_HOUR'] === undefined ? null : Number(process.env['SHOT_HOUR']);
+const zoomSteps = Number(process.env['SHOT_ZOOM'] ?? 0);
+const shotTag = process.env['SHOT_TAG'] ? `-${process.env['SHOT_TAG']}` : '';
+/** Kamera ziehen (Bildschirm-Pixel „dx,dy“), z. B. um die Ränder des Viertels zu prüfen. */
+const pan = (process.env['SHOT_PAN'] ?? '').split(',').map(Number);
 mkdirSync(out, { recursive: true });
 
 interface Seed {
@@ -81,7 +88,7 @@ const STAGES: Record<string, Seed> = {
       servingStation: 25,
     },
     staff: team,
-    ambience: { seats: 14, decor: 3, music: 1, wifi: 1, terrace: 1 },
+    ambience: { seats: 14, decor: 10, music: 1, wifi: 1, terrace: 1 },
     level: 7,
     cleanliness: 90,
   },
@@ -89,7 +96,7 @@ const STAGES: Record<string, Seed> = {
     ...GROWN,
     stations: Object.fromEntries(EQUIPMENT.map((id) => [id, 120])),
     staff: team,
-    ambience: { seats: 45, decor: 3, music: 1, wifi: 1, terrace: 1 },
+    ambience: { seats: 45, decor: 30, music: 20, wifi: 20, terrace: 3 },
     level: 16,
     cleanliness: 90,
     satisfaction: 85,
@@ -113,33 +120,57 @@ async function shoot(lang: 'de' | 'en', width: number, height: number): Promise<
   const query = `?lang=${lang}&tutorial=0${spawn > 0 ? `&debugSpawn=${String(spawn)}` : ''}`;
   await page.goto(base + query);
   await page.getByTestId('hud').waitFor();
-  await page.evaluate((g) => {
-    window.dispatchEvent(new Event('pagehide'));
-    const key = Object.keys(localStorage).find((k) => /^mce\.save\.v\d+$/.test(k));
-    if (!key) throw new Error('no save');
-    const save = JSON.parse(localStorage.getItem(key) ?? '{}') as {
-      locations: Record<string, Record<string, unknown>>;
-    };
-    const berlin = save.locations['berlin'];
-    if (!berlin) throw new Error('no berlin');
-    const stations = berlin['stations'] as Record<string, { level: number; unlocked: boolean }>;
-    for (const [id, level] of Object.entries(g.stations)) stations[id] = { level, unlocked: true };
-    berlin['staff'] = g.staff;
-    berlin['ambience'] = g.ambience;
-    berlin['level'] = g.level;
-    berlin['bestLevel'] = g.level;
-    berlin['coins'] = g.coins;
-    berlin['cleanliness'] = g.cleanliness;
-    berlin['satisfaction'] = g.satisfaction;
-    localStorage.setItem(key, JSON.stringify(save));
-    Storage.prototype.setItem = () => undefined;
-  }, seed);
+  await page.evaluate(
+    ({ g, hour }) => {
+      window.dispatchEvent(new Event('pagehide'));
+      const key = Object.keys(localStorage).find((k) => /^mce\.save\.v\d+$/.test(k));
+      if (!key) throw new Error('no save');
+      const save = JSON.parse(localStorage.getItem(key) ?? '{}') as {
+        locations: Record<string, Record<string, unknown>>;
+        playtimeSec: number;
+      };
+      // Café-Tag: 24 min, Start 9 Uhr (DAY_CYCLE)
+      if (hour !== null) save.playtimeSec = (((hour - 9 + 24) % 24) * 60) | 0;
+      const berlin = save.locations['berlin'];
+      if (!berlin) throw new Error('no berlin');
+      const stations = berlin['stations'] as Record<string, { level: number; unlocked: boolean }>;
+      for (const [id, level] of Object.entries(g.stations))
+        stations[id] = { level, unlocked: true };
+      berlin['staff'] = g.staff;
+      berlin['ambience'] = g.ambience;
+      berlin['level'] = g.level;
+      berlin['bestLevel'] = g.level;
+      berlin['coins'] = g.coins;
+      berlin['cleanliness'] = g.cleanliness;
+      berlin['satisfaction'] = g.satisfaction;
+      localStorage.setItem(key, JSON.stringify(save));
+      Storage.prototype.setItem = () => undefined;
+    },
+    { g: seed, hour },
+  );
   await page.reload();
   await page.getByTestId('hud').waitFor();
   await page.locator('#game canvas').waitFor();
   // Figuren brauchen ein paar Sekunden, bis Schlange, Tische und Bedienungen gefüllt sind.
   await page.waitForTimeout(waitMs);
-  const tag = `${lang}-${String(width)}`;
+  if (zoomSteps !== 0) {
+    await page.mouse.move(width / 2, height / 2);
+    for (let i = 0; i < Math.abs(zoomSteps); i++) {
+      await page.mouse.wheel(0, zoomSteps > 0 ? 120 : -120);
+      await page.waitForTimeout(60);
+    }
+    await page.waitForTimeout(400);
+  }
+  if (pan.length === 2 && pan.every(Number.isFinite)) {
+    const [dx = 0, dy = 0] = pan;
+    await page.mouse.move(width / 2, height / 2);
+    await page.mouse.down();
+    for (let k = 1; k <= 20; k++)
+      await page.mouse.move(width / 2 + (dx * k) / 20, height / 2 + (dy * k) / 20);
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+  }
+  const tag = `${lang}-${String(width)}${shotTag}`;
   if (stage !== 'grown') {
     await page.screenshot({ path: `${out}/${tag}-cafe-${stage}.png` });
     await page.close();

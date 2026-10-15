@@ -5,11 +5,14 @@
  *   PW_CHROMIUM=… pnpm tsx scripts/art/contact-sheet.ts furniture out.png    (Tische, Ambiente, Schmutz-Marker)
  *   PW_CHROMIUM=… pnpm tsx scripts/art/contact-sheet.ts figures out.png
  *   PW_CHROMIUM=… pnpm tsx scripts/art/contact-sheet.ts figures out.png 'waiter|sit-'   (nur passende Namen)
+ *   PW_CHROMIUM=… pnpm tsx scripts/art/contact-sheet.ts city|facade|theme out.png      (Stadtviertel, Berlin)
  * Rendert die SVGs vergrößert in ein Raster mit Beschriftung. Nicht Teil von `pnpm art`.
  */
 import { writeFileSync } from 'node:fs';
 import { chromium } from '@playwright/test';
-import { ambienceSprites, type SpriteDef } from './sprites';
+import { ambienceSprites, themeSprites, type SpriteDef } from './sprites';
+import { citySprites, facadeSprites } from './city';
+import { decorSprites, tableOutSprites } from './decor';
 import { EQUIPMENT_IDS, TIERS, stationIconSvg, stationSprites, tableSprites } from './equipment';
 import { characterSprites } from './figures';
 
@@ -28,6 +31,10 @@ const sets: Record<string, { list: () => SpriteDef[]; scale: number; cols: numbe
   },
   furniture: { list: () => [...tableSprites(), ...ambienceSprites()], scale: 3, cols: 4 },
   figures: { list: characterSprites, scale: 4, cols: 10 },
+  city: { list: citySprites, scale: 2, cols: 6 },
+  decor: { list: () => [...tableOutSprites(), ...decorSprites()], scale: 3, cols: 8 },
+  facade: { list: () => facadeSprites('berlin'), scale: 2.5, cols: 12 },
+  theme: { list: () => themeSprites('berlin'), scale: 3, cols: 5 },
 };
 const set = sets[which] ?? sets['stations'];
 if (!set) throw new Error(`Unknown set: ${which}`);

@@ -1,6 +1,7 @@
 import {
   CROWD,
   pathFromPickup,
+  cleanerPathToTable,
   pathFromTable,
   pathToPickup,
   pathToTable,
@@ -47,6 +48,8 @@ export interface Agent {
   /** Versatz im Gedränge hinter der sichtbaren Schlange. */
   jx: number;
   jy: number;
+  /** Beim Gehen: schon zur Tür hinaus und auf dem Gehweg unterwegs. */
+  outside: boolean;
 }
 
 export type WaiterPhase = 'idle' | 'toTable' | 'serve' | 'back';
@@ -61,6 +64,8 @@ export interface Waiter {
   timer: number;
   /** Gast (Agent-ID), der gerade bedient wird, sonst −1. */
   target: number;
+  /** Hinweg zum Tisch; zurück geht es denselben Weg (auch durch die Tür von der Terrasse). */
+  route: GridPos[];
 }
 
 export type CleanerPhase = 'idle' | 'toTable' | 'wipe' | 'back';
@@ -75,6 +80,8 @@ export interface Cleaner {
   timer: number;
   /** Tisch, der gerade geputzt wird, sonst −1. */
   table: number;
+  /** Hinweg zum zuletzt geputzten Tisch (rückwärts zurück auf die Laufzeile). */
+  route: GridPos[];
 }
 
 export interface CrowdInput {
@@ -87,6 +94,8 @@ export interface CrowdInput {
   cleaners: number;
   /** `seats`-Stufe: so viele Tische stehen im Raum. */
   tables: number;
+  /** Terrassen-Stufe: Tische draußen (Standard 0). */
+  terrace?: number;
   /** Sauberkeit 0..100 → Anteil dreckiger Tische. */
   cleanliness: number;
 }
@@ -112,6 +121,8 @@ export class CustomerCrowd {
   private spawnAcc = 0;
   private totalRate = 0;
   private tablesVisible = 0;
+  /** Sichtbar je Tisch-Index (Raum nach `seats`, Terrasse nach Terrassen-Stufe). */
+  private tableShown: boolean[] = [];
   private nextSpot = 0;
 
   constructor(
@@ -139,6 +150,7 @@ export class CustomerCrowd {
         waited: 0,
         jx: 0,
         jy: 0,
+        outside: false,
       });
     }
     for (let i = 0; i < CROWD.maxWaiters; i++) {
@@ -152,6 +164,7 @@ export class CustomerCrowd {
         path: [],
         timer: 0,
         target: -1,
+        route: [],
       });
     }
     for (let i = 0; i < CROWD.maxCleaners; i++) {
@@ -164,6 +177,7 @@ export class CustomerCrowd {
         path: [],
         timer: 0,
         table: -1,
+        route: [],
       });
     }
   }
@@ -196,7 +210,9 @@ export class CustomerCrowd {
   update(dtSec: number, input: CrowdInput): CrowdUpdate {
     const dt = Number.isFinite(dtSec) ? Math.max(0, dtSec) : 0;
     this.totalRate = Math.max(0, input.served);
-    this.tablesVisible = visibleTables(this.layout, input.tables).length;
+    const shown = new Set(visibleTables(this.layout, input.tables, input.terrace ?? 0));
+    this.tableShown = this.layout.tables.map((t) => shown.has(t));
+    this.tablesVisible = shown.size;
 
     let spawned = 0;
     this.spawnAcc += this.totalRate * dt;
@@ -218,6 +234,13 @@ export class CustomerCrowd {
     return { purchases, spawned };
   }
 
+  /** Punkt auf dem Gehweg links oder rechts vom Eingang (Erscheinen und Verschwinden der Gäste). */
+  private sidewalkPoint(): GridPos {
+    const { curb, spreadMin, spreadMax } = this.layout.street;
+    const side = this.rng() < 0.5 ? -1 : 1;
+    return { x: curb.x + side * (spreadMin + this.rng() * (spreadMax - spreadMin)), y: curb.y };
+  }
+
   private spawn(): boolean {
     const free = this.agents.find((a) => !a.active);
     if (!free || this.totalRate <= 0) return false;
@@ -226,10 +249,17 @@ export class CustomerCrowd {
     free.type = pickCustomerType(this.shares, this.rng());
     free.look = pickLook(free.type, this.rng());
     free.phase = 'walkIn';
-    free.x = this.layout.entrance.x;
-    free.y = this.layout.entrance.y;
-    free.path = this.layout.order.path.map((p) => ({ ...p }));
+    // Vom Gehweg her: seitlich auftauchen, zur Tür abbiegen, dann wie bisher zur Schlange.
+    const start = this.sidewalkPoint();
+    free.x = start.x;
+    free.y = start.y;
+    free.path = [
+      { ...this.layout.street.curb },
+      { ...this.layout.entrance },
+      ...this.layout.order.path.map((p) => ({ ...p })),
+    ];
     free.timer = 0;
+    free.outside = false;
     free.serveTotal = 0;
     free.table = -1;
     free.spot = 0;
@@ -290,7 +320,14 @@ export class CustomerCrowd {
         this.leaveTable(a);
         return;
       case 'leave':
-        if (follow(a, step)) this.release(a);
+        if (!follow(a, step)) return;
+        if (a.outside) {
+          this.release(a);
+          return;
+        }
+        // An der Tür angekommen: über den Gehweg zur Seite weg.
+        a.outside = true;
+        a.path = [{ ...this.layout.street.curb }, this.sidewalkPoint()];
         return;
     }
   }
@@ -321,9 +358,9 @@ export class CustomerCrowd {
 
   private pickSeat(): { table: number; seat: 0 | 1 } | null {
     const free: { table: number; seat: 0 | 1 }[] = [];
-    for (let t = 0; t < this.tablesVisible && t < this.layout.tables.length; t++) {
+    for (let t = 0; t < this.layout.tables.length; t++) {
       const taken = this.seatTaken[t];
-      if (!taken) continue;
+      if (!taken || !this.tableShown[t]) continue;
       if (!taken[0]) free.push({ table: t, seat: 0 });
       if (!taken[1]) free.push({ table: t, seat: 1 });
     }
@@ -354,6 +391,11 @@ export class CustomerCrowd {
     a.path = table
       ? pathFromTable(this.layout, table).map((p) => ({ ...p }))
       : [{ ...this.layout.entrance }];
+    // Von der Terrasse direkt über den Gehweg weg (nicht noch einmal durchs Café).
+    if (table?.outside) {
+      a.outside = true;
+      a.path.push({ ...this.layout.street.curb }, this.sidewalkPoint());
+    }
     a.table = -1;
   }
 
@@ -393,7 +435,8 @@ export class CustomerCrowd {
           const table = this.layout.tables[next.table];
           if (!table) return;
           w.phase = 'toTable';
-          w.path = waiterPathToTable(this.layout, table).map((p) => ({ ...p }));
+          w.route = waiterPathToTable(this.layout, table).map((p) => ({ ...p }));
+          w.path = w.route.map((p) => ({ ...p }));
           return;
         }
         case 'toTable':
@@ -413,9 +456,8 @@ export class CustomerCrowd {
             return;
           }
           w.phase = 'back';
-          w.path = [...this.layout.pickup.exit.map((p) => ({ ...p })).reverse(), { ...home }];
-          // Zurück über die Laufzeile, nicht quer durch die Tische.
-          w.path.unshift({ x: w.x, y: this.layout.walkRows.top });
+          // Denselben Weg zurück (über die Laufzeile, von der Terrasse durch die Tür), dann nach Hause.
+          w.path = [...w.route.slice(0, -1).reverse(), { ...home }];
           return;
         }
         case 'back':
@@ -440,7 +482,7 @@ export class CustomerCrowd {
         this.dirty.delete(t);
       }
     }
-    for (const t of this.dirty) if (t >= this.tablesVisible) this.dirty.delete(t);
+    for (const t of this.dirty) if (!this.tableShown[t]) this.dirty.delete(t);
 
     const visible = Math.min(CROWD.maxCleaners, Math.max(0, Math.floor(hired)));
     const step = CROWD.staffTilesPerSec * dt;
@@ -466,7 +508,11 @@ export class CustomerCrowd {
           if (!table) return;
           c.table = target;
           c.phase = 'toTable';
-          c.path = [{ x: c.x, y: row }, { x: table.side.x, y: row }, { ...table.side }];
+          // Erst den letzten Weg zurück auf die Laufzeile (z. B. von der Terrasse), dann zum nächsten Tisch.
+          const back = c.route.slice(0, -1).reverse();
+          const from = back[back.length - 1] ?? { x: c.x, y: c.y };
+          c.route = cleanerPathToTable(this.layout, from, table).map((p) => ({ ...p }));
+          c.path = [...back, ...c.route];
           return;
         }
         case 'toTable':
@@ -485,7 +531,8 @@ export class CustomerCrowd {
             return;
           }
           c.phase = 'back';
-          c.path = [{ x: c.x, y: row }, { x: spot.x, y: row }, { ...spot }];
+          c.path = [...c.route.slice(0, -1).reverse(), { x: spot.x, y: row }, { ...spot }];
+          c.route = [];
           return;
         case 'back':
           if (follow(c, step)) c.phase = 'idle';

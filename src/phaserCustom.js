@@ -27,6 +27,7 @@ import Components from 'phaser/src/gameobjects/components/index.js';
 import GameObject from 'phaser/src/gameobjects/GameObject.js';
 import Graphics from 'phaser/src/gameobjects/graphics/Graphics.js';
 import Image from 'phaser/src/gameobjects/image/Image.js';
+import Layer from 'phaser/src/gameobjects/layer/Layer.js';
 import Text from 'phaser/src/gameobjects/text/Text.js';
 import Particles from 'phaser/src/gameobjects/particles/index.js';
 import Rectangle from 'phaser/src/gameobjects/shape/rectangle/Rectangle.js';
@@ -50,6 +51,7 @@ import PIPELINES from 'phaser/src/renderer/webgl/pipelines/const.js';
 // Factories registrieren sich beim Import an `this.add`; Loader-Dateitypen an `this.load`.
 import 'phaser/src/gameobjects/graphics/GraphicsFactory.js';
 import 'phaser/src/gameobjects/image/ImageFactory.js';
+import 'phaser/src/gameobjects/layer/LayerFactory.js';
 import 'phaser/src/gameobjects/text/TextFactory.js';
 import 'phaser/src/gameobjects/particles/ParticleEmitterFactory.js';
 import 'phaser/src/gameobjects/shape/rectangle/RectangleFactory.js';
@@ -96,6 +98,7 @@ const Phaser = Extend(
       GameObject,
       Graphics,
       Image,
+      Layer,
       Text,
       Particles,
       Rectangle,

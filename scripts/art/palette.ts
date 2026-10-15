@@ -31,7 +31,7 @@ export const C = {
   orange: '#f08a3a',
   lamp: '#ffe2a0',
 
-  // Material-Leiter der Ausstattung (UI_STYLE § 4): Kiefer → Eiche → Matcha-Lack → Nussbaum/Marmor/Messing
+  // Material-Leiter der Ausstattung (UI_STYLE § 4): Kobalt-Lack → Edelstahl → blaue Fliesen → Nussbaum/Marmor/Messing
   // → Nachtblau/Marmor/Gold. Metalle bekommen Glanzstreifen statt Verlauf.
   pine: '#e9c995',
   oak: '#b98a52',
@@ -65,4 +65,17 @@ export const C = {
   coffee: '#6b4129',
   sage: '#a6c596',
   matchaTile: '#a8d08e',
+
+  // Kiez-Café im Stil der Berliner Third-Wave-Kettenläden (Vorgabe Vincent: knallblaue Fassade, Edelstahl,
+  // Weiß, minimal): Kobaltblau als Lack und Glasur, gebürsteter Edelstahl, heller Terrazzo.
+  cobalt: '#2146f2',
+  cobaltDeep: '#1631b8',
+  cobaltLight: '#6483ff',
+  cobaltTile: '#2a51f6',
+  stainless: '#cdd5e0',
+  stainlessLight: '#e6ebf2',
+  stainlessDark: '#9ea9bb',
+  terrazzo: '#e9e6e0',
+  terrazzoDark: '#dcd8d0',
+  lightbox: '#fdfcf8',
 } as const;
