@@ -255,6 +255,8 @@ export interface CityDef {
   walks: WalkPath[];
   /** Zebrastreifen: Rechteck und Achse der Fahrbahn, die er quert. */
   crossings: { rect: GridRect; axis: 'u' | 'v' }[];
+  /** Brücken (Kanal, Spree): Fläche und die Fahrbahn darauf (Achse, Anfang). Boote fahren darunter durch. */
+  bridges: { rect: GridRect; axis: 'u' | 'v'; at: number }[];
   /** Fahrbahnen (Anfang `at`, Breite `CITY_GRID.road`), für Mittellinien und Bordsteine. */
   roads: { axis: 'u' | 'v'; at: number }[];
   /** Ausflugsdampfer: Kanal (entlang v) und Spree (entlang u). */
@@ -268,6 +270,16 @@ export interface CityDef {
  * Häuser, Park oder Wasser zu sehen sind; herauszoomen geht nur so weit, wie der Ausschnitt hineinpasst.
  */
 const CITY_VIEW = { left: -1150, top: -1150, right: 1150, bottom: 1500 } as const;
+
+/** Liegt der Grid-Punkt im erlaubten Kamera-Ausschnitt (mit Rand in Pixeln)? Welt-Pixel wie `toScreen` (64×32). */
+function nearView(x: number, y: number, margin = 64): boolean {
+  const sx = (x - y) * 32;
+  const sy = (x + y) * 16;
+  const v = CITY_VIEW;
+  return (
+    sx > v.left - margin && sx < v.right + margin && sy > v.top - margin && sy < v.bottom + margin
+  );
+}
 
 /** Liegt v auf einer Kreuzung (mit Rand) oder über dem Kanal? Dort keine Bäume und keine Parker. */
 function blockedAt(v: number, margin: number): boolean {
@@ -771,7 +783,7 @@ const WALKS: WalkPath[] = [
   // Durch den Park, rechts am Brunnen vorbei
   {
     points: [
-      { x: 5.5, y: 42 },
+      { x: 5.5, y: 43 },
       { x: 5.5, y: 30.3 },
       { x: 6.42, y: 29.65 },
       { x: 6.42, y: 27.85 },
@@ -927,20 +939,41 @@ function buildCity(): CityDef {
     kind: 'quay',
     rect: { x0: CANAL.x1, y0: extent.y0, x1: CANAL.quay1, y1: RIVER_FROM },
   });
+  const bridges: CityDef['bridges'] = [];
   for (let k: number = blocks.from; k <= blocks.to; k++) {
     const a = roadAt(k);
-    ground.push({
-      kind: 'bridge',
+    bridges.push({
       rect: { x0: CANAL.quay0, y0: a - 0.4, x1: CANAL.quay1, y1: a + ROAD + 0.4 },
+      axis: 'u',
+      at: a,
     });
     if (k >= -1)
       for (const x of [21.5, 23, 24.5, 26])
         for (const y of [a - 0.2, a + ROAD + 0.2]) props.push({ kind: 'railing', x, y, axis: 'u' });
   }
-  // Ufergeländer an der Spree
-  for (let x = -40; x < RIVER_FROM; x += 1.5)
-    if (!(x > CANAL.quay0 - 1 && x < CANAL.quay1))
-      props.push({ kind: 'railing', x, y: RIVER_FROM - 0.3, axis: 'u' });
+  // Die Hauptstraßen am Café führen über die Spree aus dem Bild (dort fahren die Autos hinaus und herein).
+  const main = roadAt(0);
+  const spree = [
+    { x0: main - 0.4, y0: RIVER_FROM - q, x1: main + ROAD + 0.4, y1: extent.y1 },
+    { x0: RIVER_FROM - q, y0: main - 0.4, x1: extent.x1, y1: main + ROAD + 0.4 },
+  ];
+  bridges.push({ rect: spree[0] ?? extent, axis: 'v', at: main });
+  bridges.push({ rect: spree[1] ?? extent, axis: 'u', at: main });
+  for (const b of bridges) ground.push({ kind: 'bridge', rect: b.rect });
+  const onBridge = (t: number) => t + 0.75 > main - 0.4 && t - 0.75 < main + ROAD + 0.4;
+  // Geländer an den Spreebrücken, an beiden Spreeufern (vorn und rechts) – nur so weit, wie man sie sieht
+  for (let t = RIVER_FROM + 0.75; t < extent.y1; t += 1.5)
+    for (const e of [main - 0.2, main + ROAD + 0.2]) {
+      if (nearView(e, t)) props.push({ kind: 'railing', x: e, y: t, axis: 'v' });
+      if (nearView(t, e)) props.push({ kind: 'railing', x: t, y: e, axis: 'u' });
+    }
+  for (let t = -40; t < RIVER_FROM; t += 1.5) {
+    const bank = RIVER_FROM - 0.3;
+    if (!(t > CANAL.quay0 - 1 && t < CANAL.quay1) && !onBridge(t) && nearView(t, bank))
+      props.push({ kind: 'railing', x: t, y: bank, axis: 'u' });
+    if (!onBridge(t) && nearView(bank, t))
+      props.push({ kind: 'railing', x: bank, y: t, axis: 'v' });
+  }
 
   props.push(...streetProps(ground, buildings));
   return {
@@ -950,6 +983,7 @@ function buildCity(): CityDef {
     buildings,
     props,
     backProps,
+    bridges,
     lanes: LANES,
     walks: WALKS,
     crossings: CROSSINGS,
@@ -1244,6 +1278,7 @@ export function propFrame(p: PropDef): string {
 export const FLIP_ON_V: readonly PropKind[] = [
   // Fußgängerampel: Lichter nach +v; an der Fahrbahn entlang y müssen sie nach +x über die Straße zeigen
   'pedLight',
+  'railing',
   'parked',
   'bikes',
   'scooters',

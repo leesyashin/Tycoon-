@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CITY,
   CITY_PALETTES,
+  CITY_SPRITE,
   GROUND_CELLS,
   STREET_LIFE,
   UPPER_CELLS,
@@ -25,6 +26,9 @@ import {
 import { LOCATIONS } from '@data/locations';
 import { getLayout, pathToTable, waiterPathToTable } from '@data/layouts';
 import { StreetLife } from '../src/scenes/city/streetLife';
+import { ART_SCALE } from '../src/scenes/art';
+import { toScreen } from '../src/scenes/iso/iso';
+import { CHAR_SPRITE } from '@data/art';
 import { CustomerCrowd } from '../src/scenes/agents/crowd';
 import { citySprites } from '../scripts/art/city';
 
@@ -55,6 +59,25 @@ function samples(r: GridRect): [number, number][] {
   const ys = [r.y0 + e, (r.y0 + r.y1) / 2, r.y1 - e];
   return xs.flatMap((x) => ys.map((y): [number, number] => [x, y]));
 }
+type Canvas = { w: number; h: number; ox: number; oy: number };
+/** Liegt ein Sprite (Leinwand in logischen Pixeln, Bodenpunkt am Grid-Punkt) ganz außerhalb des Kamera-Ausschnitts? */
+function offView(x: number, y: number, c: Canvas): boolean {
+  const v = CITY.view;
+  const s = toScreen(x, y);
+  const k = ART_SCALE * 2; // Atlas in 2×, Szene skaliert mit ART_SCALE: logische Pixel
+  const left = s.x - c.ox * k;
+  const right = s.x + (c.w - c.ox) * k;
+  const top = s.y - c.oy * k;
+  const bottom = s.y + (c.h - c.oy) * k;
+  return right < v.left || left > v.right || bottom < v.top || top > v.bottom;
+}
+const WALKER: Canvas = {
+  w: CHAR_SPRITE.w,
+  h: CHAR_SPRITE.h,
+  ox: CHAR_SPRITE.w / 2,
+  oy: CHAR_SPRITE.footY,
+};
+
 /** Punkte auf allen Passanten-Wegen (alle 0,05 Kacheln), nur innerhalb der gezeichneten Fläche. */
 function walkSamples(): [number, number][] {
   const out: [number, number][] = [];
@@ -301,6 +324,30 @@ describe('Stadtviertel: Kamera und Wege', () => {
       path.some((p) => p.x === layout.entrance.x && p.y === layout.entrance.y);
     expect(through(pathToTable(layout, layout.order.access, out))).toBe(true);
     expect(through(waiterPathToTable(layout, out))).toBe(true);
+  });
+});
+
+describe('Stadtviertel: Ränder', () => {
+  it('Autos fahren nur auf Fahrbahn oder Brücke und tauchen außerhalb des Bilds auf bzw. ab', () => {
+    const { laneFrom, laneTo } = STREET_LIFE;
+    for (const lane of CITY.lanes) {
+      const at = (s: number): [number, number] => (lane.axis === 'u' ? [s, lane.at] : [lane.at, s]);
+      for (let s = laneFrom; s <= laneTo; s += 0.5) {
+        const g = groundAt(...at(s));
+        expect(['road', 'bridge'], `${lane.axis} ${String(lane.at)} bei ${String(s)}`).toContain(g);
+      }
+      for (const end of [laneFrom, laneTo])
+        expect(
+          offView(...at(end), CITY_SPRITE.car),
+          `${lane.axis} ${String(lane.at)} Ende ${String(end)}`,
+        ).toBe(true);
+    }
+  });
+
+  it('Passanten starten und enden außerhalb des Bilds', () => {
+    for (const w of CITY.walks)
+      for (const p of [w.points[0], w.points[w.points.length - 1]])
+        if (p) expect(offView(p.x, p.y, WALKER), `${String(p.x)},${String(p.y)}`).toBe(true);
   });
 });
 
