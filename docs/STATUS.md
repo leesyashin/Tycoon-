@@ -1,8 +1,8 @@
 ## Loop
-state: running
-current: S9
+state: blocked
+current: -
 branch: session/s9-release
-started: 2026-10-15T00:31:49Z
+started: -
 next: S9
 ## Letzte Session: S8 – Grafik und Audio (2026-10-14, PR #11)
 ## Fertig
@@ -27,6 +27,7 @@ next: S9
 - Käufe: `purchase(sku)` → Zahlungsdialog des Anbieters; erst nach Server-Bestätigung (Webhook/Receipt-Prüfung, nicht im Client) `{ ok: true }`. Gutschrift über eine neue `core`-Action (z. B. `grantLeaves`) mit Idempotenz-Schlüssel im Save. Erstattungen/Abstürze sind laut GAME_DESIGN § 10 nicht Teil von v1.
 - Vor dem Einschalten: Datenschutz/Consent (DSGVO), Lizenz des SDK in `docs/ASSETS.md`/STATUS „Entscheidungen“, e2e „keine fremden Requests“ anpassen.
 ## Offen / bekannte Bugs
+- BLOCKIERT: S9 ist fertig gebaut (PR #12 „S9: Balancing, Tutorial, Release“), aber zwei Abnahmekriterien kann nur Vincent prüfen: (1) Lighthouse Performance ≥ 80 (Mobile) – im Container (Headless-Chromium ohne GPU) Median 78, Spanne 71–82 über je 5 Läufe; bitte nach dem Deploy mit PageSpeed Insights oder Chrome-Lighthouse auf einem Rechner mit GPU messen. (2) Tutorial-Testlauf: einmal frisch (Inkognito) spielen und prüfen, ob man ohne Hilfe versteht, was zu tun ist. Wenn beides passt: PR mergen (Squash), Tag `v1.0.0` auf den Merge-Commit setzen, im Loop-Block `state: done`, `next: -`. Wenn nicht: Befund unter „Offen“ notieren, `state: idle`, `next: S9` – die nächste Session arbeitet auf `session/s9-release` weiter.
 - HUD zeigt Zen weiter nicht (nur Standorte-Panel); UI_STYLE § 5 sieht im HUD nur Münzen/⚡/Blätter vor. ⚡ Kapazität bleibt ausgeblendet (§ 6.4, S9).
 - Skins (Sakura-Bar, Neon-Kasse) sind weiter eine Tönung der neuen Stations-Sprites, keine eigenen Sprites; global statt je Standort.
 - Alle Standorte nutzen weiter `DEFAULT_LAYOUT`; S8 gibt jedem Standort eigene Böden/Wände/Fenster (Themen-Atlas), aber keinen eigenen Grundriss.
