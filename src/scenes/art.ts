@@ -1,12 +1,15 @@
-import { CHAR_SPRITE, stationLookTier } from '@data/art';
+import { CHAR_SPRITE, stationLookTier, tableLookTier, type LookTier } from '@data/art';
 
 /**
  * Atlas-Schlüssel und Frame-Namen der Szene (S8, Phase 2). Die Bilder erzeugt `pnpm art` aus
- * `scripts/art/sprites.ts` und `scripts/art/figures.ts` (PNG 2×, Lizenz: docs/ASSETS.md); Phaser zeigt sie
- * mit `ART_SCALE`.
+ * `scripts/art/equipment.ts`, `scripts/art/sprites.ts` und `scripts/art/figures.ts` (PNG 2×, Lizenz:
+ * docs/ASSETS.md); Phaser zeigt sie mit `ART_SCALE`.
  */
 export const ATLAS = {
+  /** Figuren, Smileys, Münzen, Partikel. */
   common: 'common',
+  /** Ausstattung in fünf Stufen, Thekenmodule, Tische, Ambiente (eigene Palette, eigene Textur). */
+  furniture: 'furniture',
   theme: (locationId: string) => `theme-${locationId}`,
 } as const;
 
@@ -19,11 +22,20 @@ export const CHAR_FOOT_ORIGIN_Y = CHAR_SPRITE.footY / CHAR_SPRITE.h;
 /** Abstand Fußpunkt → Platz über dem Kopf (logische Pixel) für Smiley, Fortschrittsring und Emote. */
 export const CHAR_OVERLAY_Y = CHAR_SPRITE.headTop + 2;
 
-/** Ab so vielen Tischen zeigt die Szene die Tischdecken-Variante. */
-export const TABLE_TIER2_FROM = 13;
-
 export const FRAME = {
+  // Atlas `furniture`
   ghost: 'station-ghost',
+  dirt: 'fx-dirt',
+  /** Front zeigt nach +y (Facing „a“) oder nach ±x („b“); Stufe aus dem Level (`STATION_LOOK_LEVELS`). */
+  station: (id: string, level: number, facesX: boolean) =>
+    `station-${id}-${String(stationLookTier(level))}-${facesX ? 'b' : 'a'}`,
+  /** Thekenmodul in der Stufe des Cafés mit Deko-Variante (`COUNTER_PROPS`). */
+  counter: (tier: LookTier, variant: number, facesX: boolean) =>
+    `counter-${String(tier)}-${String(variant)}-${facesX ? 'b' : 'a'}`,
+  ambience: (id: string) => `ambience-${id}`,
+  /** Tisch mit zwei Stühlen in der Stufe nach Anzahl der Tische (`TABLE_LOOK_LEVELS`). */
+  table: (seatsLevel: number) => `table-${String(tableLookTier(seatsLevel))}`,
+  // Atlas `common`
   coin: 'coin',
   leaf: 'leaf',
   rain: 'fx-rain',
@@ -32,16 +44,6 @@ export const FRAME = {
   steam: 'fx-steam',
   shine: 'fx-shine',
   glow: 'glow',
-  dirt: 'fx-dirt',
-  /** Front zeigt nach +y (Facing „a“) oder nach ±x („b“). */
-  station: (id: string, level: number, facesX: boolean) =>
-    `station-${id}-${String(stationLookTier(level))}-${facesX ? 'b' : 'a'}`,
-  /** Thekenmodul ohne Gerät. */
-  counter: (facesX: boolean) => `counter-${facesX ? 'b' : 'a'}`,
-  ambience: (id: string) => `ambience-${id}`,
-  /** Tisch mit zwei Stühlen; ab `TABLE_TIER2_FROM` Tischen mit Tischdecke. */
-  table: (seatsLevel: number) =>
-    seatsLevel >= TABLE_TIER2_FROM ? 'ambience-seats-2' : 'ambience-seats',
   /**
    * `look`: Variante aus `CUSTOMER_LOOKS`/`STAFF_LOOKS`; `front`: Blick nach +x/+y (zur Kamera), `back`: weg
    * von der Kamera; Frame 0 = Stehen, 1/2 = Laufen.

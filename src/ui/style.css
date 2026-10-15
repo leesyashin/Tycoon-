@@ -749,6 +749,30 @@ button.chip {
   color: var(--c-ink);
   font-weight: 700;
 }
+/* Nächste Optik-Stufe einer Ausstattung (UI_STYLE § 4: Geräte werden mit dem Level edler). */
+.station-card .look-next {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  margin: 6px 0 0;
+  padding: 4px 6px 4px 10px;
+  border-radius: var(--r-tile);
+  background: var(--c-surface-2);
+  color: var(--c-ink);
+  font-size: var(--fs-label);
+  font-weight: 700;
+}
+.look-next-sym {
+  color: var(--c-gold);
+}
+.look-next-text {
+  flex: 1;
+}
+.look-next-icon {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+}
 .buy-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

@@ -3,7 +3,9 @@
  * einen gewachsenen Spielstand ein und fotografiert Café, Personal-Panel und Ausstattungs-Panel in DE/EN,
  * Hochformat 390×844 und Desktop 1280×720.
  *   pnpm dev --port 5175 &  PW_CHROMIUM=… pnpm tsx scripts/screenshots.ts http://localhost:5175/Tycoon-/ docs/screenshots/s10
- * Umgebungsvariablen: SHOT_WAIT_MS (Wartezeit), SHOT_SPAWN (Gäste je Sekunde), SHOT_SCALE (Pixelverhältnis).
+ * Umgebungsvariablen: SHOT_WAIT_MS (Wartezeit), SHOT_SPAWN (Gäste je Sekunde), SHOT_SCALE (Pixelverhältnis),
+ * SHOT_STAGE (`grown` = Standard mit Panels; `start`, `mid`, `lux` = nur das Café in dieser Ausbaustufe, um die
+ * Optik-Stufen der Ausstattung zu zeigen: Start / Café-Level 7 / alles über Level 100, Café-Level 16).
  */
 import { mkdirSync } from 'node:fs';
 import { chromium } from '@playwright/test';
@@ -17,8 +19,18 @@ const spawn = Number(process.env['SHOT_SPAWN'] ?? 0);
 const scale = Number(process.env['SHOT_SCALE'] ?? 1);
 mkdirSync(out, { recursive: true });
 
+interface Seed {
+  stations: Record<string, number>;
+  staff: Record<string, number>;
+  ambience: Record<string, number>;
+  level: number;
+  coins: string;
+  cleanliness: number;
+  satisfaction: number;
+}
+
 /** Gewachsenes Café (Café-Level 5, Σ Level 113): Ausstattung, Team, Tische, etwas Schmutz. */
-const GROWN = {
+const GROWN: Seed = {
   stations: {
     register: 12,
     matchaStation: 85,
@@ -34,6 +46,59 @@ const GROWN = {
   cleanliness: 55,
   satisfaction: 72,
 };
+
+const EQUIPMENT = [
+  'register',
+  'matchaStation',
+  'coffeeMachine',
+  'iceBox',
+  'oven',
+  'displayCase',
+  'grinder',
+  'ceremonySet',
+  'servingStation',
+];
+const team = { cashier: 3, barista: 9, waiter: 3, cleaner: 2 };
+/** Ausbaustufen für die Optik der Ausstattung (UI_STYLE § 4): Theke nach Café-Level, Geräte nach Level. */
+const STAGES: Record<string, Seed> = {
+  grown: GROWN,
+  start: {
+    ...GROWN,
+    stations: { matchaStation: 1 },
+    staff: team,
+    ambience: { seats: 3 },
+    level: 1,
+  },
+  mid: {
+    ...GROWN,
+    stations: {
+      register: 30,
+      matchaStation: 60,
+      coffeeMachine: 26,
+      iceBox: 25,
+      oven: 12,
+      displayCase: 10,
+      servingStation: 25,
+    },
+    staff: team,
+    ambience: { seats: 14, decor: 3, music: 1, wifi: 1, terrace: 1 },
+    level: 7,
+    cleanliness: 90,
+  },
+  lux: {
+    ...GROWN,
+    stations: Object.fromEntries(EQUIPMENT.map((id) => [id, 120])),
+    staff: team,
+    ambience: { seats: 45, decor: 3, music: 1, wifi: 1, terrace: 1 },
+    level: 16,
+    cleanliness: 90,
+    satisfaction: 85,
+  },
+};
+const stage = process.env['SHOT_STAGE'] ?? 'grown';
+const picked = STAGES[stage];
+if (!picked) throw new Error(`Unknown SHOT_STAGE: ${stage}`);
+const seed: Seed = picked;
 
 const browser = await chromium.launch(
   process.env['PW_CHROMIUM'] ? { executablePath: process.env['PW_CHROMIUM'] } : {},
@@ -68,13 +133,19 @@ async function shoot(lang: 'de' | 'en', width: number, height: number): Promise<
     berlin['satisfaction'] = g.satisfaction;
     localStorage.setItem(key, JSON.stringify(save));
     Storage.prototype.setItem = () => undefined;
-  }, GROWN);
+  }, seed);
   await page.reload();
   await page.getByTestId('hud').waitFor();
   await page.locator('#game canvas').waitFor();
   // Figuren brauchen ein paar Sekunden, bis Schlange, Tische und Bedienungen gefüllt sind.
   await page.waitForTimeout(waitMs);
   const tag = `${lang}-${String(width)}`;
+  if (stage !== 'grown') {
+    await page.screenshot({ path: `${out}/${tag}-cafe-${stage}.png` });
+    await page.close();
+    console.log(`${tag}: cafe (${stage})`);
+    return;
+  }
   await page.screenshot({ path: `${out}/${tag}-cafe.png` });
   await page.getByTestId('nav-staff').click();
   await page.getByTestId('pipeline').waitFor();

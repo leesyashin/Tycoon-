@@ -23,11 +23,16 @@ import { attachRate, customerTypeShares, type StageId } from '@core/customers';
 import { getStaffLevel } from '@core/staff';
 import { STATIONS, getStationDef, type StationArea } from '@data/stations';
 import { AMBIENCE, getAmbienceDef } from '@data/ambience';
-import { stationLookTier } from '@data/art';
+import {
+  nextStationLookLevel,
+  nextTableLookLevel,
+  stationLookTier,
+  tableLookTier,
+} from '@data/art';
 import { BALANCE } from '@data/balance';
 import { h, on, setDisabled, setText } from './dom';
 import { fmt, fmtSmall } from './format';
-import { icon } from './icons';
+import { icon, setIcon } from './icons';
 import type { PanelContent } from './panel';
 import { areaName, lockedReason, productName, roleName, stageName, stationName } from './labels';
 import { stageLoadPct } from './pipeline';
@@ -62,10 +67,42 @@ export function objectKey(o: ObjectRef): string {
   return o.kind === 'station' ? o.id : `ambience-${o.id}`;
 }
 
+/** Icon in der Optik-Stufe des Levels: Geräte (5 Stufen) und Tische (4 Stufen) werden edler. */
 function objectIcon(o: ObjectRef, level: number): string {
-  return o.kind === 'station'
-    ? `station-${o.id}-${String(stationLookTier(level))}`
-    : `ambience-${o.id}`;
+  if (o.kind === 'station') return `station-${o.id}-${String(stationLookTier(level))}`;
+  return o.id === 'seats' ? `ambience-seats-${String(tableLookTier(level))}` : `ambience-${o.id}`;
+}
+
+/**
+ * Zeile „Neues Design ab Lv X“ mit Vorschau der nächsten Optik; auf der letzten Stufe „Edelste Ausführung“.
+ * Zeigt, dass Geräte mit dem Level schöner werden (UI_STYLE § 4).
+ */
+function lookRow(testId: string): {
+  el: HTMLElement;
+  set(next: number | null, preview: string): void;
+} {
+  const sym = icon('sparkle', 'look-next-sym');
+  const text = h('span', { class: 'look-next-text' });
+  const img = h('img', { class: 'look-next-icon', alt: '', width: 36, height: 36 });
+  const el = h('p', { class: 'look-next', 'data-testid': testId }, sym, text, img);
+  let shown = '';
+  return {
+    el,
+    set(next, preview) {
+      const key = `${String(next)}:${preview}`;
+      if (key === shown) return;
+      shown = key;
+      setIcon(sym, next === null ? 'crown' : 'sparkle');
+      setText(
+        text,
+        next === null
+          ? t('station.panel.finestLook')
+          : t('station.panel.nextLook', { level: next }),
+      );
+      img.hidden = next === null;
+      if (next !== null) img.src = spriteIconUrl(preview);
+    },
+  };
 }
 
 function objectName(locId: string, o: ObjectRef): string {
@@ -222,6 +259,7 @@ export function createStationPanel(
   const staff = h('p', { class: 'muted', 'data-testid': 'station-staff' });
   const locked = h('p', { class: 'locked-hint' });
   const img = h('img', { class: 'station-card-icon', alt: '', width: 64, height: 64 });
+  const look = lookRow('station-look');
 
   const buttons = AMOUNTS.map(({ amount, key }) => {
     const label = h('span', { class: 'buy-amount' });
@@ -266,6 +304,7 @@ export function createStationPanel(
       ),
       load,
       milestone,
+      look.el,
       staff,
       locked,
     ),
@@ -329,6 +368,9 @@ export function createStationPanel(
       );
       chips.set(stageCap, '');
     }
+    const nextLook = nextStationLookLevel(lvl);
+    look.el.hidden = lvl <= 0;
+    look.set(nextLook, objectIcon(ref, nextLook ?? lvl));
     const next = nextMilestone(lvl);
     const isPrice = milestoneCounts(next).price > milestoneCounts(lvl).price;
     setText(
@@ -393,24 +435,22 @@ export function createAmbienceObjectPanel(
   });
   on(btn, 'click', () => store.dispatch((s) => buyAmbience(s, locId, ambienceId)));
   const grid = objectGrid(locId, ref, open);
+  const img = h('img', { class: 'station-card-icon', alt: '', width: 64, height: 64 });
+  // Nur Tische haben Optik-Stufen.
+  const look = ambienceId === 'seats' ? lookRow('ambience-look') : null;
   const el = h(
     'div',
     { class: 'station-panel' },
     h(
       'div',
       { class: 'card station-card' },
-      h('img', {
-        class: 'station-card-icon',
-        alt: '',
-        width: 64,
-        height: 64,
-        src: spriteIconUrl(objectIcon(ref, 1)),
-      }),
+      img,
       h('div', {}, h('h3', { text: name }), level),
       h(
         'div',
         { class: 'station-extra' },
         h('p', { class: 'muted', text: t(`ambience.${ambienceId}.desc`) }),
+        look?.el ?? null,
         locked,
       ),
     ),
@@ -423,6 +463,13 @@ export function createAmbienceObjectPanel(
       el,
       update(s) {
         const lvl = getLocation(s, locId).ambience[ambienceId] ?? 0;
+        const src = spriteIconUrl(objectIcon(ref, lvl));
+        if (img.getAttribute('src') !== src) img.src = src;
+        if (look) {
+          const nextLook = nextTableLookLevel(lvl);
+          look.el.hidden = lvl <= 0;
+          look.set(nextLook, objectIcon(ref, nextLook ?? lvl));
+        }
         const unlocked = isAmbienceUnlocked(s, locId, ambienceId);
         const maxed = isAmbienceMaxed(s, locId, ambienceId);
         const cost = getNextAmbienceCost(s, locId, ambienceId);

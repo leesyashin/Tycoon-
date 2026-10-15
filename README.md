@@ -8,7 +8,7 @@ Version 1.0.0 – Änderungen in [CHANGELOG.md](CHANGELOG.md).
 | ------------------------------------------------------------- | ---------------------------------------------------------------- |
 | ![Café auf dem Handy (DE)](docs/screenshots/v1/mobile-de.png) | ![Café auf dem Desktop (EN)](docs/screenshots/v1/desktop-en.png) |
 
-Weitere Screenshots: [`docs/screenshots/v1/`](docs/screenshots/v1/); Phase 2 (bedientes Café, Pipeline-Karte): [`docs/screenshots/s10/`](docs/screenshots/s10/).
+Weitere Screenshots: [`docs/screenshots/v1/`](docs/screenshots/v1/); Phase 2 (bedientes Café, Pipeline-Karte): [`docs/screenshots/s10/`](docs/screenshots/s10/); Ausstattung in fünf Optik-Stufen (Katalog, Café am Start / in der Mitte / im Luxus-Ausbau): [`docs/screenshots/ausstattung/`](docs/screenshots/ausstattung/).
 
 ## Technik
 
