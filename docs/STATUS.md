@@ -13,7 +13,7 @@ Design vom Laden, dass das am Ende ein richtig mega fancy designter, detailreich
 des Session-Plans (wie PR #14–#16); S12 bleibt die nächste Plan-Session. Basis ist `main` mit PR #16.
 
 ## Fertig
-### Deko neu gezeichnet (parallel, PR #…)
+### Deko neu gezeichnet (parallel, PR #19)
 > Vorgabe Vincent (2026-10-15): „Überarbeiten und verbessern der ganzen Deko-Stücke, also alles, was nicht Theke
 > oder Spielfiguren ist – Ampeln, Bäume, Autos, Deko, Markisen, Tische, Bilder usw.“ Ad-hoc-Session außerhalb des
 > Session-Plans (wie PR #14–#17), Branch `art/deko`, parallel zu „Café-Grundriss“ und „Bugjagd Stadt & Szene“.
