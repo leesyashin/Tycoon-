@@ -353,7 +353,7 @@ export function storageSprites(rackFacings: readonly Facing[] = storageRackFacin
 
 /** Nur für den Kontaktbogen: eine Lager-Ecke wie in der Szene (Eckregal + Seitenregal + Palette) je Stufe. */
 export function storagePreview(tier: StorageTier): string {
-  const c = new IsoCanvas(160, 150, 64, 70);
+  const c = new IsoCanvas(160, 180, 64, 70);
   const part = (
     svg: string,
     u: number,
