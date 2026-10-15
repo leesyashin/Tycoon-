@@ -25,6 +25,7 @@ import {
   PASS_ITEMS,
   PASS_SLOTS,
   SCENE_FX,
+  STOOL_SEAT_LIFT,
   STATION_FX,
   SUPPLY_CANVAS,
   SUPPLY_ITEMS,
@@ -41,7 +42,7 @@ import {
 } from '@data/art';
 import type { StaffRoleId } from '@data/staff';
 import { DAY_CYCLE, UI_THEME } from '@data/ui';
-import { getLocation, type GameState } from '@core/GameState';
+import { getLocation, type GameState, type LocationState } from '@core/GameState';
 import type { Store } from '@core/store';
 import { computeLocationRates, mood, tapCafe, type LocationRates } from '@core/customers';
 import { buyStation, getBulkCost, isStationUnlocked, needsTerrace } from '@core/economy';
@@ -78,11 +79,13 @@ const LABEL_MAX_SCALE = 1.8;
 const LABEL_STAGGER = 14;
 /** Ab dieser Label-Skalierung (= herausgezoomt) wird versetzt. */
 const LABEL_STAGGER_FROM = 1.05;
-/** HUD-Münzsymbol in CSS-Pixeln vom linken oberen Rand (Ziel des Münz-Flugs). */
-const HUD_COIN = { x: 34, y: 34 };
+/** HUD-Geldsymbol in CSS-Pixeln vom linken oberen Rand (Ziel des fliegenden Geldscheins). */
+const HUD_CASH = { x: 34, y: 34 };
 const DEPTH = { wall: -2000, floor: -1000, label: 10_000, overlay: 20_000 } as const;
 /** Teller/Becher-Sprites (`item-*`): Bodenpunkt 16 px unter der Oberkante einer 22 px hohen Leinwand. */
 const ITEM_ORIGIN_Y = 16 / 22;
+/** Getränk vor einem Barhocker: so weit zur Theke hin (Kacheln), an der Vorderkante der Platte. */
+const STOOL_ITEM_BACK = 0.55;
 /** Getragene Ware aus dem Lager: so hoch über den Füßen (Hände) und so weit vor dem Körper (Pixel). */
 const SUPPLY_HAND = { z: 15, ahead: 4 } as const;
 /** Tisch-Objekt-ID für das Antippen (öffnet das Ambiente-Panel „Tische“). */
@@ -203,6 +206,10 @@ export class CafeScene extends Phaser.Scene {
   /** Ringe über Bestellendem, Baristas und wischenden Putzkräften (Pool, vorgerenderte Frames). */
   private ringPool: Phaser.GameObjects.Image[] = [];
   private passItemSprites: Phaser.GameObjects.Image[] = [];
+  /** Getränk auf der Theke vor jedem Barhocker (sichtbar, solange dort jemand trinkt). */
+  private stoolItems: Phaser.GameObjects.Image[] = [];
+  /** Bezahlte Gäste laut `core` (`till.paid`) beim letzten Frame; neue Zahlungen = Differenz. */
+  private lastPaid = 0;
   /** Kassenlade offen bis (Szenenzeit in ms), danach wieder zu. */
   private drawerUntil = 0;
   private drawerShown = false;
@@ -218,7 +225,12 @@ export class CafeScene extends Phaser.Scene {
   private cupSteamAcc = 0;
   private popups: Phaser.GameObjects.Text[] = [];
   private emotes: Phaser.GameObjects.Image[] = [];
-  private coinsFlying = 0;
+  private cashFlying = 0;
+  /** Bezahlte Gäste, deren Betrag noch nicht über der Kasse stand (bei vielen Zahlungen gebündelt). */
+  private cashBatch = 0;
+  private cashBatchAt: GridPos = { x: 0, y: 0 };
+  /** Szenenzeit (ms) des letzten Betrags über der Kasse. */
+  private cashPopupAt = -Infinity;
   private moreText!: Phaser.GameObjects.Text;
   private leaves!: Phaser.GameObjects.Particles.ParticleEmitter;
   private rates: LocationRates | null = null;
@@ -267,6 +279,8 @@ export class CafeScene extends Phaser.Scene {
     this.stationFx = [];
     this.ringPool = [];
     this.passItemSprites = [];
+    this.stoolItems = [];
+    this.lastPaid = 0;
     this.drawerUntil = 0;
     this.drawerShown = false;
     this.notes = null;
@@ -279,7 +293,9 @@ export class CafeScene extends Phaser.Scene {
     this.cupSteamAcc = 0;
     this.popups = [];
     this.emotes = [];
-    this.coinsFlying = 0;
+    this.cashFlying = 0;
+    this.cashBatch = 0;
+    this.cashPopupAt = -Infinity;
     this.rates = null;
     this.ratesAge = Infinity;
     this.labelZoom = 0;
@@ -311,6 +327,8 @@ export class CafeScene extends Phaser.Scene {
     const state = this.store.getState();
     this.locationId = state.activeLocationId;
     this.prestigeCount = getLocation(state, this.locationId).prestigeCount;
+    // Nur Zahlungen ab jetzt zeigen (nicht alles, was vor dem Szenenstart bezahlt wurde).
+    this.lastPaid = getLocation(state, this.locationId).till.paid;
     this.layout = getLayout(this.locationId);
     this.crowd = new CustomerCrowd(this.layout, this.locationId);
 
@@ -341,6 +359,7 @@ export class CafeScene extends Phaser.Scene {
     this.createStaff();
     this.createRings();
     this.createPassItems();
+    this.createStoolItems();
     for (let i = 0; i < EMOTE_POOL; i++) {
       this.emotes.push(
         this.sprite(0, 0, FRAME.emote('heart'))
@@ -440,7 +459,9 @@ export class CafeScene extends Phaser.Scene {
       this.refreshBoard();
     }
     const loc = getLocation(state, this.locationId);
-    const { purchases, orders } = this.crowd.update(dt, {
+    // Mit Debug-Spawn kommen mehr Figuren, als `core` bucht: dann bezahlen sie im eigenen Takt (nur Optik).
+    const till = this.tillInput(loc);
+    const { purchases, orders, payments } = this.crowd.update(dt, {
       served: this.visibleServed(this.rates),
       orderCap: this.rates.stages.order,
       waiters: getStaffLevel(loc, 'waiter'),
@@ -450,6 +471,7 @@ export class CafeScene extends Phaser.Scene {
       cleanliness: loc.cleanliness,
       baristas: this.baristaPosts,
       prepSec: this.prepSec(this.rates),
+      till: this.debugSpawn > 0 ? undefined : till,
     });
     this.syncAgents(mood(loc.satisfaction));
     this.syncStaffFigures();
@@ -458,12 +480,14 @@ export class CafeScene extends Phaser.Scene {
     this.syncCashiers();
     this.syncDirt();
     this.syncPassItems();
+    this.syncStoolItems();
     this.syncStationFx(dt);
     this.drawRings();
-    if (orders.length > 0) this.onOrder();
+    if (payments > 0) this.onPayments(payments, orders);
+    this.flushCashPopup();
     this.syncDrawer();
     this.updateAmbientFx(dt);
-    for (const a of purchases) this.onPurchase(a);
+    for (const a of purchases) this.onServed(a);
     const hidden = this.crowd.hiddenCount;
     this.moreText.setVisible(hidden > 0);
     if (hidden > 0) this.moreText.setText(t('scene.crowd.more', { count: hidden }));
@@ -489,6 +513,14 @@ export class CafeScene extends Phaser.Scene {
     for (const p of this.popups) p.setScale(f);
     this.moreText.setScale(f);
     this.board?.text.setScale(f);
+  }
+
+  /** Neue Zahlungen seit dem letzten Frame; `till.paid` beginnt nach einem Reset wieder bei 0. */
+  private tillInput(loc: LocationState): { payments: number; progress: number } {
+    const paid = loc.till.paid;
+    const payments = Math.max(0, paid - this.lastPaid);
+    this.lastPaid = paid;
+    return { payments, progress: loc.till.progress };
   }
 
   /** Gäste/s für die Figuren; im Debug-Modus kosmetisch auf `debugSpawn` gesetzt (nie für Einnahmen). */
@@ -1467,6 +1499,47 @@ export class CafeScene extends Phaser.Scene {
     });
   }
 
+  /** Getränke auf der Theke vor den Barhockern (eins je Hocker, an der Vorderkante der Platte). */
+  private createStoolItems(): void {
+    for (const stool of this.layout.bar.stools) {
+      const p = this.stoolItemPoint(stool);
+      this.stoolItems.push(
+        this.sprite(p.x, p.y, FRAME.item('matcha'))
+          .setOrigin(0.5, ITEM_ORIGIN_Y)
+          .setDepth(isoDepth(Math.round(stool.x), stool.y - STOOL_ITEM_BACK, 5.7))
+          .setVisible(false),
+      );
+    }
+  }
+
+  /** Bildschirmpunkt auf der Thekenplatte vor einem Hocker (Agenten-Koordinaten = Kachelmitte). */
+  private stoolItemPoint(stool: GridPos): { x: number; y: number } {
+    const p = toScreen(stool.x + 0.5, stool.y + 0.5 - STOOL_ITEM_BACK);
+    return { x: p.x, y: p.y - COUNTER_TOP_PX };
+  }
+
+  /** Wer auf einem Hocker trinkt, hat sein Getränk vor sich stehen (was, hängt an der Figur und den Geräten). */
+  private syncStoolItems(): void {
+    const drinking = new Map<number, Agent>();
+    for (const a of this.crowd.agents)
+      if (a.active && a.phase === 'consume' && a.stool >= 0) drinking.set(a.stool, a);
+    this.stoolItems.forEach((img, i) => {
+      const a = drinking.get(i);
+      if (!a) {
+        if (img.visible) img.setVisible(false);
+        return;
+      }
+      const posts = this.baristaPosts;
+      const station = posts.length > 0 ? posts[a.id % posts.length]?.station : undefined;
+      const frame = FRAME.item((station && PASS_ITEMS[station]) ?? 'matcha');
+      if (img.frame.name !== frame) img.setFrame(frame);
+      if (!img.visible) {
+        img.setVisible(true);
+        this.plop(img);
+      }
+    });
+  }
+
   /** Geräte-Effekte (`STATION_FX`): Dampf, Frost, Glut, Pulver, Funkeln – nur solange ein Barista dort arbeitet. */
   private createStationFx(): void {
     for (const p of this.layout.stations) {
@@ -1640,17 +1713,24 @@ export class CafeScene extends Phaser.Scene {
     if (this.cupSteamAcc < 0.5) return;
     this.cupSteamAcc = 0;
     const drinking = this.crowd.agents.filter(
-      (a) => a.active && a.phase === 'consume' && a.table >= 0,
+      (a) => a.active && a.phase === 'consume' && (a.table >= 0 || a.stool >= 0),
     );
     const a = drinking[Math.floor(Math.random() * drinking.length)];
-    const table = a ? this.layout.tables[a.table] : undefined;
+    if (!a) return;
+    const stool = this.layout.bar.stools[a.stool];
+    if (stool) {
+      const p = this.stoolItemPoint(stool);
+      this.cupSteam.emitParticleAt(p.x, p.y - 10);
+      return;
+    }
+    const table = this.layout.tables[a.table];
     if (!table) return;
-    const p = toScreen(table.tile.x + 0.5 + (a?.seat ? 0.12 : -0.12), table.tile.y + 0.5);
+    const p = toScreen(table.tile.x + 0.5 + (a.seat ? 0.12 : -0.12), table.tile.y + 0.5);
     this.cupSteam.emitParticleAt(p.x, p.y - 20);
   }
 
-  /** Kassieren: Lade fährt aus, ein paar Funken (die Gutschrift passiert im Rate-Modell). */
-  private onOrder(): void {
+  /** Kassieren: Lade fährt aus, ein paar Funken. */
+  private openDrawer(): void {
     const register = this.stations.find((v) => v.id === REGISTER_ID);
     if (!register || register.shownLevel <= 0) return;
     this.drawerUntil = this.time.now + SCENE_FX.drawerOpenMs;
@@ -1700,10 +1780,15 @@ export class CafeScene extends Phaser.Scene {
       const x = p.x;
       const y = p.y + TILE_H / 2;
       const seated = a.phase === 'consume' || (a.phase === 'waitServe' && a.table >= 0);
+      const onStool = seated && a.stool >= 0;
       if (seated) {
-        // Sitzpose, Blick zum Tisch (Richtung und Spiegelung wie beim Gehen).
+        // Sitzpose, Blick zum Tisch bzw. vom Barhocker zur Theke (Richtung und Spiegelung wie beim Gehen).
         const tb = this.layout.tables[a.table];
-        const look = tb ? facing(tb.tile.x - a.x, tb.tile.y - a.y) : facing(0, 1);
+        const look = onStool
+          ? facing(0, -1)
+          : tb
+            ? facing(tb.tile.x - a.x, tb.tile.y - a.y)
+            : facing(0, 1);
         const frame = FRAME.customerSit(a.type, a.look, look.dir);
         if (s.frame.name !== frame) s.setFrame(frame);
         s.setFlipX(look.flip);
@@ -1725,8 +1810,9 @@ export class CafeScene extends Phaser.Scene {
       }
       prev.x = a.x;
       prev.y = a.y;
+      // Auf dem Barhocker sitzt man höher als auf einem Stuhl.
       s.setVisible(true)
-        .setPosition(x, y)
+        .setPosition(x, onStool ? y - STOOL_SEAT_LIFT : y)
         .setDepth(isoDepth(a.x, a.y, 6));
       // Smiley nur über den sichtbaren Schlangenplätzen, nicht über dem Grüppchen dahinter.
       const queueing = a.phase === 'queue' && this.crowd.queueIndex(a) < CROWD.maxQueue;
@@ -1779,10 +1865,26 @@ export class CafeScene extends Phaser.Scene {
     }
   }
 
-  private onPurchase(a: Agent): void {
-    this.coinPopup(a.x, a.y);
-    this.coinFly(a.x, a.y);
+  /** Bestellung ist da: ab und zu ein Emote (das Geld kam schon beim Bezahlen an der Kasse). */
+  private onServed(a: Agent): void {
     if (Math.random() < SCENE_FX.emoteChance) this.emote(a.x, a.y);
+  }
+
+  /**
+   * Bezahlt (GAME_DESIGN § 7.2): `core` hat gerade so viele Gäste gebucht. Die Lade fährt aus, über jedem
+   * zahlenden Gast steht sein Betrag, ein Geldschein fliegt von der Kasse ins HUD. Zahlungen ohne Figur an der
+   * Kasse (mehr Gäste, als Figuren hineinpassen) zeigt ein Betrag über der Kasse.
+   */
+  private onPayments(count: number, payers: readonly Agent[]): void {
+    this.openDrawer();
+    const register = this.layout.stations.find((st) => st.stationId === REGISTER_ID);
+    const at = register?.tile ?? this.layout.order.access;
+    const from = payers[0] ?? at;
+    this.cashBatch += count;
+    this.cashBatchAt = { x: from.x, y: from.y };
+    this.flushCashPopup();
+    for (let i = 0; i < Math.min(count, SCENE_FX.cashFlyMax); i++)
+      this.cashFly(from.x, from.y, i * SCENE_FX.cashFlyStaggerMs);
     this.game.events.emit(UI_EVENTS.sfx, 'coin');
   }
 
@@ -1799,19 +1901,28 @@ export class CafeScene extends Phaser.Scene {
     return popup;
   }
 
-  private coinPopup(gx: number, gy: number): void {
+  /** Betrag über der Kasse; kommen Zahlungen schneller als `cashPopupMinMs`, steht die Summe in einem Betrag. */
+  private flushCashPopup(): void {
+    if (this.cashBatch <= 0 || this.time.now < this.cashPopupAt + SCENE_FX.cashPopupMinMs) return;
+    this.cashPopup(this.cashBatchAt.x, this.cashBatchAt.y, this.cashBatch);
+    this.cashBatch = 0;
+    this.cashPopupAt = this.time.now;
+  }
+
+  /** „+Betrag“ über dem zahlenden Gast (bzw. der Kasse) für `customers` Gäste. */
+  private cashPopup(gx: number, gy: number, customers: number): void {
     const r = this.rates;
     if (!r || r.served <= 0) return;
     const popup = this.freePopup();
     if (!popup) return;
-    // Anzeige: durchschnittlicher Umsatz pro bedientem Gast; die Gutschrift passiert im Rate-Modell.
-    const perCustomer = r.incomePerSec.div(new Decimal(r.served));
+    // Bei gleichbleibenden Raten zahlt jeder Gast genau den Durchschnittsbon (`settleTill`).
+    const ticket = r.incomePerSec.div(new Decimal(r.served)).mul(customers);
     const state = this.store.getState();
     const p = toScreen(gx, gy);
     popup
       .setText(
         t('scene.coinPopup', {
-          amount: formatNumber(perCustomer, getLang(), state.settings.numberFormat),
+          amount: formatNumber(ticket, getLang(), state.settings.numberFormat),
         }),
       )
       .setPosition(p.x, p.y - 10)
@@ -1826,24 +1937,30 @@ export class CafeScene extends Phaser.Scene {
     });
   }
 
-  /** Münze fliegt vom Gast zum Münz-Symbol im HUD (nur Optik). */
-  private coinFly(gx: number, gy: number): void {
-    if (this.coinsFlying >= SCENE_FX.coinFlyMax || reducedMotion()) return;
-    this.coinsFlying++;
+  /** Geldschein fliegt vom zahlenden Gast zum Geld im HUD (nur Optik, gebucht ist schon). */
+  private cashFly(gx: number, gy: number, delayMs: number): void {
+    if (this.cashFlying >= SCENE_FX.cashFlyMax || reducedMotion()) return;
+    this.cashFlying++;
     const p = toScreen(gx, gy);
     const cam = this.cameras.main;
-    const target = cam.getWorldPoint(HUD_COIN.x, HUD_COIN.y);
-    const coin = this.sprite(p.x, p.y - 12, FRAME.coin).setDepth(DEPTH.overlay);
+    const target = cam.getWorldPoint(HUD_CASH.x, HUD_CASH.y);
+    const bill = this.sprite(p.x, p.y - 12, FRAME.cash)
+      .setDepth(DEPTH.overlay)
+      .setAngle(-12)
+      .setVisible(delayMs <= 0);
     this.tweens.add({
-      targets: coin,
+      targets: bill,
       x: target.x,
       y: target.y,
+      angle: 8,
       scale: ART_SCALE * 1.4,
-      duration: SCENE_FX.coinFlyMs,
+      delay: delayMs,
+      duration: SCENE_FX.cashFlyMs,
       ease: 'Cubic.In',
+      onStart: () => bill.setVisible(true),
       onComplete: () => {
-        coin.destroy();
-        this.coinsFlying--;
+        bill.destroy();
+        this.cashFlying--;
       },
     });
   }

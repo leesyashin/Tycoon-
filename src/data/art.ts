@@ -130,10 +130,13 @@ export const SCENE_FX = {
   newLookSparkles: 14,
   /** Die Theke wird edler: Module ploppen nacheinander von links nach rechts (Versatz je Modul). */
   counterWaveMs: 45,
-  /** Münz-Flug ins HUD. */
-  coinFlyMs: 650,
-  /** Höchstens so viele fliegende Münzen gleichzeitig. */
-  coinFlyMax: 6,
+  /** Geldschein fliegt beim Bezahlen von der Kasse ins HUD. */
+  cashFlyMs: 650,
+  /** Höchstens so viele fliegende Scheine gleichzeitig; mehrere Zahlungen auf einmal fliegen versetzt. */
+  cashFlyMax: 6,
+  cashFlyStaggerMs: 90,
+  /** Beträge über der Kasse höchstens so oft; dazwischen bezahlte Gäste stehen gesammelt im nächsten. */
+  cashPopupMinMs: 400,
   /** Wahrscheinlichkeit eines Emotes (Herz/Note) nach dem Bedienen. */
   emoteChance: 0.25,
   emoteMs: 900,
@@ -172,6 +175,12 @@ export const STATION_FX: Readonly<Record<string, StationFx>> = {
   grinder: { kind: 'powder', u: 0.5, v: 0.5, z: 36, rate: 9 },
   ceremonySet: { kind: 'steam', u: 0.45, v: 0.55, z: 34, rate: 3 },
 };
+
+/**
+ * Barhocker (`deco-stool`, `scripts/art/decor.ts`): Sitzfläche liegt so viele Pixel über der eines Stuhls; die
+ * Szene hebt sitzende Gäste um diesen Betrag an.
+ */
+export const STOOL_SEAT_LIFT = 10;
 
 /** Oberkante der Gästetheke in Pixeln (Sprites `scripts/art/equipment.ts`, Szene stellt Teller darauf). */
 export const COUNTER_TOP_PX = 23;
@@ -263,11 +272,7 @@ export function staffLookFor(role: StaffRoleId, index: number): string {
  */
 export const DECOR_BIG = { w: 224, h: 208, ox: 112, oy: 88 } as const;
 /** Deko-Frames, die die große Leinwand nutzen. */
-export const DECOR_BIG_FRAMES: readonly string[] = [
-  'deco-rug-blue',
-  'deco-stools',
-  'deco-chandelier',
-];
+export const DECOR_BIG_FRAMES: readonly string[] = ['deco-rug-blue', 'deco-chandelier'];
 
 /**
  * Deko, die im Endausbau gegen eine edlere Fassung getauscht wird (ab diesem Deko-Level): blaue Pendelleuchten →
@@ -275,6 +280,7 @@ export const DECOR_BIG_FRAMES: readonly string[] = [
  */
 export const DECOR_UPGRADES: Readonly<Record<string, { level: number; frame: string }>> = {
   'deco-pendant': { level: 25, frame: 'deco-pendant-lux' },
+  'deco-pendant-bar': { level: 25, frame: 'deco-pendant-bar-lux' },
 };
 
 /** Frame eines Deko-Stücks beim aktuellen Deko-Level (mit Endausbau-Tausch). */

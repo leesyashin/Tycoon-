@@ -8,8 +8,10 @@ import {
   inRoom,
   LAYOUTS,
   pathFromPickup,
+  pathFromStool,
   pathFromTable,
   pathToPickup,
+  pathToStool,
   pathToTable,
   visibleTables,
   waiterPathToTable,
@@ -21,7 +23,13 @@ import { createInitialState, getLocation, type GameState } from '@core/GameState
 import { computeLocationRates, customerTypeShares, pickCustomerType } from '@core/customers';
 import { createStore } from '@core/store';
 import { serialize } from '@core/save';
-import { CustomerCrowd, pickLook, serveDuration, type CrowdInput } from '@scenes/agents/crowd';
+import {
+  CustomerCrowd,
+  pickLook,
+  serveDuration,
+  walkInSec,
+  type CrowdInput,
+} from '@scenes/agents/crowd';
 import { CUSTOMER_LOOKS, SUPPLY_ITEMS, storageLookTier, type StorageTier } from '@data/art';
 import { FRAME } from '@scenes/art';
 
@@ -162,7 +170,9 @@ function servicePaths(layout: CafeLayout): { x: number; y: number }[][] {
   for (const spot of layout.pickup.spots) {
     out.push([...exit, ...pathToPickup(layout, from, spot)]);
     out.push([spot, ...pathFromPickup(layout, spot)]);
+    for (const stool of layout.bar.stools) out.push([spot, ...pathToStool(layout, spot, stool)]);
   }
+  for (const stool of layout.bar.stools) out.push([stool, ...pathFromStool(layout, stool)]);
   for (const t of layout.tables) {
     out.push([...exit, ...pathToTable(layout, from, t)]);
     out.push(pathFromTable(layout, t));
@@ -244,10 +254,11 @@ describe('Wege im kompakten Grundriss', () => {
   });
 
   it('Deko, Ambiente und Putzkraft-Startplatz stehen nicht auf Wegen, Tischen oder der Theke', () => {
-    const hanging = ['deco-pendant', 'deco-chandelier'];
+    // Barhocker sind Sitzplätze (eigener Test), Leuchten hängen über allem.
+    const skip = ['deco-pendant', 'deco-pendant-bar', 'deco-chandelier', 'deco-stool'];
     const items = [
       ...layout.decor
-        .filter((d) => !d.wall && !d.floor && !hanging.includes(d.frame))
+        .filter((d) => !d.wall && !d.floor && !skip.includes(d.frame))
         .map((d) => ({ ...d.tile, frame: d.frame })),
       ...layout.ambience.map((a) => ({ ...a.tile, frame: `ambience-${a.id}` })),
     ];
@@ -256,12 +267,7 @@ describe('Wege im kompakten Grundriss', () => {
       [layout.street.curb, layout.entrance, ...layout.order.path, layout.order.access],
     ].map(samples);
     for (const it of items) {
-      // Barhocker stehen in einer Reihe über drei Kacheln
-      const pts =
-        it.frame === 'deco-stools'
-          ? [-0.95, 0, 0.95].map((dx) => ({ x: it.x + dx, y: it.y }))
-          : [it];
-      for (const p of pts) {
+      for (const p of [it]) {
         for (const path of paths)
           for (const q of path)
             expect(Math.hypot(p.x - q.x, p.y - q.y), it.frame).toBeGreaterThan(0.45);
@@ -281,6 +287,45 @@ describe('Wege im kompakten Grundriss', () => {
     const c = layout.cleanerHome;
     for (const tb of layout.tables)
       expect(Math.hypot(c.x - tb.tile.x, c.y - tb.tile.y)).toBeGreaterThanOrEqual(1);
+  });
+
+  it('Barhocker stehen vor der Theke, je einer als Deko, abseits aller anderen Wege', () => {
+    const { stools, row } = layout.bar;
+    expect(stools.length).toBeGreaterThanOrEqual(3);
+    const decor = layout.decor.filter((d) => d.frame === 'deco-stool');
+    expect(decor.map((d) => d.tile)).toEqual(stools);
+    expect(decor.every((d) => d.minLevel === 0)).toBe(true);
+    const counterY = Math.max(...layout.counter.filter((c) => !c.facesX).map((c) => c.y));
+    const others = [
+      [layout.street.curb, layout.entrance, ...layout.order.path, layout.order.access],
+      ...servicePaths(layout).filter(
+        (p) => !stools.some((st) => [p[0], p.at(-1)].some((q) => q?.x === st.x && q.y === st.y)),
+      ),
+    ].map(samples);
+    for (const [i, st] of stools.entries()) {
+      // Direkt vor einem Thekenmodul (Blick zur Theke), nicht vor dem Durchgang der Bedienungen.
+      expect(layout.counter.some((c) => Math.abs(c.x - st.x) < 0.5 && c.y === counterY)).toBe(true);
+      expect(st.y - counterY).toBeGreaterThan(0.5);
+      expect(st.y - counterY).toBeLessThan(1);
+      expect(row).toBeGreaterThan(st.y);
+      for (const other of stools.slice(i + 1))
+        expect(Math.hypot(other.x - st.x, other.y - st.y)).toBeGreaterThan(0.8);
+      for (const path of others)
+        for (const q of path)
+          expect(
+            Math.hypot(q.x - st.x, q.y - st.y),
+            `${String(q.x)},${String(q.y)}`,
+          ).toBeGreaterThan(0.45);
+      for (const tb of layout.tables)
+        for (const s of [tb.tile, tb.side, ...tb.seats])
+          expect(Math.hypot(st.x - s.x, st.y - s.y)).toBeGreaterThan(1);
+    }
+    // Hin und zurück über die Zeile vor den Hockern.
+    const spot = layout.pickup.spots[0];
+    const first = stools[0];
+    if (!spot || !first) throw new Error('no spot');
+    expect(pathToStool(layout, spot, first).at(-1)).toEqual(first);
+    expect(pathFromStool(layout, first).at(-1)).toEqual(layout.entrance);
   });
 
   it('das Lager liegt hinter dem Personal-Gang und wächst mit den Geräten', () => {
@@ -482,6 +527,30 @@ describe('Gäste, Bedienungen und Putzkräfte (kosmetisch)', () => {
         expect(Math.hypot(t.tile.x - p.x, t.tile.y - p.y)).toBeGreaterThan(0.9);
     }
   });
+  it('Abholer setzen sich mit ihrem Getränk auf freie Barhocker, nie zwei auf einen', () => {
+    const layout = getLayout('berlin');
+    const crowd = new CustomerCrowd(layout, 'berlin', lcg(17));
+    let seatedMax = 0;
+    for (let t = 0; t < 90 * 60; t++) {
+      // Ohne Tische holen alle ab; die Hocker sind dann die einzigen Sitzplätze.
+      crowd.update(1 / 60, input({ served: 0.8, tables: 0, waiters: 2 }));
+      const seated = crowd.agents.filter((a) => a.active && a.phase === 'consume' && a.stool >= 0);
+      const stools = seated.map((a) => a.stool);
+      expect(new Set(stools).size).toBe(stools.length);
+      for (const a of seated) {
+        const st = layout.bar.stools[a.stool];
+        expect(a.x).toBeCloseTo(st?.x ?? NaN, 6);
+        expect(a.y).toBeCloseTo(st?.y ?? NaN, 6);
+        expect(a.table).toBe(-1);
+      }
+      seatedMax = Math.max(seatedMax, seated.length);
+    }
+    expect(seatedMax).toBe(layout.bar.stools.length);
+    // Wer ausgetrunken hat, geht wieder; ohne neue Gäste sind die Hocker irgendwann frei.
+    run(crowd, input({ served: 0, tables: 0 }), 60);
+    expect(crowd.agents.some((a) => a.active)).toBe(false);
+    expect(crowd.agents.every((a) => a.stool === -1)).toBe(true);
+  });
   it('ungültige Zeitschritte bewegen nichts', () => {
     const crowd = new CustomerCrowd(getLayout('berlin'), 'berlin', lcg());
     expect(crowd.update(Number.NaN, input({ served: 5 })).spawned).toBe(0);
@@ -491,6 +560,97 @@ describe('Gäste, Bedienungen und Putzkräfte (kosmetisch)', () => {
     expect(serveDuration(1)).toBe(1);
     expect(serveDuration(1000)).toBe(CROWD.minServeSec);
     expect(serveDuration(0)).toBe(CROWD.maxServeSec);
+  });
+});
+
+/** Kasse wie in `core` (`settleTill`): Fortschritt je Gast, ganze Gäste zahlen. */
+function tillDriver(served: number) {
+  let progress = 0;
+  return (dt: number) => {
+    progress += served * dt;
+    const payments = Math.floor(progress);
+    progress -= payments;
+    return { payments, progress };
+  };
+}
+
+describe('Kasse: Gäste bezahlen, wenn core die Zahlung bucht', () => {
+  const layout = getLayout('berlin');
+  it('niemand ist vor seiner Zahlung fertig; bei fast jeder Zahlung steht jemand an der Kasse', () => {
+    for (const served of [0.12, 0.5, CROWD.maxVisiblePayPerSec]) {
+      const crowd = new CustomerCrowd(layout, 'berlin', lcg(31));
+      const till = tillDriver(served);
+      let payments = 0;
+      let paid = 0;
+      for (let t = 0; t < 180 * 60; t++) {
+        const inp = till(1 / 60);
+        const r = crowd.update(1 / 60, input({ served, orderCap: 3, till: inp }));
+        expect(r.payments).toBe(inp.payments);
+        // Fertig bestellt wird nur in einem Schritt mit Zahlung, höchstens ein Gast je Zahlung.
+        expect(r.orders.length).toBeLessThanOrEqual(inp.payments);
+        if (t > 15 * 60) {
+          payments += inp.payments;
+          paid += r.orders.length;
+        }
+      }
+      expect(payments).toBeGreaterThan(served * 150);
+      expect(paid / payments, `served ${String(served)}`).toBeGreaterThanOrEqual(0.95);
+    }
+  });
+  it('wer an der Kasse steht, wartet mit Ring auf die Zahlung', () => {
+    const crowd = new CustomerCrowd(layout, 'berlin', lcg(32));
+    // Szenenstart: Wer zur ersten Zahlung gebraucht wird, steht schon an der Kasse.
+    crowd.update(1 / 60, input({ served: 0.25, till: { payments: 0, progress: 0.5 } }));
+    const head = crowd.agents.find((a) => a.active);
+    if (!head) throw new Error('no head');
+    expect(head.phase).toBe('order');
+    expect(head.x).toBe(layout.order.access.x);
+    expect(head.y).toBe(layout.order.access.y);
+    let progress = 0.5;
+    for (let t = 0; t < 60; t++) {
+      progress += 0.25 / 60;
+      crowd.update(1 / 60, input({ served: 0.25, till: { payments: 0, progress } }));
+    }
+    expect(head.phase).toBe('order');
+    expect(head.serveTotal).toBeGreaterThan(0);
+    // Restzeit bis zur Zahlung = (1 − Fortschritt) / Gäste je Sekunde.
+    expect(head.timer).toBeCloseTo((1 - progress) / 0.25, 6);
+    crowd.update(1 / 60, input({ served: 0.25, till: { payments: 1, progress: 0 } }));
+    expect(head.phase).not.toBe('order');
+    expect(crowd.queueIndex(head)).toBe(-1);
+  });
+  it('bei sehr vielen Gästen bleibt die Theke aufgeräumt, gezahlt wird auch ohne Figur', () => {
+    const crowd = new CustomerCrowd(layout, 'berlin', lcg(34));
+    const till = tillDriver(100);
+    let payments = 0;
+    let paid = 0;
+    for (let t = 0; t < 30 * 60; t++) {
+      const inp = till(1 / 60);
+      const r = crowd.update(1 / 60, input({ served: 100, orderCap: 120, tables: 12, till: inp }));
+      payments += r.payments;
+      paid += r.orders.length;
+      const standing = crowd.agents.filter(
+        (a) => a.active && (a.phase === 'queue' || a.phase === 'order'),
+      );
+      expect(standing.length).toBeLessThanOrEqual(CROWD.maxQueueFigures);
+      expect(crowd.activeCount).toBeLessThanOrEqual(CROWD.maxAgents);
+    }
+    expect(payments).toBeGreaterThanOrEqual(2999);
+    expect(paid).toBeGreaterThan(20);
+    expect(paid).toBeLessThan(payments);
+  });
+  it('ohne Zahlung geht nach dem Sicherheitsventil trotzdem niemand verloren', () => {
+    const crowd = new CustomerCrowd(layout, 'berlin', lcg(33));
+    let orders = 0;
+    for (let t = 0; t < (CROWD.maxPayWaitSec + 20) * 60; t++)
+      orders += crowd.update(1 / 60, input({ served: 0.3, till: { payments: 0, progress: 0.9 } }))
+        .orders.length;
+    expect(orders).toBeGreaterThan(0);
+  });
+  it('der Vorlauf deckt den Weg vom Gehweg bis an die Kasse', () => {
+    const sec = walkInSec(layout);
+    expect(sec).toBeGreaterThan(2);
+    expect(sec).toBeLessThan(8);
   });
 });
 
@@ -521,11 +681,15 @@ describe('Szene beeinflusst keine Einnahmen', () => {
     const without = createStore(busyState());
     const crowd = new CustomerCrowd(getLayout('berlin'), 'berlin', lcg(11));
     let visiblePurchases = 0;
+    let lastPaid = 0;
     for (let f = 0; f < 60 * 60; f++) {
       withScene.advance(1000 / 60);
       const s = withScene.getState();
       const loc = getLocation(s, 'berlin');
       const rates = computeLocationRates(s, 'berlin');
+      const paid = loc.till.paid;
+      const payments = paid - lastPaid;
+      lastPaid = paid;
       visiblePurchases += crowd.update(1 / 60, {
         served: rates.served,
         orderCap: rates.stages.order,
@@ -533,6 +697,7 @@ describe('Szene beeinflusst keine Einnahmen', () => {
         cleaners: loc.staff['cleaner'] ?? 0,
         tables: loc.ambience['seats'] ?? 0,
         cleanliness: loc.cleanliness,
+        till: { payments, progress: loc.till.progress },
       }).purchases.length;
       without.advance(1000 / 60);
     }
