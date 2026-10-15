@@ -277,3 +277,46 @@ export function ngon(u: number, v: number, r: number, n: number, rot = 0): [numb
   }
   return pts;
 }
+
+/**
+ * Seitenprofil (u, z) quer extrudiert von v0 bis v1 (Auto, Wagen): sichtbare Streifen je Profilkante nach ihrer
+ * Normale schattiert, dazu die Seitenfläche bei v1. Profil gegen den Uhrzeigersinn (u nach rechts, z nach oben),
+ * beginnend unten. `seg(i)` kann einzelne Streifen umfärben (Scheiben).
+ */
+export function extrudeU(
+  c: IsoCanvas,
+  profile: readonly (readonly [number, number])[],
+  v0: number,
+  v1: number,
+  color: string,
+  o: { seg?: (i: number) => string | undefined; side?: string } = {},
+): void {
+  const strips: { pts: Vec3[]; col: string; d: number }[] = [];
+  for (let i = 0; i < profile.length; i++) {
+    const a = profile[i];
+    const b = profile[(i + 1) % profile.length];
+    if (!a || !b) continue;
+    const du = b[0] - a[0];
+    const dz = (b[1] - a[1]) / Z_PER_TILE;
+    const len = Math.hypot(du, dz) || 1;
+    const n: Vec3 = [dz / len, 0, -du / len];
+    if (n[0] * VIEW[0] + n[2] * VIEW[2] <= 0.001) continue;
+    strips.push({
+      pts: [
+        [a[0], v0, a[1]],
+        [b[0], v0, b[1]],
+        [b[0], v1, b[1]],
+        [a[0], v1, a[1]],
+      ],
+      col: o.seg?.(i) ?? lit(color, facetLight(n)),
+      // Weiter hinten liegende Streifen zuerst (Mitte gegen die Blickrichtung)
+      d: ((a[0] + b[0]) / 2) * VIEW[0] + ((a[1] + b[1]) / 2 / Z_PER_TILE) * VIEW[2],
+    });
+  }
+  strips.sort((x, y) => x.d - y.d);
+  for (const st of strips) c.poly(st.pts, st.col);
+  c.poly(
+    profile.map(([u, z]) => [u, v1, z] as Vec3),
+    o.side ?? lit(color, facetLight([0, 1, 0])),
+  );
+}

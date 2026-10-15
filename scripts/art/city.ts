@@ -7,6 +7,7 @@
 import {
   CITY_SPRITE,
   CITY_STYLE,
+  PARKED_CAR_PAINTS,
   GROUND_CELLS,
   UPPER_CELLS,
   getCityPalette,
@@ -16,7 +17,18 @@ import {
 import { FacingCanvas } from './equipment';
 import { IsoCanvas, SHADE, Z_PER_TILE, shade, tint, type Vec3 } from './iso';
 import { C } from './palette';
-import { cone, crown, ngon, prism, ringPts, strut } from './shapes';
+import {
+  cone,
+  crown,
+  extrudeU,
+  facetLight,
+  lit,
+  ngon,
+  polyline,
+  prism,
+  ringPts,
+  strut,
+} from './shapes';
 import type { SpriteDef } from './sprites';
 
 const FACES: readonly FacadeFace[] = ['a', 'b'];
@@ -999,137 +1011,571 @@ function railing(): string {
 }
 
 // Autos: entlang u, Mittelpunkt bei (0, 0). „f“ = fährt nach +u (Front sichtbar), „b“ = nach −u (Heck sichtbar).
+type CarKind = 'sedan' | 'wagon' | 'van' | 'compact';
 interface CarStyle {
-  body: string;
-  roof?: string;
-  /** Kabine: Anfang/Ende entlang u (Front bei +u). */
-  cabin: [number, number];
-  len: number;
-  high: number;
+  kind: CarKind;
+  paint: string;
+  /** Taxischild auf dem Dach (Berliner Taxi: Elfenbein, gelbes Schild). */
   sign?: boolean;
+  /** Zierstreifen an der Flanke (Lieferwagen). */
   stripe?: string;
+  /** Dach in Kontrastfarbe (Kleinwagen). */
+  roof?: string;
+  /** Dachreling (Kombi ohne Taxischild). */
+  rails?: boolean;
 }
 
+/** Vier Grundtypen für den Verkehr (`car-<typ>-f|b`, `STREET_LIFE.carTypes`). */
 const CARS: CarStyle[] = [
-  { body: C.red, cabin: [-0.42, 0.12], len: 1.05, high: 9 },
-  { body: '#f2e3b3', cabin: [-0.34, 0.2], len: 1.2, high: 8.5, sign: true },
-  { body: C.white, cabin: [-0.58, 0.38], len: 1.3, high: 13, stripe: C.cobalt },
-  { body: '#77c4b1', cabin: [-0.4, 0.14], len: 1.05, high: 9 },
+  { kind: 'sedan', paint: C.carRed },
+  { kind: 'wagon', paint: C.carTaxi, sign: true },
+  { kind: 'van', paint: C.white, stripe: C.cobalt },
+  { kind: 'compact', paint: C.carMint, roof: C.white },
 ];
 
-function wheel(c: IsoCanvas, u: number, v: number) {
-  const r = 0.1;
-  const pts: Vec3[] = [];
-  for (let i = 0; i < 14; i++) {
-    const a = (i / 14) * Math.PI * 2;
-    pts.push([u + Math.cos(a) * r, v, r * Z_PER_TILE + Math.sin(a) * r * Z_PER_TILE]);
+/** Weitere Lacke je Typ für parkende Autos (`car-<typ>-p<k>-f`, `parkedCarFrame` in `data/city.ts`). */
+const CAR_PAINTS: readonly (readonly CarStyle[])[] = [
+  [
+    { kind: 'sedan', paint: C.carNavy },
+    { kind: 'sedan', paint: C.carSilver },
+  ],
+  [
+    { kind: 'wagon', paint: C.carGreen, rails: true },
+    { kind: 'wagon', paint: C.carBlack, rails: true },
+  ],
+  [
+    { kind: 'van', paint: C.carYellow, stripe: C.ink },
+    { kind: 'van', paint: C.carSilver },
+  ],
+  [
+    { kind: 'compact', paint: C.carYellow, roof: C.white },
+    { kind: 'compact', paint: C.carOrange, roof: C.carSilver },
+  ],
+];
+
+type P2u = readonly [number, number];
+interface CarShape {
+  /** Unterbau (Seitenprofil u/z, Front bei +u, gegen den Uhrzeigersinn ab hinten unten). */
+  body: readonly P2u[];
+  /** Kabine (Glashaus), etwas schmaler; leer = Kasten ohne eigene Kabine. */
+  cabin: readonly P2u[];
+  /** Seitenscheiben auf der Kabinen- bzw. Kastenseite und Säulen dazwischen (u). */
+  windows: readonly P2u[];
+  pillars: readonly number[];
+  /** Index der Frontscheibe und Heckscheibe im Kabinen- bzw. Kastenprofil. */
+  screen: number;
+  rear: number;
+  W: number;
+  wheels: readonly number[];
+  r: number;
+  /** Oberkante der senkrechten Front bzw. des Hecks. */
+  noseZ: number;
+  tailZ: number;
+  /** Türfugen (u) und Gürtellinie. */
+  doors: readonly number[];
+  belt: number;
+}
+
+const SHAPES: Record<CarKind, CarShape> = {
+  sedan: {
+    body: [
+      [-0.55, 2.4],
+      [0.55, 2.4],
+      [0.56, 6.2],
+      [0.52, 8],
+      [0.3, 8.8],
+      [-0.34, 8.8],
+      [-0.5, 8.4],
+      [-0.56, 6.8],
+    ],
+    cabin: [
+      [-0.34, 8.8],
+      [0.3, 8.8],
+      [0.1, 14.6],
+      [-0.2, 14.6],
+    ],
+    windows: [
+      [-0.3, 9.4],
+      [0.26, 9.4],
+      [0.09, 14],
+      [-0.18, 14],
+    ],
+    pillars: [-0.04],
+    screen: 1,
+    rear: 3,
+    W: 0.27,
+    wheels: [-0.34, 0.33],
+    r: 0.085,
+    noseZ: 6.2,
+    tailZ: 6.8,
+    doors: [-0.05, 0.25],
+    belt: 8.8,
+  },
+  wagon: {
+    body: [
+      [-0.58, 2.4],
+      [0.58, 2.4],
+      [0.59, 6.2],
+      [0.55, 8],
+      [0.32, 8.8],
+      [-0.56, 8.8],
+      [-0.59, 7],
+    ],
+    cabin: [
+      [-0.56, 8.8],
+      [0.32, 8.8],
+      [0.12, 14.8],
+      [-0.5, 14.8],
+    ],
+    windows: [
+      [-0.51, 9.4],
+      [0.28, 9.4],
+      [0.11, 14.2],
+      [-0.47, 14.2],
+    ],
+    pillars: [-0.08, -0.32],
+    screen: 1,
+    rear: 3,
+    W: 0.27,
+    wheels: [-0.37, 0.35],
+    r: 0.085,
+    noseZ: 6.2,
+    tailZ: 7,
+    doors: [-0.09, 0.26],
+    belt: 8.8,
+  },
+  van: {
+    body: [
+      [-0.64, 2.6],
+      [0.64, 2.6],
+      [0.65, 7],
+      [0.61, 9.6],
+      [0.47, 10.6],
+      [0.35, 19],
+      [0.29, 20],
+      [-0.62, 20],
+      [-0.65, 19],
+    ],
+    cabin: [],
+    windows: [
+      [0.06, 11.2],
+      [0.43, 11.2],
+      [0.33, 18.2],
+      [0.06, 18.2],
+    ],
+    pillars: [],
+    screen: 4,
+    rear: 8,
+    W: 0.29,
+    wheels: [-0.4, 0.42],
+    r: 0.095,
+    noseZ: 7,
+    tailZ: 19,
+    doors: [0.02, -0.28],
+    belt: 10.6,
+  },
+  compact: {
+    body: [
+      [-0.45, 2.2],
+      [0.45, 2.2],
+      [0.46, 6],
+      [0.4, 8.2],
+      [0.24, 9],
+      [-0.31, 9],
+      [-0.44, 8],
+      [-0.46, 6],
+    ],
+    cabin: [
+      [-0.31, 9],
+      [0.24, 9],
+      [0.1, 15.4],
+      [-0.22, 15.4],
+    ],
+    windows: [
+      [-0.27, 9.6],
+      [0.2, 9.6],
+      [0.09, 14.8],
+      [-0.19, 14.8],
+    ],
+    pillars: [-0.02],
+    screen: 1,
+    rear: 3,
+    W: 0.25,
+    wheels: [-0.28, 0.28],
+    r: 0.08,
+    noseZ: 6,
+    tailZ: 6,
+    doors: [0.0],
+    belt: 9,
+  },
+};
+
+/** Rad in der Ebene v: Reifen mit Flanke, Felge mit Glanz, Nabe. */
+function wheel(c: IsoCanvas, u: number, v: number, r = 0.1) {
+  const z = r * Z_PER_TILE;
+  c.poly(ringPts('v', u - 0.012, v - 0.02, z, r, 16), shade(C.rubber, 0.8));
+  c.poly(ringPts('v', u, v, z, r, 16), C.rubber);
+  c.poly(ringPts('v', u, v + 0.001, z, r * 0.62, 12), C.galvanized);
+  c.poly(ringPts('v', u + r * 0.12, v + 0.002, z - r * 4, r * 0.4, 10), shade(C.galvanized, 0.82));
+  c.poly(ringPts('v', u, v + 0.003, z, r * 0.2, 8), shade(C.galvanized, 0.6));
+}
+
+/** Zwei schräge Lichtreflexe auf einer Scheibe in der Ebene v (Punkte der Scheibe als u/z-Viereck). */
+function carGlint(c: IsoCanvas, v: number, q: readonly P2u[], opacity = 0.35) {
+  const [a, b, d, e] = q;
+  if (!a || !b || !d || !e) return;
+  const lerp = (p: P2u, r: P2u, t: number): P2u => [
+    p[0] + (r[0] - p[0]) * t,
+    p[1] + (r[1] - p[1]) * t,
+  ];
+  for (const [t0, t1] of [
+    [0.18, 0.3],
+    [0.38, 0.44],
+  ] as const) {
+    const lo0 = lerp(a, b, t0);
+    const lo1 = lerp(a, b, t1);
+    const hi0 = lerp(e, d, t0 + 0.12);
+    const hi1 = lerp(e, d, t1 + 0.12);
+    c.poly(
+      [lo0, lo1, hi1, hi0].map(([u, z]) => [u, v, z] as Vec3),
+      C.white,
+      opacity,
+    );
   }
-  c.poly(pts, C.ink);
-  const hub: Vec3[] = pts.map(([x, y, z]) => [
-    u + (x - u) * 0.45,
-    y + 0.001,
-    3.9 + (z - 3.9) * 0.45,
-  ]);
-  c.poly(hub, C.stainlessDark);
 }
 
 function car(style: CarStyle, heading: 'f' | 'b'): string {
   const c = canvasOf(CITY_SPRITE.car);
-  const L = style.len / 2;
-  const W = 0.28;
+  const sh = SHAPES[style.kind];
   const s = heading === 'f' ? 1 : -1;
-  const [c0, c1] = style.cabin.map((x) => x * s).sort((a, b) => a - b) as [number, number];
-  c.shadow(-L - 0.04, -W - 0.02, 0, 2 * L + 0.08, 2 * W + 0.06, 0.3, 1.6);
-  wheel(c, -L * 0.62, W + 0.001);
-  wheel(c, L * 0.62, W + 0.001);
-  c.bevel(-L, -W, 2.5, 2 * L, 2 * W, style.high - 2.5, style.body, { b: 1.6, edge: 0.3 });
-  if (style.stripe) c.wallV(-L, W + 0.002, 5, 2 * L, 2, style.stripe);
-  // Kabine mit Scheiben
-  const top = style.high + 7.5;
-  c.bevel(c0, -W + 0.04, style.high, c1 - c0, 2 * W - 0.08, 7.5, style.roof ?? style.body, {
-    b: 1.4,
-    edge: 0.35,
+  // Gespiegelt (Heck vorn) kehrt sich der Umlaufsinn um.
+  const mir = (p: readonly P2u[]): P2u[] => {
+    const m = p.map(([u, z]) => [u * s, z] as P2u);
+    return s > 0 ? m : m.reverse();
+  };
+  const idx = (i: number, n: number) => (s > 0 ? i : n - 2 - i < 0 ? n - 1 : n - 2 - i);
+  const W = sh.W;
+  const L = Math.max(...sh.body.map(([u]) => Math.abs(u)));
+  const paint = style.paint;
+  const glassSide = shade(C.pane, 0.78);
+  const glassFront = tint(C.pane, 0.18);
+  c.shadow(-L - 0.04, -W - 0.03, 0, 2 * L + 0.08, 2 * W + 0.07, 0.32, 1.6);
+  for (const u of sh.wheels) c.shadowDisc(u * s, W - 0.02, 0, 0.08, 0.3, 0.8);
+  // Räder der fernen Seite schauen unter dem Wagen hervor
+  for (const u of sh.wheels) wheel(c, u * s, -W + 0.02, sh.r);
+  const body = mir(sh.body);
+  const boxOnly = sh.cabin.length === 0;
+  const nb = body.length;
+  extrudeU(c, body, -W, W, paint, {
+    seg: boxOnly ? (i) => (i === idx(sh.screen, nb) ? glassFront : undefined) : undefined,
   });
-  c.wallV(c0 + 0.05, W - 0.039, style.high + 1.2, c1 - c0 - 0.1, 5, C.glass);
-  c.wallV((c0 + c1) / 2 - 0.01, W - 0.038, style.high + 1.2, 0.02, 5, style.body);
-  c.wallU(c1 + 0.001, -W + 0.08, style.high + 1.2, 2 * W - 0.16, 5, shade(C.glass, 0.85));
-  // Front (Scheinwerfer) bzw. Heck (Rücklichter) auf der sichtbaren +u-Seite
-  const light = heading === 'f' ? C.led : C.red;
-  c.wallU(L + 0.002, -W + 0.04, 6, 0.1, 2.2, light);
-  c.wallU(L + 0.002, W - 0.14, 6, 0.1, 2.2, light);
-  c.wallU(L + 0.002, -0.08, 3.4, 0.16, 1.4, shade(C.ink, 1.4));
-  if (style.sign) {
-    c.box(-0.06, -0.06, top, 0.12, 0.12, 3, C.gold);
-    c.flat(-0.06, -0.06, top + 3, 0.12, 0.12, tint(C.gold, 0.4));
+  // Radläufe (dunkel, nur über der Unterkante) und Seitenschweller
+  const bottom = sh.body[0]?.[1] ?? 2.4;
+  for (const u of sh.wheels)
+    c.poly(
+      ringPts('v', u * s, W + 0.001, sh.r * Z_PER_TILE, sh.r * 1.28, 16).map(
+        ([pu, pv, pz]) => [pu, pv, Math.max(bottom, pz)] as Vec3,
+      ),
+      shade(paint, 0.32),
+    );
+  c.poly(
+    [
+      [-L + 0.05, W + 0.0015, bottom],
+      [L - 0.05, W + 0.0015, bottom],
+      [L - 0.05, W + 0.0015, bottom + 0.9],
+      [-L + 0.05, W + 0.0015, bottom + 0.9],
+    ],
+    shade(paint, 0.55),
+  );
+  // Kantenlicht unter der Gürtellinie, Zierstreifen, Türfugen und Griffe
+  const beltZ = boxOnly ? sh.belt - 0.6 : sh.belt - 0.5;
+  c.poly(
+    [
+      [-L + 0.06, W + 0.0015, beltZ - 0.5],
+      [L - 0.08, W + 0.0015, beltZ - 0.5],
+      [L - 0.08, W + 0.0015, beltZ],
+      [-L + 0.06, W + 0.0015, beltZ],
+    ],
+    tint(paint, 0.3),
+    0.7,
+  );
+  if (style.stripe)
+    c.poly(
+      [
+        [-L + 0.02, W + 0.002, 6.2],
+        [L - 0.02, W + 0.002, 6.2],
+        [L - 0.02, W + 0.002, 7.6],
+        [-L + 0.02, W + 0.002, 7.6],
+      ],
+      style.stripe,
+    );
+  for (const d of sh.doors) {
+    strut(
+      c,
+      [d * s, W + 0.002, bottom + 1],
+      [d * s, W + 0.002, boxOnly ? 18.6 : sh.belt - 0.2],
+      shade(paint, 0.62),
+      0.45,
+    );
+    const hu = (d - (boxOnly ? -0.1 : 0.12) * s * s) * s;
+    c.poly(
+      [
+        [hu - 0.035, W + 0.0025, sh.belt - 2],
+        [hu + 0.035, W + 0.0025, sh.belt - 2],
+        [hu + 0.035, W + 0.0025, sh.belt - 1.3],
+        [hu - 0.035, W + 0.0025, sh.belt - 1.3],
+      ],
+      tint(paint, 0.45),
+    );
   }
+  // Kabine mit Front-/Heckscheibe, Seitenscheiben mit Säulen und Reflexen
+  const cw = W - 0.035;
+  if (!boxOnly) {
+    const cab = mir(sh.cabin);
+    const nc = cab.length;
+    extrudeU(c, cab, -cw, cw, style.roof ?? paint, {
+      seg: (i) =>
+        i === idx(sh.screen, nc) ? glassFront : i === idx(sh.rear, nc) ? glassSide : undefined,
+      side: lit(paint, facetLight([0, 1, 0])),
+    });
+  }
+  // Reflexe auf der sichtbaren Frontscheibe
+  {
+    const prof = boxOnly ? sh.body : sh.cabin;
+    const a = heading === 'f' ? prof[sh.screen] : undefined;
+    const b = prof[sh.screen + 1];
+    const half = boxOnly ? W : cw;
+    if (a && b)
+      for (const [t0, t1] of [
+        [0.16, 0.3],
+        [0.4, 0.47],
+      ] as const) {
+        const P = (tv: number, ts: number): Vec3 => [
+          (a[0] + (b[0] - a[0]) * ts) * s,
+          -half + 2 * half * tv,
+          a[1] + (b[1] - a[1]) * ts,
+        ];
+        c.poly([P(t0, 0.1), P(t1, 0.1), P(t1 - 0.1, 0.9), P(t0 - 0.1, 0.9)], C.white, 0.3);
+      }
+  }
+  const winV = (boxOnly ? W : cw) + 0.0015;
+  const win = sh.windows.map(([u, z]) => [u * s, z] as P2u);
+  c.poly(
+    win.map(([u, z]) => [u, winV, z] as Vec3),
+    glassSide,
+  );
+  carGlint(
+    c,
+    winV + 0.0005,
+    s > 0 ? win : [win[1], win[0], win[3], win[2]].filter((x): x is P2u => !!x),
+  );
+  for (const pu of sh.pillars)
+    c.poly(
+      [
+        [pu * s - 0.022, winV + 0.001, (win[0]?.[1] ?? 9) - 0.2],
+        [pu * s + 0.022, winV + 0.001, (win[0]?.[1] ?? 9) - 0.2],
+        [pu * s + 0.022, winV + 0.001, (win[2]?.[1] ?? 14) + 0.2],
+        [pu * s - 0.022, winV + 0.001, (win[2]?.[1] ?? 14) + 0.2],
+      ],
+      lit(style.roof && !boxOnly ? paint : paint, facetLight([0, 1, 0])),
+    );
+  // Außenspiegel an der A-Säule
+  const mu = (boxOnly ? 0.44 : (sh.cabin[1]?.[0] ?? 0.3) - 0.03) * s;
+  c.box(mu - 0.03, W, sh.belt + 0.6, 0.06, 0.06, 1.8, paint);
+  // Front bzw. Heck auf der sichtbaren +u-Seite
+  const eU = L + 0.002;
+  const endZ = heading === 'f' ? sh.noseZ : sh.tailZ;
+  const F = (v0: number, v1: number, z0: number, z1: number, col: string, op = 1) =>
+    c.poly(
+      [
+        [eU, v0, z0],
+        [eU, v1, z0],
+        [eU, v1, z1],
+        [eU, v0, z1],
+      ],
+      col,
+      op,
+    );
+  F(-W + 0.01, W - 0.01, bottom, bottom + 1.3, shade(C.rubber, 1.6));
+  F(-0.07, 0.07, bottom + 0.25, bottom + 1.15, C.white);
+  const lz = Math.min(endZ - 1.6, heading === 'f' ? 5 : 5.4);
+  if (heading === 'f') {
+    F(-0.13, 0.13, bottom + 1.6, lz + 0.4, shade(C.ink, 1.3));
+    for (const v of [-W + 0.03, W - 0.11]) {
+      F(v - 0.005, v + 0.085, lz - 0.3, lz + 1.5, C.galvanized);
+      F(v, v + 0.08, lz, lz + 1.2, C.led);
+    }
+  } else {
+    for (const v of [-W + 0.03, W - 0.12]) {
+      F(v, v + 0.09, lz, lz + 1.4, C.signalRed);
+      F(v + 0.01, v + 0.04, lz + 0.2, lz + 0.8, tint(C.signalRed, 0.5));
+    }
+    if (style.kind === 'van') {
+      F(-0.004, 0.004, bottom + 1.4, endZ - 0.6, shade(paint, 0.6));
+      for (const [v0, v1] of [
+        [-W + 0.04, -0.02],
+        [0.02, W - 0.04],
+      ] as const) {
+        F(v0, v1, 12.4, 17.6, glassSide);
+        F(v0 + 0.03, v0 + 0.07, 12.8, 17.2, C.white, 0.25);
+      }
+    }
+  }
+  if (style.sign) {
+    const top = Math.max(...sh.cabin.map(([, z]) => z));
+    c.bevel(-0.07, -0.08, top, 0.14, 0.16, 3, C.postYellow, { b: 0.8, edge: 0.3 });
+    c.poly(
+      [
+        [-0.07, 0.081, top + 1],
+        [0.07, 0.081, top + 1],
+        [0.07, 0.081, top + 1.9],
+        [-0.07, 0.081, top + 1.9],
+      ],
+      C.ink,
+    );
+  }
+  if (style.rails) {
+    const top = Math.max(...sh.cabin.map(([, z]) => z));
+    for (const v of [-cw + 0.03, cw - 0.03])
+      strut(c, [-0.42 * s, v, top + 0.8], [0.06 * s, v, top + 0.8], C.castIron, 0.8);
+  }
+  // Räder der nahen Seite
+  for (const u of sh.wheels) wheel(c, u * s, W + 0.012, sh.r);
   return c.svg();
 }
 
-/** Radfahrer entlang u: Fahrrad mit dünnen Rädern, Figur mit Helm; „f“ = fährt nach +u. */
+/** Fahrrad in der Ebene v, Front nach +u·s: Räder mit Felge und Speichen, Rahmen, Schutzbleche, Sattel, Lenker. */
+interface BicycleLook {
+  frame: string;
+  /** Tiefer Einstieg (Hollandrad) statt Diamantrahmen. */
+  low?: boolean;
+  /** Korb vorn (Weidenfarbe) bzw. Kiste auf dem Gepäckträger. */
+  basket?: boolean;
+  crate?: string;
+  /** Lastenrad: Kiste zwischen Lenker und Vorderrad. */
+  cargo?: string;
+}
+
+function bicycle(c: IsoCanvas, cu: number, v: number, s: number, b: BicycleLook) {
+  const r = 0.12;
+  const wz = r * Z_PER_TILE;
+  const U = (u: number) => cu + u * s;
+  const P = (u: number, z: number, dv = 0): Vec3 => [U(u), v + dv, z];
+  const front = b.cargo ? 0.34 : 0.22;
+  const wheelAt = (u: number) => {
+    const ring = ringPts('v', U(u), v, wz, r, 20);
+    polyline(c, [...ring, ring[0] ?? ring[1] ?? [0, 0, 0]], C.rubber, 1.3);
+    const rim = ringPts('v', U(u), v + 0.001, wz, r * 0.82, 16);
+    polyline(c, [...rim, rim[0] ?? [0, 0, 0]], C.galvanized, 0.45);
+    for (let k = 0; k < 4; k++) {
+      const a = (k / 4) * Math.PI + 0.3;
+      strut(
+        c,
+        P(u + Math.cos(a) * r * 0.8, wz + Math.sin(a) * wz * 0.8, 0.002),
+        P(u - Math.cos(a) * r * 0.8, wz - Math.sin(a) * wz * 0.8, 0.002),
+        C.galvanized,
+        0.3,
+        0.8,
+      );
+    }
+    c.disc(U(u), v + 0.003, wz, 0.012, C.galvanized);
+  };
+  wheelAt(-0.22);
+  wheelAt(front);
+  const bb = P(0, wz - 0.3);
+  const seat = P(-0.07, 10);
+  const head0 = P(0.16, 8.2);
+  const head1 = P(0.15, 10.4);
+  const fr = b.frame;
+  // Schutzbleche als Bögen über den Rädern
+  for (const u of [-0.22, front]) {
+    const arc: Vec3[] = [];
+    for (let k = 0; k <= 6; k++) {
+      const a = Math.PI * (0.15 + (k / 6) * 0.7);
+      arc.push(
+        P(u + Math.cos(a) * r * 1.1 * (u > 0 ? -1 : 1), wz + Math.sin(a) * wz * 1.1, -0.003),
+      );
+    }
+    polyline(c, arc, shade(fr, 0.85), 0.8);
+  }
+  strut(c, P(-0.22, wz), bb, fr, 1.2);
+  strut(c, P(-0.22, wz), seat, fr, 1);
+  strut(c, bb, seat, fr, 1.3);
+  if (b.low) strut(c, P(0.03, wz + 0.4), head0, fr, 1.4);
+  else strut(c, seat, head1, fr, 1.2);
+  strut(c, bb, head0, fr, 1.4);
+  strut(c, head0, head1, shade(fr, 0.8), 1.5);
+  strut(c, head0, P(front, wz), shade(fr, 0.9), 1.1);
+  // Kettenschutz, Sattel, Lenker
+  c.poly(
+    [P(-0.2, wz + 0.4, 0.004), bb, P(0.03, wz + 1.4, 0.004), P(-0.18, wz + 1.6, 0.004)],
+    shade(C.ink, 1.2),
+  );
+  c.poly(
+    [P(-0.12, 10.2, -0.02), P(-0.02, 10.6, -0.02), P(-0.02, 11.4, 0.02), P(-0.12, 11, 0.02)],
+    C.ink,
+  );
+  strut(c, head1, P(0.13, 12), C.castIron, 1.1);
+  strut(c, P(0.12, 12, -0.08), P(0.12, 12, 0.08), C.rubber, 1.2);
+  if (b.basket) {
+    c.box(U(front > 0.3 ? 0.2 : 0.18) - 0.06, v - 0.06, 9.6, 0.12, 0.12, 3.6, C.oakLight);
+    c.flat(U(0.18) - 0.05, v - 0.05, 13.21, 0.1, 0.1, shade(C.oakLight, 0.7));
+  }
+  if (b.crate) {
+    strut(c, seat, P(-0.24, 9.6), C.castIron, 0.8);
+    c.bevel(U(-0.24) - 0.07, v - 0.07, 9.6, 0.14, 0.14, 4, b.crate, { b: 0.6 });
+  }
+  if (b.cargo) c.bevel(U(0.2) - 0.08, v - 0.1, 5, 0.16, 0.2, 6, b.cargo, { b: 0.8 });
+  c.raw(
+    (() => {
+      const [x, y] = c.p(P(0.17, 9.6, 0.01));
+      const [x2, y2] = c.p(P(-0.27, 8.6, 0.01));
+      return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="0.8" fill="${C.led}"/><circle cx="${x2.toFixed(2)}" cy="${y2.toFixed(2)}" r="0.7" fill="${C.signalRed}"/>`;
+    })(),
+  );
+}
+
+/** Radfahrer entlang u (Blockfigur wie die Passanten): Fahrrad, Beine an den Pedalen, Helm; „f“ = nach +u. */
 interface BikeStyle {
   frame: string;
   jacket: string;
   helmet: string;
   pants: string;
   bag?: string;
+  low?: boolean;
+  basket?: boolean;
 }
 const BIKES: BikeStyle[] = [
-  { frame: C.cobalt, jacket: '#f2c14e', helmet: C.white, pants: C.ink },
-  { frame: C.red, jacket: '#77c4b1', helmet: C.ink, pants: '#5a6b8c', bag: C.orange },
+  { frame: C.cobalt, jacket: C.carYellow, helmet: C.white, pants: C.ink, basket: true, low: true },
+  { frame: C.carRed, jacket: C.carMint, helmet: C.ink, pants: C.carNavy, bag: C.orange },
 ];
 
 function bike(style: BikeStyle, heading: 'f' | 'b'): string {
   const c = canvasOf(CITY_SPRITE.car);
   const s = heading === 'f' ? 1 : -1;
-  const r = 0.12;
-  const wz = r * Z_PER_TILE;
-  c.shadow(-0.34, -0.06, 0, 0.68, 0.12, 0.26, 1.2);
-  const ring = (u: number) => {
-    const pts: Vec3[] = [];
-    const inner: Vec3[] = [];
-    for (let i = 0; i < 18; i++) {
-      const a = (i / 18) * Math.PI * 2;
-      pts.push([u + Math.cos(a) * r, 0, wz + Math.sin(a) * wz]);
-      inner.push([u + Math.cos(a) * r * 0.78, 0.001, wz + Math.sin(a) * wz * 0.78]);
-    }
-    c.poly(pts, C.ink);
-    c.poly(inner, '#b9c1cf', 0.55);
-    c.disc(u, 0.002, wz, 0.012, C.stainlessDark);
-  };
-  const back = -0.22 * s;
-  const front = 0.22 * s;
-  ring(back);
-  ring(front);
-  // Rahmen als dünne Streben (Bildschirmlinien)
-  const line = (a: Vec3, b: Vec3, color: string, w = 1.1) => {
-    const [x0, y0] = c.p(a);
-    const [x1, y1] = c.p(b);
-    c.raw(
-      `<line x1="${x0.toFixed(2)}" y1="${y0.toFixed(2)}" x2="${x1.toFixed(2)}" y2="${y1.toFixed(2)}" stroke="${color}" stroke-width="${String(w)}" stroke-linecap="round"/>`,
-    );
-  };
-  const seat: Vec3 = [-0.06 * s, 0, 9.5];
-  const bar: Vec3 = [0.16 * s, 0, 11];
-  const crank: Vec3 = [0, 0, wz];
-  line([back, 0, wz], crank, style.frame);
-  line([back, 0, wz], seat, style.frame);
-  line(crank, seat, style.frame);
-  line(crank, [0.14 * s, 0, 9.4], style.frame);
-  line([0.14 * s, 0, 9.4], seat, style.frame);
-  line([front, 0, wz], bar, style.frame);
-  line(bar, [0.13 * s, 0, 11.6], C.ink, 1.4);
-  // Fahrer: Bein, Rumpf, Arm, Kopf mit Helm
-  line(seat, [0.04 * s, 0.02, wz + 1.2], style.pants, 2.2);
-  c.box(-0.11 * s - 0.05, -0.05, 9.5, 0.1, 0.1, 9, style.jacket);
-  if (style.bag) c.box(-0.11 * s - 0.09, -0.06, 11, 0.06, 0.12, 6, style.bag);
-  line([-0.06 * s, 0.04, 17], [0.13 * s, 0.04, 11.6], style.jacket, 1.8);
-  c.box(-0.07 * s - 0.045, -0.045, 18.5, 0.09, 0.09, 6, C.skin);
-  c.dome(-0.07 * s, 0, 23.6, 0.065, 3.2, style.helmet);
-  // Licht vorn bzw. Rücklicht
-  const [lx, ly] = c.p([(heading === 'f' ? 0.17 : 0.27) * s, 0.01, 10.4]);
-  c.raw(
-    `<circle cx="${lx.toFixed(2)}" cy="${ly.toFixed(2)}" r="0.9" fill="${heading === 'f' ? C.led : C.red}"/>`,
-  );
+  const P = (u: number, z: number, dv = 0): Vec3 => [u * s, dv, z];
+  c.shadow(-0.36, -0.07, 0, 0.72, 0.14, 0.28, 1.2);
+  // fernes Bein und Arm zuerst
+  strut(c, P(-0.06, 10.6, -0.04), P(-0.02, 6.4, -0.04), shade(style.pants, 0.8), 2.2);
+  strut(c, P(-0.02, 6.4, -0.04), P(0.02, 2.6, -0.04), shade(style.pants, 0.8), 2);
+  bicycle(c, 0, 0, s, { frame: style.frame, low: style.low, basket: style.basket });
+  // Rumpf nach vorn geneigt, Tasche, Kopf mit Helm
+  const torso: P2u[] = [
+    [-0.13, 10],
+    [-0.01, 10],
+    [0.05, 17.6],
+    [-0.06, 17.6],
+  ];
+  const t = torso.map(([u, z]) => [u * s, z] as P2u);
+  if (style.bag && s > 0) c.bevel(-0.17, -0.065, 11.5, 0.08, 0.13, 5, style.bag, { b: 0.6 });
+  extrudeU(c, s > 0 ? t : t.reverse(), -0.065, 0.065, style.jacket);
+  if (style.bag && s < 0) c.bevel(0.09, -0.065, 11.5, 0.08, 0.13, 5, style.bag, { b: 0.6 });
+  strut(c, P(-0.06, 10.6, 0.04), P(0.05, 8.6, 0.04), style.pants, 2.4);
+  strut(c, P(0.05, 8.6, 0.04), P(0.03, 4.4, 0.04), style.pants, 2.1);
+  c.box(0.03 * s - 0.03, 0.025, 3.6, 0.06, 0.04, 1.2, C.ink);
+  strut(c, P(0.03, 16.6, 0.05), P(0.12, 12.2, 0.07), style.jacket, 1.6);
+  c.bevel(-0.065, -0.065, 17.6, 0.13, 0.13, 5.4, C.skin, { b: 0.6 });
+  c.dome(-0.01 * s, 0, 22.4, 0.092, 4, style.helmet);
   return c.svg();
 }
 
@@ -1159,28 +1605,175 @@ function pigeon(pose: 'stand' | 'peck' | 'fly0' | 'fly1'): string {
   return c.svg();
 }
 
-/** Ausflugsdampfer: weißer Rumpf mit blauem Band, verglastes Oberdeck, entlang u. */
+/**
+ * Ausflugsdampfer entlang u: weißer Rumpf mit Sprung zum Bug, roter Wasserpass, blaues Band mit Bullaugen,
+ * Salon mit Fensterband, offenes Sonnendeck mit Reling und Bänken, Steuerhaus, Mast mit Wimpel, Rettungsringe;
+ * Bugwelle und Kielwasser.
+ */
 function boat(heading: 'f' | 'b'): string {
   const c = canvasOf(CITY_SPRITE.boat);
   const s = heading === 'f' ? 1 : -1;
-  c.glowFlat(-1.35, -0.5, 0, 2.7, 1, C.white, 0.3, 2.5);
+  const U = (u: number) => u * s;
+  c.glowFlat(-1.35, -0.52, 0, 2.7, 1.04, C.white, 0.28, 2.5);
+  // Bugwelle und Kielwasser als helle Keile
+  const wake = (pts: readonly (readonly [number, number])[], op: number) =>
+    c.poly(
+      pts.map(([u, v]) => [U(u), v, 0.2] as Vec3),
+      C.white,
+      op,
+    );
+  wake(
+    [
+      [1.22, 0],
+      [1.0, 0.5],
+      [0.85, 0.44],
+    ],
+    0.55,
+  );
+  wake(
+    [
+      [-1.15, 0.3],
+      [-1.5, 0.52],
+      [-1.52, 0.4],
+      [-1.15, 0.12],
+    ],
+    0.4,
+  );
   const hull: [number, number][] = [
     [-1.15, -0.4],
-    [0.95, -0.4],
+    [0.9, -0.4],
     [1.25, 0],
-    [0.95, 0.4],
+    [0.9, 0.4],
     [-1.15, 0.4],
-  ].map(([u, v]) => [(u ?? 0) * s, v ?? 0] as [number, number]);
-  // Gespiegelt ändert sich der Umlaufsinn; prism erwartet die Reihenfolge mit Normale (dv, −du) nach außen.
+    [-1.22, 0.2],
+    [-1.22, -0.2],
+  ].map(([u, v]) => [U(u ?? 0), v ?? 0] as [number, number]);
   const ordered = s > 0 ? hull : hull.slice().reverse();
-  prism(c, ordered, 0, 8, C.white);
-  c.wallV(-1.15, 0.401, 2.5, 2.1, 2, C.cobalt);
-  c.flat(-0.8, -0.3, 8.01, 1.5, 0.6, C.oakLight);
-  c.box(-0.7, -0.28, 8, 1.2, 0.56, 9, C.white);
-  c.wallV(-0.65, 0.281, 10, 1.1, 5, C.glass);
-  c.wallU(0.501, -0.24, 10, 0.48, 5, shade(C.glass, 0.85));
-  c.box(-0.75, -0.32, 17, 1.3, 0.64, 1.4, C.cobalt);
-  c.cylinder(-0.25 * s, 0, 18.4, 0.05, 6, C.cobalt);
+  prism(c, ordered, 0, 2.2, C.carRed);
+  prism(c, ordered, 2.2, 9, C.white);
+  // blaues Band mit Bullaugen, Scheuerleiste
+  c.poly(
+    [
+      [U(-1.15), 0.401, 3.6],
+      [U(0.9), 0.401, 3.6],
+      [U(0.9), 0.401, 5.6],
+      [U(-1.15), 0.401, 5.6],
+    ],
+    C.cobalt,
+  );
+  for (let k = 0; k < 9; k++)
+    c.poly(ringPts('v', U(-0.95 + k * 0.2), 0.402, 4.6, 0.028, 8), C.paneDark);
+  c.poly(
+    [
+      [U(-1.15), 0.402, 8.4],
+      [U(0.9), 0.402, 8.4],
+      [U(0.9), 0.402, 9],
+      [U(-1.15), 0.402, 9],
+    ],
+    tint(C.white, 0.5),
+  );
+  // Deck (Planken) und Salon mit Fensterband
+  c.poly(
+    ordered.map(([u, v]) => [u * 0.94, v * 0.9, 9.02] as Vec3),
+    C.oakLight,
+  );
+  const a0 = s > 0 ? -0.95 : -0.55;
+  const a1 = s > 0 ? 0.55 : 0.95;
+  c.bevel(a0, -0.3, 9, a1 - a0, 0.6, 9.5, C.white, { b: 0.8 });
+  c.poly(
+    [
+      [a0 + 0.06, 0.301, 11.2],
+      [a1 - 0.06, 0.301, 11.2],
+      [a1 - 0.06, 0.301, 16.4],
+      [a0 + 0.06, 0.301, 16.4],
+    ],
+    C.paneDark,
+  );
+  for (let k = 1; k < 7; k++) {
+    const u = a0 + 0.06 + ((a1 - a0 - 0.12) * k) / 7;
+    c.poly(
+      [
+        [u - 0.012, 0.302, 11.2],
+        [u + 0.012, 0.302, 11.2],
+        [u + 0.012, 0.302, 16.4],
+        [u - 0.012, 0.302, 16.4],
+      ],
+      C.white,
+    );
+  }
+  for (const t of [0.15, 0.55])
+    c.poly(
+      [
+        [a0 + (a1 - a0) * t, 0.3025, 11.6],
+        [a0 + (a1 - a0) * (t + 0.08), 0.3025, 11.6],
+        [a0 + (a1 - a0) * (t + 0.11), 0.3025, 16],
+        [a0 + (a1 - a0) * (t + 0.03), 0.3025, 16],
+      ],
+      C.white,
+      0.22,
+    );
+  const ue = a1 + 0.001;
+  c.poly(
+    [
+      [ue, -0.24, 11.2],
+      [ue, 0.24, 11.2],
+      [ue, 0.24, 16.4],
+      [ue, -0.24, 16.4],
+    ],
+    shade(C.paneDark, 0.9),
+  );
+  // Sonnendeck: Planken, blaue Bänke, Reling
+  c.flat(a0, -0.3, 18.51, a1 - a0, 0.6, C.oakLight);
+  for (let k = 0; k < 4; k++) {
+    const u = a0 + 0.18 + k * ((a1 - a0 - 0.36) / 3);
+    c.bevel(u - 0.06, -0.18, 18.5, 0.12, 0.36, 1.6, C.cobalt, { b: 0.5 });
+  }
+  // Steuerhaus am Bug, Mast mit Wimpel und Positionslicht
+  const wh = s > 0 ? a1 - 0.34 : a0 + 0.04;
+  c.bevel(wh, -0.2, 18.5, 0.3, 0.4, 7, C.white, { b: 0.8 });
+  c.poly(
+    [
+      [wh + 0.3 + 0.001, -0.16, 21],
+      [wh + 0.3 + 0.001, 0.16, 21],
+      [wh + 0.3 + 0.001, 0.16, 24.4],
+      [wh + 0.3 + 0.001, -0.16, 24.4],
+    ],
+    C.paneDark,
+  );
+  c.bevel(wh - 0.03, -0.23, 25.5, 0.36, 0.46, 1.2, C.cobalt, { b: 0.4 });
+  const mu = U(-0.6);
+  c.cylinder(mu, 0, 18.5, 0.014, 14, C.white);
+  c.poly(
+    [
+      [mu, 0, 32],
+      [mu - 0.22 * s, 0, 30.6],
+      [mu, 0, 29.2],
+    ],
+    C.cobalt,
+  );
+  c.disc(mu, 0, 32.6, 0.02, C.signalYellow);
+  const rail = (pts: Vec3[]) => polyline(c, pts, C.white, 0.7);
+  rail([
+    [a0, 0.3, 21.6],
+    [a1, 0.3, 21.6],
+    [a1, -0.3, 21.6],
+  ]);
+  for (let k = 0; k <= 10; k++)
+    strut(
+      c,
+      [a0 + ((a1 - a0) * k) / 10, 0.3, 18.5],
+      [a0 + ((a1 - a0) * k) / 10, 0.3, 21.6],
+      C.white,
+      0.5,
+    );
+  for (let k = 0; k <= 4; k++)
+    strut(c, [a1, -0.3 + k * 0.15, 18.5], [a1, -0.3 + k * 0.15, 21.6], C.white, 0.5);
+  // Rettungsringe an der Bordwand des Salons
+  for (const u of [a0 + 0.02, a1 - 0.12])
+    if (u > a0) {
+      c.poly(ringPts('v', u + 0.05, 0.303, 10.6 + 3, 0.045, 10), C.orange);
+      c.poly(ringPts('v', u + 0.05, 0.304, 10.6 + 3, 0.022, 8), C.paneDark);
+    }
   return c.svg();
 }
 
@@ -1498,6 +2091,14 @@ export function citySprites(): SpriteDef[] {
     out.push({ name: `car-${String(i)}-f`, svg: car(s, 'f') });
     out.push({ name: `car-${String(i)}-b`, svg: car(s, 'b') });
   });
+  // Weitere Lacke nur für parkende Autos (stehen immer mit der Front nach +u, quer gespiegelt)
+  CAR_PAINTS.forEach((list, t) =>
+    list
+      .slice(0, PARKED_CAR_PAINTS)
+      .forEach((s, k) =>
+        out.push({ name: `car-${String(t)}-p${String(k + 1)}-f`, svg: car(s, 'f') }),
+      ),
+  );
   // Radfahrer: Typen nach den Autos (`STREET_LIFE.bikeTypes`)
   BIKES.forEach((s, i) => {
     const t = CARS.length + i;
