@@ -4,6 +4,16 @@ Alle nennenswerten Änderungen an Matcha Café Empire. Format angelehnt an [Keep
 
 ## [Unreleased]
 
+### Geldscheine, Bezahlen an der Kasse, Barhocker (2026-10-15)
+
+Vorgabe Vincent: Die Währung soll aus normalen Geldscheinen bestehen, das Geld erst reinkommen, wenn der Kunde
+bezahlt hat, und Gäste sollen sich auf die Barhocker setzen können.
+
+- Die Währung heißt jetzt „Geld“ (EN „Cash“) und zeigt einen grünen Geldschein im HUD; beim Bezahlen fliegt ein Schein von der Kasse ins HUD.
+- Geld kommt erst herein, wenn ein Gast an der Kasse bezahlt hat: Der Gast steht an der Kasse, die Lade springt auf, über ihm steht sein Betrag, und genau dann springt das Geld im HUD hoch. Vorher stieg es zehnmal je Sekunde gleichmäßig. Über die Zeit verdient man gleich viel; Offline-Einnahmen kommen wie bisher direkt.
+- Abholer setzen sich mit ihrem Getränk oft auf einen freien Barhocker an der Theke, trinken mit Blick zur Theke und gehen dann. Die Pendelleuchten der Bar hängen jetzt über der Theke.
+- Spielstände werden automatisch auf Version 10 gehoben (offene Bons der Kasse starten leer).
+
 ### Café mit Leben, Ampeln und Endausbau (2026-10-15)
 
 Vorgabe Vincent: Das Personal soll an den Geräten immer etwas tun wie kleine Arbeiter, die Kasse umgedreht sein,

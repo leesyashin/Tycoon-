@@ -104,7 +104,7 @@ identisch aussehen. Kein Hex-Wert außerhalb dieser beiden Stellen.
 | `--c-energy` | `#f07a2a` | ⚡-Zahl | **Kapazität** (bei uns: Theken-Plätze/Durchsatz, § 5), Energiekosten-Zahl, „+“‑Shop-Kreis. |
 | `--c-danger` | `#f33838` | Alarm-Icon, „!“-Badge | Handlungsbedarf, Verlust, Löschen. |
 | `--c-danger-soft` | `#f76464` | Schließen-X | Schließen-Button Vollbild. |
-| `--c-cash` | `#3fb950` | grüner Geldschein | Münz-Icon (Matcha-Münze, § 5). |
+| `--c-cash` | `#3fb950` | grüner Geldschein | Geldschein-Icon im HUD und fliegender Schein (§ 5). |
 | `--c-gem` | `#ffd23f` | gelber Diamant | Icon „Goldenes Blatt“. |
 | `--c-surface` | `#ffffff` | Karten | Karten, aktive Reiter, runde Buttons. |
 | `--c-surface-2` | `#eef0f3` | gestrichelte Trenner | Trenner, Sekundärflächen auf Weiß. |
@@ -162,7 +162,7 @@ Google-Fonts-Request zur Laufzeit (PWA offline, Datenschutz). `font-display: swa
 | Ebene | z-index | Inhalt |
 |---|---|---|
 | Szene | 0 | Phaser-Canvas |
-| Szene-Overlay | 1 | Fortschrittsringe, Smileys, Münz-Popups (Phaser) |
+| Szene-Overlay | 1 | Fortschrittsringe, Smileys, Beträge und Geldscheine beim Bezahlen (Phaser) |
 | HUD | 10 | Pillen, runde Buttons, Bottom-Bar, Avatar |
 | Panel | 20 | Bottom-Sheet |
 | Screen | 30 | Vollbild (Verwaltung, Standorte, Settings) |
@@ -178,7 +178,7 @@ Jede Komponente: Aussehen im Vorbild → unsere Fassung → CSS-Klasse (Ziel) �
 ### 3.1 HUD-Pille (Währungen)
 
 - Vorbild: dunkle Pille oben links, drei Währungen mit Icon, orangener „+“‑Kreis am Ende.
-- Unsere Fassung: `🍵 Münzen` · `⚡ Kapazität` (frei/gesamt, § 5) · `🍃 Goldene Blätter` · `+` (öffnet Blätter-Shop, ab S7; vorher ausgeblendet).
+- Unsere Fassung: `💵 Geld` (Geldschein-Icon `banknote`) · `⚡ Kapazität` (frei/gesamt, § 5) · `🍃 Goldene Blätter` · `+` (öffnet Blätter-Shop, ab S7; vorher ausgeblendet). Bezahlt ein Gast an der Kasse, springt der Geld-Betrag kurz an (`.hud-cash-in`, höchstens einmal je Animation).
 - Klasse `.hud-pill`; Kinder `.hud-currency` (Icon 20 px, Zahl 18 px/700, weiß). Einkommen/s wird **nicht** in die Pille gequetscht, sondern in die zweite Zeile (Status-Pille) – wie im Vorbild die Uhr.
 - Ersetzt den heutigen 420-px-HUD-Block.
 
@@ -278,8 +278,8 @@ Jede Komponente: Aussehen im Vorbild → unsere Fassung → CSS-Klasse (Ziel) �
 | Stadtviertel | Wie im Vorbild steht das Café nicht im Leeren: **Straßenraster** mit Berliner Blöcken (`data/city.ts`). Jeder Block: Eckhäuser mit Walmdach, Häuserzeilen mit Satteldach, Gauben und Schornsteinen, Innenhof mit Bäumen. Häuser aus **Fassaden-Modulen** (eine Achse × ein Geschoss: zehn Ladentypen mit Markise und Auslage, Haustür, Fenster mit Stuck, Balkon, Gesims; Putz oder Klinker), Dächer als Flächen (Rückseite hell, +y 90 %, +x 76 %). Hohe Häuser nur hinter und neben dem Café; vorn Kiezpark, Sportplatz, Wochenmarkt am Kanal, Spree. Kein sichtbarer Rand: Die Stadt reicht über den Ausschnitt hinaus, ferne Blöcke vereinfacht im Dunst, die Kamera bleibt in `CITY.view`. Autos, Radfahrer, Passanten, Tauben (fliegen auf, wenn jemand kommt), Ampeln und Dampfer sind kosmetisch; an der Kreuzung am Café vier **Autoampeln** (schwarzes Gehäuse, weiß umrandete Kontrastblende, Lichter zur Kamera) in deutscher Folge Rot → Rot-Gelb → Grün → Gelb, dazu Fußgängerampeln mit Ampelmännchen; Brunnen im Park sprudelt; nachts Laternen-Glow und erleuchtete Fenster. |
 | Tag/Nacht | Spielzeit → Tageszeit (24 min = 1 Tag). Nachts `--c-night` als Multiply-Overlay 35 %, Fensterlicht und Lampen als additive warme Kreise. Rein kosmetisch, keine Einnahmen-Wirkung (CLAUDE.md). |
 | Kamera | Fester Winkel, Pinch-Zoom 0.8–1.6, Pan begrenzt auf Grid + Rand. Beim Antippen einer Station Zoom auf 1.3 und Panel öffnen (Vorbild: Zimmer-Panel). |
-| Feedback | Kauf: Objekt „ploppt“ (Scale 0 → 1.1 → 1, 250 ms). Level-up: weißer Shine-Sweep. Neue Optik-Stufe: zusätzlich Funken und „Neues Design!“ über dem Gerät; wird die Theke oder werden die Tische edler, ploppen alle Module bzw. Tische als Welle von links nach rechts. Münzen: kleines Münz-Popup, fliegt ins HUD (S8). |
-| Bewegung im Café (Phase 2) | Gäste: Tür → nach zwei, drei Kacheln Schlange entlang des Kassen-Schenkels (neben der Schlange heran, höchstens 6 Figuren, der Rest zählt auf der Tafel) → bestellen an der Ecke → um die Ecke zum Abholplatz an der Ausgabe oder zum Tisch → hinter der Schlange vorbei hinaus. Bedienungen kommen durch einen Durchgang in der Theke in den Gastraum. **Personal arbeitet sichtbar** („kleine Arbeiter“): Verkäufer stehen hinter der Kasse, deren Bildschirm bzw. Tasten zu ihnen zeigen, und tippen, solange jemand bestellt; nach jeder Bestellung fährt die Kassenlade aus. Baristas bereiten mit dem Rücken zum Gastraum zu (Hände im Takt, Fortschrittsring, Geräte-Effekt: Dampf, Dampfstöße, Frost, Glut, Pulver, Funkeln), tragen den Becher den Personal-Gang entlang zur Ausgabe und stellen ihn ab, holen gelegentlich Nachschub aus dem Lager (greifen ins Regal, tragen Dose, Sack oder Karton ans Gerät); Bedienungen nehmen ihn mit und laufen mit Tablett zum Gast. Putzkräfte gehen zu dreckigen Tischen und wischen sonst den Boden. Musiknoten über der Anlage, Dampf über den Tassen. Alles kosmetisch – Spawn und Tempo kommen aus den Raten in `core`. |
+| Feedback | Kauf: Objekt „ploppt“ (Scale 0 → 1.1 → 1, 250 ms). Level-up: weißer Shine-Sweep. Neue Optik-Stufe: zusätzlich Funken und „Neues Design!“ über dem Gerät; wird die Theke oder werden die Tische edler, ploppen alle Module bzw. Tische als Welle von links nach rechts. Bezahlen: Kassenlade fährt aus, „+Betrag“ über dem zahlenden Gast (bei vielen Zahlungen gesammelt, höchstens alle 400 ms), ein grüner Geldschein fliegt von der Kasse ins HUD – genau dann, wenn `core` die Zahlung bucht (GAME_DESIGN § 7.2). Beim Servieren nur noch ein Emote. |
+| Bewegung im Café (Phase 2) | Gäste: Tür → nach zwei, drei Kacheln Schlange entlang des Kassen-Schenkels (neben der Schlange heran, höchstens 6 Figuren, der Rest zählt auf der Tafel) → bestellen und **bezahlen** an der Ecke (Ring bis zur Zahlung) → um die Ecke zum Abholplatz an der Ausgabe oder zum Tisch → Abholer setzen sich mit ihrem Getränk oft auf einen freien **Barhocker** (Sitzpose höher, Blick zur Theke, Getränk auf der Thekenplatte) → hinter der Schlange vorbei hinaus. Bedienungen kommen durch einen Durchgang in der Theke in den Gastraum. **Personal arbeitet sichtbar** („kleine Arbeiter“): Verkäufer stehen hinter der Kasse, deren Bildschirm bzw. Tasten zu ihnen zeigen, und tippen, solange jemand bestellt; nach jeder Bestellung fährt die Kassenlade aus. Baristas bereiten mit dem Rücken zum Gastraum zu (Hände im Takt, Fortschrittsring, Geräte-Effekt: Dampf, Dampfstöße, Frost, Glut, Pulver, Funkeln), tragen den Becher den Personal-Gang entlang zur Ausgabe und stellen ihn ab, holen gelegentlich Nachschub aus dem Lager (greifen ins Regal, tragen Dose, Sack oder Karton ans Gerät); Bedienungen nehmen ihn mit und laufen mit Tablett zum Gast. Putzkräfte gehen zu dreckigen Tischen und wischen sonst den Boden. Musiknoten über der Anlage, Dampf über den Tassen. Alles kosmetisch – Spawn und Tempo kommen aus den Raten in `core`. |
 
 ---
 
@@ -287,7 +287,7 @@ Jede Komponente: Aussehen im Vorbild → unsere Fassung → CSS-Klasse (Ziel) �
 
 | Hotel-Element (UI) | Matcha Café Empire | Status im Repo |
 |---|---|---|
-| 💵 Cash | 🍵 Münzen (Matcha-Münze, grün) | vorhanden |
+| 💵 Cash | 💵 Geld (grüner Geldschein, vorher Matcha-Münze) | vorhanden |
 | ⚡ Energie (Generator begrenzt Käufe) | ⚡ **Kapazität**: Theken-/Sitzplätze begrenzen, wie viele Stationen laufen; Ambiente „Sitzbereich“/„Terrasse“ = Generator-Äquivalent | **neu** – Vorschlag für S9/Offen; bis dahin Zahl ausblenden |
 | 💎 Gems | 🍃 Goldene Blätter | vorhanden (verdienbar ab S5) |
 | ★★★★★ Sterne | 🍃🍃🍃🍃 Qualitätsgrad (4 Stufen) | S5 |
@@ -328,6 +328,11 @@ Jede Komponente: Aussehen im Vorbild → unsere Fassung → CSS-Klasse (Ziel) �
    Baristas laufen zur Ausgabe), die Kasse zeigt mit der Bedienseite zum Verkäufer (DOM-Icon weiter mit Bedienseite
    zum Betrachter), Fortschrittsringe als Bild-Frames, Autoampeln an der Kreuzung, Endausbau des Raums nach
    Deko-Level (Boden, Wände, Fassade, Leuchten).
+10. **Geldscheine statt Matcha-Münzen, Bezahlen an der Kasse, Barhocker (Vincent, 2026-10-15):** Die Währung heißt
+    „Geld“/„Cash“ und zeigt einen grünen Geldschein (HUD-Icon selbst gezeichnet, Szene-Sprite `cash`), wie das
+    💵 im Vorbild. Geld kommt erst herein, wenn ein Gast an der Kasse bezahlt hat (Lade, Betrag, Schein, HUD springt
+    an). Barhocker sind einzelne Sprites, damit Sitzende davor sortiert werden; die Pendelleuchten der Bar hängen
+    über der Theke (Schein auf der Thekenplatte), nicht über den Hockern.
 
 ---
 
