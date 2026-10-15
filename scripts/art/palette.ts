@@ -78,6 +78,14 @@ export const C = {
   shopPharmacy: '#3c9a5a',
   shopRaspberry: '#c95a8c',
   shopInterior: '#eadfc8',
+  // Café-Deko: Neonröhre, Kristall, Treibholz, Farn
+  neon: '#7dff9a',
+  neonCore: '#e2ffe8',
+  crystal: '#dff1fb',
+  driftwood: '#7a6a55',
+  fern: '#8aa86f',
+  fernLight: '#a2bf86',
+  snakeEdge: '#d8d27a',
 
   // Material-Leiter der Ausstattung (UI_STYLE § 4): Kobalt-Lack → Edelstahl → blaue Fliesen → Nussbaum/Marmor/Messing
   // → Nachtblau/Marmor/Gold. Metalle bekommen Glanzstreifen statt Verlauf.
