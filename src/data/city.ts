@@ -93,6 +93,8 @@ export interface PropDef {
   variant?: number;
   /** Achse, an der das Objekt ausgerichtet ist (Autos, Bänke, Geländer): `u` = entlang x. */
   axis?: 'u' | 'v';
+  /** Haltestelle: offene Seite mit Bank quer zur Achse, +1 nach +y bzw. +x (zur Kamera), −1 nach −y bzw. −x. */
+  front?: 1 | -1;
 }
 
 /** Fahrstreifen: Autos fahren entlang `axis` auf der Linie `at`, Richtung `dir`. */
@@ -335,8 +337,9 @@ function streetProps(): PropDef[] {
     { kind: 'trafficLight', x: O + ROAD + 0.6, y: O + ROAD + 0.6, axis: 'v' },
     { kind: 'trafficLight', x: O - 0.6, y: O + ROAD + 0.6, axis: 'u' },
     { kind: 'trafficLight', x: O - 0.6, y: O - 0.6, axis: 'v' },
-    { kind: 'busstop', x: 4, y: far + 0.7, axis: 'u' },
-    { kind: 'busstop', x: far + 0.7, y: -3, axis: 'v' },
+    // Haltestellen am Bordstein gegenüber, offen zur Fahrbahn (die liegt bei kleinerem y bzw. x)
+    { kind: 'busstop', x: 4, y: far, axis: 'u', front: -1 },
+    { kind: 'busstop', x: far, y: -3, axis: 'v', front: -1 },
     { kind: 'mailbox', x: 11, y: far - 0.4 },
   );
   // Parkende Autos am Bordstein (nicht vor dem Café, nicht auf Kreuzungen)
@@ -885,6 +888,8 @@ export function propFrame(p: PropDef): string {
       return `foodtruck-${String((p.variant ?? 0) % 2)}`;
     case 'bistro':
       return `bistro-${String((p.variant ?? 0) % 2)}`;
+    case 'busstop':
+      return `busstop-${p.front === -1 ? 'b' : 'f'}`;
     default:
       return p.kind;
   }
@@ -899,3 +904,45 @@ export const FLIP_ON_V: readonly PropKind[] = [
   'busstop',
   'foodtruck',
 ];
+
+// ---------------------------------------------------------------------------------------------
+// Boden und Ausrichtung der Objekte (geteilt von Szene und Tests)
+// ---------------------------------------------------------------------------------------------
+
+/** Oberste Bodenart am Grid-Punkt: spätere Flächen liegen über früheren (Gehweg-Grundton zuerst). */
+export function groundAt(
+  x: number,
+  y: number,
+  ground: readonly GroundArea[] = CITY.ground,
+): GroundKind | null {
+  let kind: GroundKind | null = null;
+  for (const g of ground)
+    if (x >= g.rect.x0 && x < g.rect.x1 && y >= g.rect.y0 && y < g.rect.y1) kind = g.kind;
+  return kind;
+}
+
+/**
+ * Wohin die Vorderseite eines gerichteten Objekts zeigt (Grid-Einheitsvektor), wie es gezeichnet wird; `null` für
+ * runde/ungerichtete Objekte. Quer gestellt (`axis: 'v'`) tauschen x und y (Spiegelung bzw. eigener Frame).
+ */
+export function propFacing(p: PropDef): readonly [number, number] | null {
+  const along = (d: number): [number, number] => (p.axis === 'v' ? [0, d] : [d, 0]);
+  const across = (d: number): [number, number] => (p.axis === 'v' ? [d, 0] : [0, d]);
+  switch (p.kind) {
+    case 'busstop':
+      return across(p.front ?? 1);
+    case 'bench':
+    case 'kiosk':
+    case 'stall':
+    case 'foodtruck':
+      return across(1);
+    case 'pedLight':
+      return FLIP_ON_V.includes(p.kind) ? across(1) : [0, 1];
+    case 'trafficLight':
+      return along(1);
+    case 'parked':
+      return along(1);
+    default:
+      return null;
+  }
+}

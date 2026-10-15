@@ -7,8 +7,10 @@ import {
   STREET_LIFE,
   UPPER_CELLS,
   buildingHeight,
+  groundAt,
   groundCellFor,
   hash01,
+  propFacing,
   propFrame,
   upperCellFor,
   type GridRect,
@@ -104,6 +106,19 @@ describe('Stadtviertel: Grundriss', () => {
     expect(first).toBeDefined();
     expect(first?.y).toBeCloseTo(curb.y);
     expect(Math.abs((first?.x ?? 0) - curb.x)).toBeGreaterThanOrEqual(layout.street.spreadMin);
+  });
+});
+
+describe('Stadtviertel: Ausrichtung', () => {
+  it('Haltestellen öffnen sich zur Fahrbahn (Bank und Schild am Bordstein, Rückwand zum Gehweg)', () => {
+    const stops = CITY.props.filter((p) => p.kind === 'busstop');
+    expect(stops.length).toBeGreaterThan(0);
+    for (const p of stops) {
+      const [dx, dy] = propFacing(p) ?? [0, 0];
+      const at = `${String(p.x)},${String(p.y)}`;
+      expect(groundAt(p.x + dx * 1.2, p.y + dy * 1.2), `vor ${at}`).toBe('road');
+      expect(groundAt(p.x - dx * 1.2, p.y - dy * 1.2), `hinter ${at}`).not.toBe('road');
+    }
   });
 });
 
