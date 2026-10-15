@@ -127,16 +127,29 @@ export class StreetLife {
     return 'none';
   }
 
+  /** Sekunden seit Beginn der Grünphase der Achse `axis` (im Umlauf). */
+  private phaseTime(axis: 'u' | 'v'): number {
+    const { greenSec, allRedSec } = STREET_LIFE;
+    const cycle = 2 * (greenSec + allRedSec);
+    const start = axis === 'u' ? 0 : greenSec + allRedSec;
+    return (((this.clock - start) % cycle) + cycle) % cycle;
+  }
+
   /** Lichtzeichen der Autoampel für die Fahrbahn der Achse `axis`. */
   lightState(axis: 'u' | 'v'): LightState {
     const { greenSec, allRedSec, yellowSec, redYellowSec } = STREET_LIFE;
-    const cycle = 2 * (greenSec + allRedSec);
-    const start = axis === 'u' ? 0 : greenSec + allRedSec;
-    const rel = (((this.clock - start) % cycle) + cycle) % cycle;
+    const rel = this.phaseTime(axis);
     if (rel < greenSec - yellowSec) return 'green';
     if (rel < greenSec) return 'yellow';
-    if (rel >= cycle - redYellowSec) return 'redYellow';
+    if (rel >= 2 * (greenSec + allRedSec) - redYellowSec) return 'redYellow';
     return 'red';
+  }
+
+  /** Sekunden seit Beginn der Gelbphase der Achse `axis`, `null` außerhalb von Gelb. */
+  private yellowFor(axis: 'u' | 'v'): number | null {
+    const { greenSec, yellowSec } = STREET_LIFE;
+    const rel = this.phaseTime(axis) - (greenSec - yellowSec);
+    return rel >= 0 && rel < yellowSec ? rel : null;
   }
 
   /** Verbleibende Grünzeit der Achse `axis` (0, wenn sie Rot hat). */
@@ -239,7 +252,7 @@ export class StreetLife {
     const green = this.signal();
     const { yellowCommit } = STREET_LIFE;
     this.city.lanes.forEach((lane, li) => {
-      const yellow = this.lightState(lane.axis) === 'yellow';
+      const yellow = this.yellowFor(lane.axis);
       // Fortschritt s wächst in Fahrtrichtung; vorn = größtes s.
       const s = (c: Car) => c.pos * lane.dir;
       const mine = this.cars.filter((c) => c.active && c.lane === li).sort((a, b) => s(b) - s(a));
@@ -250,8 +263,10 @@ export class StreetLife {
         const speed = StreetLife.isBike(c.type) ? carTilesPerSec * bikeSpeed : carTilesPerSec;
         let next = s(c) + speed * dt;
         if (leader !== null) next = Math.min(next, leader - carGap);
-        // Rot: vor der Haltelinie warten; Gelb: anhalten, wer noch nicht dicht davor ist.
-        const stop = green !== lane.axis || (yellow && s(c) < stopS - yellowCommit);
+        // Rot: vor der Haltelinie warten. Gelb: weiter fährt nur, wer beim Umschalten schon dicht davor war (die
+        // Grenze rückt mit, als wäre er seitdem frei gefahren); sonst rollte jeder, der näher kommt, noch drüber.
+        const commit = yellow === null ? 0 : yellowCommit - speed * yellow;
+        const stop = green !== lane.axis || (yellow !== null && s(c) < stopS - commit);
         if (stop && s(c) <= stopS + 1e-6) next = Math.min(next, stopS);
         next = Math.max(next, s(c));
         c.pos = next * lane.dir;

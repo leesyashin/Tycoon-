@@ -496,6 +496,68 @@ describe('Stadtviertel: Verkehr und Passanten', () => {
     expect(life.cars.some((c) => c.active)).toBe(true);
   });
 
+  it('bei Gelb fährt nur noch über die Haltelinie, wer beim Umschalten schon dicht davor war', () => {
+    const life = new StreetLife(CITY, seeded(11));
+    const dt = 0.05;
+    const yellowSince: Record<'u' | 'v', number | null> = { u: null, v: null };
+    let t = 0;
+    let crossed = 0;
+    for (let step = 0; step < 8000; step++) {
+      const before = life.cars.map((c) => c.pos);
+      life.update(dt);
+      t += dt;
+      for (const axis of ['u', 'v'] as const) {
+        const yellow = life.lightState(axis) === 'yellow';
+        if (!yellow) yellowSince[axis] = null;
+        else yellowSince[axis] ??= t - dt;
+      }
+      life.cars.forEach((c, i) => {
+        const lane = life.lane(c);
+        const since = lane ? yellowSince[lane.axis] : null;
+        if (!c.active || !lane || since === null) return;
+        const line = lane.stopAt * lane.dir - STREET_LIFE.carHalfLength;
+        const was = (before[i] ?? 0) * lane.dir;
+        if (was > line || c.pos * lane.dir <= line) return;
+        crossed++;
+        const speed =
+          STREET_LIFE.carTilesPerSec * (StreetLife.isBike(c.type) ? STREET_LIFE.bikeSpeed : 1);
+        expect(t - since).toBeLessThanOrEqual(STREET_LIFE.yellowCommit / speed + 2 * dt);
+      });
+    }
+    expect(crossed).toBeGreaterThan(0);
+  });
+
+  it('nie Fahrzeuge beider Richtungen zugleich auf der Kreuzung, nie eins am Zebrastreifen über einem Passanten', () => {
+    const life = new StreetLife(CITY, seeded(11));
+    const half = (type: number) => (StreetLife.isBike(type) ? 0.35 : STREET_LIFE.carHalfLength);
+    let clash = 0;
+    let onZebra = 0;
+    for (let step = 0; step < 16000; step++) {
+      life.update(0.05);
+      const cars = life.cars
+        .filter((c) => c.active)
+        .map((c) => ({ c, p: life.carPosition(c), axis: life.lane(c)?.axis }));
+      for (const a of cars)
+        for (const b of cars)
+          if (
+            a.axis === 'u' &&
+            b.axis === 'v' &&
+            Math.abs(a.p.x - b.p.x) < half(a.c.type) + 0.3 &&
+            Math.abs(a.p.y - b.p.y) < half(b.c.type) + 0.3
+          )
+            clash++;
+      for (const w of life.walkers) {
+        if (!w.active || !CITY.crossings.some((c) => inside(c.rect, w.x, w.y))) continue;
+        for (const a of cars) {
+          const along = a.axis === 'u' ? Math.abs(w.x - a.p.x) : Math.abs(w.y - a.p.y);
+          const across = a.axis === 'u' ? Math.abs(w.y - a.p.y) : Math.abs(w.x - a.p.x);
+          if (along < half(a.c.type) + 0.15 && across < 0.45) onZebra++;
+        }
+      }
+    }
+    expect({ clash, onZebra }).toEqual({ clash: 0, onZebra: 0 });
+  });
+
   it('Ampel wechselt zwischen den Achsen mit Räumzeit', () => {
     const life = new StreetLife(CITY, seeded(2));
     const seen = new Set<string>();
