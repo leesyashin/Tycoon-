@@ -7,6 +7,7 @@
 import {
   CITY_SPRITE,
   CITY_STYLE,
+  PARKED_CAR_PAINTS,
   GROUND_CELLS,
   UPPER_CELLS,
   getCityPalette,
@@ -16,14 +17,29 @@ import {
 import { FacingCanvas } from './equipment';
 import { IsoCanvas, SHADE, Z_PER_TILE, shade, tint, type Vec3 } from './iso';
 import { C } from './palette';
+import {
+  cone,
+  crown,
+  cylPatch,
+  extrudeU,
+  facetBall,
+  facetLight,
+  lit,
+  ngon,
+  polyline,
+  prism,
+  ringPts,
+  strut,
+  valance,
+} from './shapes';
 import type { SpriteDef } from './sprites';
 
 const FACES: readonly FacadeFace[] = ['a', 'b'];
 /** Altbaufenster: dunkles, leicht blaues Glas (Innenräume), nachts warm. */
-const PANE = '#6f8db0';
-const PANE_LIT = '#ffd98a';
-const IRON = '#3b3f4f';
-const DOOR = '#6b4a33';
+const PANE = C.pane;
+const PANE_LIT = C.paneLit;
+const IRON = C.castIron;
+const DOOR = C.doorWood;
 
 function cellCanvas(face: FacadeFace, hc: number): FacingCanvas {
   const s = CITY_SPRITE.cell(hc);
@@ -133,24 +149,52 @@ function plinth(c: FacingCanvas, p: CityPalette) {
   c.front(-0.02, 0.001, h - 2, 1.04, 2, p.stucco);
 }
 
-/** Markise mit Streifen in zwei Farben, schräg aus der Fassade. */
+/**
+ * Markise: Bahnen in zwei Farben schräg aus der Fassade, Kopfleiste, Seitenwange an der +x-Seite, vorn ein
+ * Volant mit Bögen; darunter ein weicher Schatten auf Schaufenster und Tür.
+ */
 function awning(c: FacingCanvas, a: string, b: string) {
-  const n = 6;
+  const x0 = 0.05;
+  const x1 = 0.95;
+  const n = 7;
+  const zt = 46;
+  const zf = 37.5;
+  const yf = 0.5;
+  c.frontLit(0.08, 0.009, 31, 0.84, 15, C.ink, 0.16);
   for (let k = 0; k < n; k++) {
-    const x0 = 0.07 + (k * 0.86) / n;
-    const x1 = x0 + 0.86 / n;
-    const col = k % 2 ? b : a;
+    const u0 = x0 + (k * (x1 - x0)) / n;
+    const u1 = u0 + (x1 - x0) / n;
     c.fpoly(
       [
-        [x0, 0.01, 50],
-        [x1, 0.01, 50],
-        [x1, 0.52, 41],
-        [x0, 0.52, 41],
+        [u0, 0.01, zt],
+        [u1, 0.01, zt],
+        [u1, yf, zf],
+        [u0, yf, zf],
       ],
-      col,
+      k % 2 ? b : a,
     );
-    c.front(x0, 0.52, 38, x1 - x0, 3, col);
   }
+  c.fpoly(
+    [
+      [x1, 0.01, zt],
+      [x1, yf, zf],
+      [x1, yf, zf - 3],
+      [x1, 0.2, zt - 4.5],
+      [x1, 0.01, zt - 4.5],
+    ],
+    c.sideShade(a),
+  );
+  const P = (x: number, y: number, z: number): Vec3 => (c.facing === 'a' ? [x, y, z] : [y, x, z]);
+  valance(
+    c,
+    P(x0, yf, zf),
+    P(x1, yf, zf),
+    2.4,
+    [a, b],
+    n,
+    c.facing === 'a' ? SHADE.left : SHADE.right,
+  );
+  c.fbox(x0 - 0.01, 0, zt - 0.2, x1 - x0 + 0.02, 0.04, 1.2, C.stainlessDark);
 }
 
 type Goods =
@@ -164,7 +208,7 @@ type Goods =
   | 'pharmacy'
   | 'icecream'
   | 'records';
-type Outside = 'flowers' | 'crates' | 'chairs' | 'books' | 'bike' | 'cone' | null;
+type Outside = 'flowers' | 'crates' | 'chairs' | 'books' | 'bike' | 'cone' | 'board' | null;
 interface ShopStyle {
   frame: string;
   sign: string;
@@ -173,6 +217,8 @@ interface ShopStyle {
   outside: Outside;
   /** Emblem auf dem Schild (keine Schrift). */
   emblem: 'bar' | 'cross' | 'circle' | 'leaf';
+  /** Nasenschild am Ausleger rechts. */
+  nose?: boolean;
 }
 
 /** Zehn Ladentypen der Kiezstraßen (Index = `shop<n>`). */
@@ -182,11 +228,11 @@ const SHOPS: readonly ShopStyle[] = [
     sign: C.red,
     awning: [C.red, C.white],
     goods: 'shelves',
-    outside: null,
+    outside: 'board',
     emblem: 'bar',
   },
   {
-    frame: '#2f5f45',
+    frame: C.shopGreen,
     sign: C.matchaDeep,
     awning: [C.matchaDeep, C.white],
     goods: 'flowers',
@@ -194,23 +240,24 @@ const SHOPS: readonly ShopStyle[] = [
     emblem: 'leaf',
   },
   {
-    frame: '#3a3550',
+    frame: C.shopAubergine,
     sign: C.gold,
     awning: null,
     goods: 'bottles',
     outside: 'crates',
     emblem: 'bar',
+    nose: true,
   },
   {
-    frame: '#6b4a33',
+    frame: C.doorWood,
     sign: C.cream,
     awning: [C.coffee, C.cream],
     goods: 'bread',
-    outside: null,
+    outside: 'board',
     emblem: 'circle',
   },
   {
-    frame: '#8a2b22',
+    frame: C.shopOxblood,
     sign: C.orange,
     awning: [C.red, C.gold],
     goods: 'grill',
@@ -218,12 +265,13 @@ const SHOPS: readonly ShopStyle[] = [
     emblem: 'bar',
   },
   {
-    frame: '#24413a',
+    frame: C.shopPine,
     sign: C.paper,
     awning: null,
     goods: 'books',
     outside: 'books',
     emblem: 'bar',
+    nose: true,
   },
   {
     frame: C.ink,
@@ -235,112 +283,205 @@ const SHOPS: readonly ShopStyle[] = [
   },
   {
     frame: C.white,
-    sign: '#3c9a5a',
+    sign: C.shopPharmacy,
     awning: null,
     goods: 'pharmacy',
     outside: null,
     emblem: 'cross',
+    nose: true,
   },
   {
-    frame: '#c95a8c',
+    frame: C.shopRaspberry,
     sign: C.sakura,
     awning: [C.sakura, C.white],
     goods: 'icecream',
     outside: 'cone',
     emblem: 'circle',
   },
-  { frame: C.plum, sign: C.ink, awning: null, goods: 'records', outside: null, emblem: 'circle' },
+  {
+    frame: C.plum,
+    sign: C.ink,
+    awning: null,
+    goods: 'records',
+    outside: 'board',
+    emblem: 'circle',
+    nose: true,
+  },
 ];
 
-/** Auslage im Schaufenster (x 0,09 … 0,69, z 5 … 42). */
+/** Auslage im Schaufenster (x 0,12 … 0,67, z 7 … 39): Waren als Flächen hinter dem Glas. */
 function goods(c: FacingCanvas, g: Goods) {
   const L = (x: number, z: number, w: number, h: number, col: string) =>
     c.frontLit(x, 0.005, z, w, h, c.frontShade(col));
+  const board = (z: number) => {
+    L(0.12, z - 1.4, 0.55, 1.4, C.woodDark);
+    L(0.12, z - 2, 0.55, 0.6, shade(C.woodDark, 0.7));
+  };
   const shelves = (cols: readonly string[]) => {
-    for (const z of [16, 27]) L(0.1, z, 0.58, 1.2, C.woodDark);
-    for (let k = 0; k < 6; k++) {
-      L(0.12 + k * 0.09, 17.2, 0.05, 5 + (k % 3), cols[k % cols.length] ?? C.cream);
-      L(0.13 + k * 0.09, 28.2, 0.04, 4 + ((k + 1) % 3), cols[(k + 2) % cols.length] ?? C.cream);
+    for (const z of [18, 29]) board(z);
+    for (let k = 0; k < 7; k++) {
+      L(0.13 + k * 0.077, 18, 0.05, 4.5 + (k % 3), cols[k % cols.length] ?? C.cream);
+      L(0.14 + k * 0.077, 18 + 3.5 + (k % 3), 0.03, 1, tint(cols[k % cols.length] ?? C.cream, 0.4));
+      L(0.135 + k * 0.077, 29, 0.045, 4 + ((k + 1) % 3), cols[(k + 2) % cols.length] ?? C.cream);
     }
   };
   switch (g) {
     case 'shelves':
       shelves([C.sakura, C.matcha, C.cream, C.orange, C.blue, C.gold]);
+      L(0.14, 7, 0.22, 6, C.oakLight);
+      L(0.42, 7, 0.22, 6, C.oakLight);
+      for (let k = 0; k < 4; k++)
+        L(0.16 + k * 0.12, 13, 0.08, 3, [C.red, C.carYellow, C.matcha, C.orange][k] ?? C.red);
       break;
     case 'bottles':
-      shelves([C.matchaDeep, C.gold, C.red, C.orange, C.teal, C.cream]);
-      for (let k = 0; k < 8; k++) L(0.11 + k * 0.07, 6, 0.03, 8, k % 2 ? C.matchaDeep : C.coffee);
+      shelves([C.leafDeep, C.gold, C.red, C.orange, C.teal, C.cream]);
+      for (let k = 0; k < 9; k++) {
+        const col = k % 3 ? C.leafDeep : C.coffee;
+        L(0.13 + k * 0.06, 7, 0.035, 7, col);
+        L(0.14 + k * 0.06, 14, 0.015, 2.4, col);
+        L(0.137 + k * 0.06, 9.4, 0.026, 2, C.paper);
+      }
       break;
     case 'flowers':
       for (let k = 0; k < 5; k++) {
-        L(0.12 + k * 0.11, 6, 0.06, 8, C.stainlessDark);
-        L(0.1 + k * 0.11, 14, 0.1, 7, [C.sakura, C.gold, C.red, C.white, C.plum][k] ?? C.sakura);
-        L(0.11 + k * 0.11, 20, 0.07, 4, C.matcha);
+        const x = 0.13 + k * 0.105;
+        L(x + 0.01, 7, 0.06, 8, C.galvanized);
+        L(x + 0.01, 13.6, 0.06, 1, tint(C.galvanized, 0.4));
+        for (let m = 0; m < 3; m++) L(x + m * 0.025, 15 + (m % 2) * 2, 0.012, 6, C.leaf);
+        L(x - 0.01, 20, 0.1, 5, [C.sakura, C.gold, C.red, C.white, C.plum][k] ?? C.sakura);
+        L(
+          x + 0.01,
+          23,
+          0.05,
+          3,
+          tint([C.sakura, C.gold, C.red, C.white, C.plum][k] ?? C.sakura, 0.35),
+        );
       }
+      for (let k = 0; k < 3; k++) L(0.2 + k * 0.16, 30, 0.04, 7, C.leafMid);
       break;
     case 'bread':
-      L(0.1, 16, 0.58, 1.2, C.woodDark);
+      board(18);
+      board(28);
       for (let k = 0; k < 5; k++) {
-        L(0.12 + k * 0.11, 17.2, 0.09, 4, C.woodDark);
-        L(0.13 + k * 0.11, 21, 0.07, 1.6, C.oakLight);
+        L(0.13 + k * 0.105, 18, 0.09, 3.6, C.woodDark);
+        L(0.14 + k * 0.105, 21.6, 0.07, 1.6, C.oakLight);
+        L(0.14 + k * 0.105, 28, 0.08, 3, k % 2 ? C.oakLight : C.woodDark);
       }
-      for (let k = 0; k < 3; k++) L(0.16 + k * 0.17, 6, 0.12, 6, k === 1 ? C.sakura : C.cream);
+      for (let k = 0; k < 3; k++) {
+        L(0.15 + k * 0.17, 7, 0.13, 1, C.white);
+        L(0.16 + k * 0.17, 8, 0.11, 4.5, k === 1 ? C.sakura : C.cream);
+        L(0.16 + k * 0.17, 12.5, 0.11, 1, k === 1 ? C.red : C.oakLight);
+      }
       break;
     case 'grill':
-      L(0.14, 8, 0.12, 26, C.coffee);
-      L(0.15, 10, 0.1, 22, C.woodDark);
-      L(0.19, 6, 0.02, 30, C.stainless);
-      L(0.34, 6, 0.32, 10, C.stainless);
+      L(0.15, 9, 0.11, 25, C.coffee);
+      L(0.16, 11, 0.09, 21, C.woodDark);
+      for (let z = 12; z < 31; z += 4) L(0.16, z, 0.09, 1, C.oakLight);
+      L(0.2, 7, 0.016, 29, C.stainless);
+      L(0.12, 7, 0.02, 25, shade(C.orange, 0.9));
+      L(0.33, 7, 0.32, 10, C.stainless);
+      L(0.33, 17, 0.32, 1, tint(C.stainless, 0.4));
       for (let k = 0; k < 4; k++)
-        L(0.36 + k * 0.075, 16, 0.05, 3, [C.matcha, C.red, C.cream, C.orange][k] ?? C.red);
+        L(0.35 + k * 0.075, 17.4, 0.06, 3, [C.matcha, C.red, C.cream, C.orange][k] ?? C.red);
+      L(0.36, 26, 0.26, 8, C.ink);
+      for (let k = 0; k < 3; k++) L(0.38, 27.5 + k * 2.2, 0.16, 0.8, C.white);
       break;
     case 'books':
-      for (const z of [8, 19, 30]) {
-        L(0.1, z - 1.2, 0.58, 1.2, C.woodDark);
+      for (const z of [9, 20, 31]) {
+        board(z);
         for (let k = 0; k < 14; k++)
           L(
-            0.11 + k * 0.04,
+            0.125 + k * 0.038,
             z,
             0.03,
-            6 + (k % 3),
+            5.5 + (k % 3),
             [C.red, C.cobalt, C.gold, C.matchaDeep, C.cream, C.plum][k % 6] ?? C.red,
           );
       }
       break;
     case 'wheels':
       for (const [x, z] of [
-        [0.22, 22],
-        [0.48, 26],
-        [0.34, 12],
+        [0.24, 24],
+        [0.5, 27],
+        [0.36, 12],
       ] as const) {
-        L(x - 0.08, z - 1, 0.16, 2, C.ink);
-        L(x - 0.01, z - 7, 0.02, 14, C.ink);
+        const ring: [number, number][] = [];
+        for (let i = 0; i < 14; i++) {
+          const a = (i / 14) * Math.PI * 2;
+          ring.push([x + Math.cos(a) * 0.075, z + Math.sin(a) * 6]);
+        }
+        c.frontPoly(0.005, ring, c.frontShade(C.rubber));
+        c.frontPoly(
+          0.0055,
+          ring.map(([px, pz]) => [x + (px - x) * 0.8, z + (pz - z) * 0.8] as [number, number]),
+          c.frontShade(C.shopInterior),
+        );
+        L(x - 0.005, z - 4.8, 0.01, 9.6, C.galvanized);
+        L(x - 0.06, z - 0.4, 0.12, 0.8, C.galvanized);
       }
+      L(0.13, 7, 0.2, 3, C.teal);
       break;
     case 'pharmacy':
-      shelves([C.white, '#3c9a5a', C.white, C.sakura, C.white, C.cobaltLight]);
-      L(0.3, 6, 0.18, 6, '#3c9a5a');
+      shelves([C.white, C.shopPharmacy, C.white, C.sakura, C.white, C.cobaltLight]);
+      L(0.28, 7, 0.22, 7, C.shopPharmacy);
+      L(0.37, 8, 0.04, 5, C.white);
+      L(0.345, 9.8, 0.09, 1.4, C.white);
       break;
     case 'icecream':
-      L(0.1, 8, 0.58, 10, C.stainless);
-      for (let k = 0; k < 6; k++)
-        L(
-          0.12 + k * 0.09,
-          14,
-          0.07,
-          3.4,
-          [C.sakura, C.cream, C.matchaFoam, C.coffee, C.gold, C.red][k] ?? C.cream,
-        );
-      L(0.1, 18, 0.58, 1, C.glass);
+      L(0.12, 7, 0.55, 11, C.stainless);
+      L(0.12, 17, 0.55, 1, tint(C.stainless, 0.5));
+      for (let k = 0; k < 6; k++) {
+        const col = [C.sakura, C.cream, C.matchaFoam, C.coffee, C.gold, C.red][k] ?? C.cream;
+        L(0.13 + k * 0.088, 15, 0.075, 2.6, col);
+        L(0.14 + k * 0.088, 17.6, 0.055, 1.2, tint(col, 0.35));
+      }
+      L(0.12, 19, 0.55, 1.2, C.glass);
+      for (let k = 0; k < 3; k++)
+        L(0.18 + k * 0.17, 27, 0.08, 9, [C.sakura, C.matchaFoam, C.cream][k] ?? C.cream);
       break;
     case 'records':
       for (let k = 0; k < 4; k++) {
-        L(0.12 + k * 0.14, 24, 0.12, 12, [C.sakura, C.cobalt, C.gold, C.teal][k] ?? C.gold);
-        L(0.16 + k * 0.14, 28, 0.04, 4, C.ink);
+        L(0.13 + k * 0.135, 24, 0.12, 12, [C.sakura, C.cobalt, C.gold, C.teal][k] ?? C.gold);
+        L(0.16 + k * 0.135, 28, 0.06, 4, C.ink);
+        L(0.18 + k * 0.135, 29.6, 0.02, 0.8, C.cream);
       }
-      L(0.1, 8, 0.58, 10, C.woodDark);
+      L(0.12, 7, 0.55, 10, C.woodDark);
+      for (let k = 0; k < 10; k++) L(0.13 + k * 0.052, 11, 0.04, 6, k % 2 ? C.ink : C.plum);
       break;
   }
+}
+
+/** Kundenstopper (Tafel ohne Schrift, nur Linien) vor dem Laden. */
+function aBoard(c: FacingCanvas, x: number) {
+  c.fshadow(x - 0.07, 0.3, 0, 0.14, 0.12, 0.22);
+  c.fpoly(
+    [
+      [x - 0.06, 0.42, 0],
+      [x + 0.06, 0.42, 0],
+      [x + 0.06, 0.35, 11],
+      [x - 0.06, 0.35, 11],
+    ],
+    c.frontShade(C.woodDark),
+  );
+  c.fpoly(
+    [
+      [x - 0.05, 0.418, 1.2],
+      [x + 0.05, 0.418, 1.2],
+      [x + 0.05, 0.358, 10],
+      [x - 0.05, 0.358, 10],
+    ],
+    c.frontShade(C.ink),
+  );
+  for (let k = 0; k < 3; k++)
+    c.fpoly(
+      [
+        [x - 0.035, 0.41 - k * 0.012, 3 + k * 2.2],
+        [x + (k === 1 ? 0.02 : 0.035), 0.41 - k * 0.012, 3 + k * 2.2],
+        [x + (k === 1 ? 0.02 : 0.035), 0.408 - k * 0.012, 3.8 + k * 2.2],
+        [x - 0.035, 0.408 - k * 0.012, 3.8 + k * 2.2],
+      ],
+      k === 0 ? C.sakura : C.white,
+    );
 }
 
 /** Auslage vor dem Laden (auf dem Gehweg, y 0,2 … 0,55). */
@@ -349,121 +490,192 @@ function outside(c: FacingCanvas, o: Outside) {
     case 'flowers':
       for (let k = 0; k < 3; k++) {
         const x = 0.18 + k * 0.17;
-        c.fshadowDisc(x, 0.35, 0, 0.07, 0.2);
-        c.fcyl(x, 0.35, 0, 0.055, 6, C.stainlessDark);
-        c.fdome(x, 0.35, 6, 0.07, 6, [C.sakura, C.gold, C.red][k] ?? C.sakura);
-        c.fdome(x + 0.03, 0.33, 7, 0.04, 4, C.matcha);
+        c.fshadowDisc(x, 0.36, 0, 0.08, 0.22);
+        c.ffrustum(x, 0.36, 0, 0.05, 0.065, 6, C.galvanized, shade(C.galvanized, 0.7));
+        const col = [C.sakura, C.gold, C.red][k] ?? C.sakura;
+        for (let m = 0; m < 4; m++) {
+          const dx = Math.cos(m * 1.6) * 0.035;
+          const dy = Math.sin(m * 1.6) * 0.035;
+          c.fdome(x + dx, 0.36 + dy, 6.5, 0.035, 4.4, m % 2 ? col : C.leaf);
+        }
+        c.fdome(x, 0.36, 8.5, 0.045, 4, col);
       }
       break;
     case 'crates':
       for (let k = 0; k < 2; k++) {
-        c.fshadow(0.14, 0.24, 0, 0.18, 0.18, 0.2);
+        c.fshadow(0.14, 0.24, 0, 0.18, 0.18, 0.22);
         c.fbevel(0.14, 0.24, k * 5, 0.18, 0.18, 5, k ? C.orange : C.matchaDeep, { b: 0.6 });
+        c.front(
+          0.15,
+          0.421,
+          k * 5 + 2,
+          0.16,
+          0.5,
+          k ? shade(C.orange, 0.8) : shade(C.matchaDeep, 0.8),
+        );
+        for (let m = 0; m < 3; m++)
+          c.fcyl(0.18 + m * 0.05, 0.33, k * 5 + 5, 0.016, 2.6, k ? C.leafDeep : C.coffee, C.gold);
       }
-      c.fbox(0.5, 0.3, 0, 0.16, 0.04, 14, C.ink);
-      c.frontLit(0.52, 0.341, 3, 0.12, 9, c.frontShade(C.white));
+      aBoard(c, 0.56);
       break;
     case 'chairs':
-      for (const x of [0.2, 0.5]) {
-        c.fshadowDisc(x + 0.06, 0.38, 0, 0.1, 0.2);
-        c.fcyl(x + 0.06, 0.38, 0, 0.012, 10, C.stainless);
-        c.fcyl(x + 0.06, 0.38, 10, 0.09, 1.2, C.white);
+      for (const x of [0.22, 0.52]) {
+        c.fshadowDisc(x + 0.06, 0.38, 0, 0.1, 0.22);
+        c.fcyl(x + 0.06, 0.38, 0, 0.04, 0.6, C.stainlessDark);
+        c.fcyl(x + 0.06, 0.38, 0.6, 0.012, 10, C.stainless);
+        c.fcyl(x + 0.06, 0.38, 10.6, 0.09, 1, tint(C.stainless, 0.4), C.white);
+        c.fcyl(x + 0.04, 0.4, 11.6, 0.018, 2, C.cup, C.matchaFoam);
       }
-      c.fbevel(0.12, 0.25, 6, 0.08, 0.08, 1.2, C.red, { b: 0.4 });
-      c.fbevel(0.66, 0.25, 6, 0.08, 0.08, 1.2, C.red, { b: 0.4 });
+      for (const x of [0.11, 0.69]) {
+        c.fbevel(x, 0.33, 6, 0.08, 0.08, 1.2, C.red, { b: 0.4 });
+        c.fbox(x + (x < 0.5 ? 0 : 0.065), 0.33, 7.2, 0.015, 0.08, 5, C.red);
+      }
       break;
     case 'books':
-      c.fshadow(0.14, 0.22, 0, 0.5, 0.2, 0.2);
+      c.fshadow(0.14, 0.22, 0, 0.5, 0.2, 0.22);
       c.fbox(0.14, 0.22, 0, 0.5, 0.2, 8, C.woodDark);
-      for (let k = 0; k < 8; k++)
+      c.front(0.15, 0.4201, 1.5, 0.48, 0.6, shade(C.woodDark, 0.7));
+      for (let k = 0; k < 9; k++)
         c.fbox(
-          0.15 + k * 0.06,
+          0.15 + k * 0.054,
           0.24,
           8,
-          0.05,
+          0.045,
           0.14,
-          2,
-          [C.red, C.cobalt, C.gold, C.cream][k % 4] ?? C.red,
+          2 + (k % 2) * 0.6,
+          [C.red, C.cobalt, C.gold, C.cream, C.matchaDeep][k % 5] ?? C.red,
         );
       break;
-    case 'bike':
-      c.fshadow(0.1, 0.3, 0, 0.6, 0.08, 0.2);
-      c.fbox(0.12, 0.33, 0, 0.012, 0.012, 6, C.ink);
-      c.fbox(0.56, 0.33, 0, 0.012, 0.012, 6, C.ink);
-      c.fbox(0.12, 0.33, 6, 0.46, 0.012, 1.2, C.teal);
-      c.fbox(0.2, 0.33, 9, 0.1, 0.03, 1, C.ink);
+    case 'bike': {
+      c.fshadow(0.1, 0.3, 0, 0.6, 0.08, 0.22);
+      const wheelF = (x: number) => {
+        const ring: Vec3[] = [];
+        for (let i = 0; i <= 16; i++) {
+          const a = (i / 16) * Math.PI * 2;
+          ring.push([x + Math.cos(a) * 0.1, 0.34, 3.9 + Math.sin(a) * 3.9]);
+        }
+        polyline(
+          c,
+          ring.map(([x1, y1, z1]) => (c.facing === 'a' ? [x1, y1, z1] : [y1, x1, z1]) as Vec3),
+          C.rubber,
+          1.1,
+        );
+      };
+      wheelF(0.2);
+      wheelF(0.52);
+      const Q = (x: number, z: number): Vec3 => (c.facing === 'a' ? [x, 0.34, z] : [0.34, x, z]);
+      strut(c, Q(0.2, 3.9), Q(0.36, 3.9), C.teal, 1.1);
+      strut(c, Q(0.36, 3.9), Q(0.3, 8.6), C.teal, 1.1);
+      strut(c, Q(0.2, 3.9), Q(0.3, 8.6), C.teal, 1);
+      strut(c, Q(0.3, 8.6), Q(0.46, 9), C.teal, 1.1);
+      strut(c, Q(0.36, 3.9), Q(0.46, 9), C.teal, 1.1);
+      strut(c, Q(0.46, 9), Q(0.52, 3.9), shade(C.teal, 0.85), 1);
+      strut(c, Q(0.46, 9), Q(0.45, 10.6), C.ink, 1);
+      c.fbox(0.27, 0.32, 9, 0.07, 0.04, 0.8, C.ink);
       break;
+    }
     case 'cone':
-      c.fshadowDisc(0.5, 0.35, 0, 0.08, 0.2);
-      c.fbox(0.49, 0.34, 0, 0.02, 0.02, 12, C.white);
-      c.ffrustum(0.5, 0.35, 12, 0.02, 0.07, 9, C.oakLight, C.sakura);
-      c.fdome(0.5, 0.35, 21, 0.07, 6, C.sakura);
+      c.fshadowDisc(0.5, 0.36, 0, 0.09, 0.22);
+      c.fcyl(0.5, 0.36, 0, 0.05, 1, C.stainlessDark);
+      c.fbox(0.49, 0.35, 1, 0.02, 0.02, 11, C.white);
+      c.ffrustum(0.5, 0.36, 12, 0.012, 0.07, 9, C.oakLight, C.sakura);
+      c.fdome(0.5, 0.36, 21, 0.072, 6, C.sakura);
+      c.fdome(0.51, 0.35, 25.5, 0.04, 3, C.white);
+      aBoard(c, 0.22);
+      break;
+    case 'board':
+      aBoard(c, 0.3);
       break;
     default:
       break;
   }
 }
 
-/** Laden: Schaufenster mit Auslage, Ladenschild ohne Schrift, je Typ eigene Markise und Auslage vorm Laden. */
+/**
+ * Laden: Schaufenster mit Sprosse, Oberlicht und Auslage, Sockelfeld, Glastür mit Griff, Pilaster, Schild ohne
+ * Schrift (Emblem und Zierlinien), je Typ eigene Markise oder Nasenschild und Sachen vor der Tür.
+ */
 function shopCell(c: FacingCanvas, p: CityPalette, variant: number) {
   const s = SHOPS[variant % SHOPS.length] ?? SHOPS[0];
   if (!s) return;
   plinth(c, p);
-  c.front(0.05, 0.002, 2, 0.9, 44, s.frame);
-  // Schaufenster: warm beleuchtetes Innere mit Auslage
-  c.frontLit(0.09, 0.004, 5, 0.6, 37, c.frontShade('#eadfc8'));
+  const fr = s.frame;
+  const light = fr === C.white;
+  c.front(0.05, 0.002, 2, 0.9, 44, fr);
+  // Schaufenster: warm beleuchtetes Inneres, Auslage, Glas mit Reflex, Sprosse und Oberlicht
+  c.frontLit(0.11, 0.004, 7, 0.57, 33, c.frontShade(C.shopInterior));
   goods(c, s.goods);
-  c.frontLit(0.09, 0.006, 5, 0.6, 37, C.glass, 0.25);
-  reflex(c, 0.09, 0.007, 5, 0.6, 37);
-  // Ladentür rechts
-  c.front(0.72, 0.004, 3, 0.19, 39, shade(s.frame, s.frame === C.white ? 0.85 : 1.2));
-  c.frontLit(0.74, 0.006, 5, 0.15, 33, c.frontShade(PANE));
-  c.front(0.75, 0.007, 19, 0.04, 1.2, C.stainless);
-  c.fbox(0.05, 0, 0, 0.9, 0.08, 2, shade(s.frame, 0.9));
-  // Schild: Fläche mit Emblem und Zierlinie (keine Schrift)
-  c.front(0.04, 0.003, 48, 0.92, 9, s.sign);
+  c.frontLit(0.11, 0.006, 7, 0.57, 33, C.glass, 0.22);
+  reflex(c, 0.11, 0.007, 7, 0.57, 33);
+  c.front(0.11, 0.0075, 34.2, 0.57, 1, fr);
+  c.front(0.39, 0.0075, 7, 0.014, 27, fr);
+  c.front(0.08, 0.002, 2, 0.63, 5, shade(fr, light ? 0.9 : 1.25));
+  c.front(0.1, 0.003, 3, 0.59, 3, shade(fr, light ? 0.82 : 1.1));
+  c.fbox(0.09, 0, 6.4, 0.61, 0.05, 0.8, light ? C.stainless : tint(fr, 0.2));
+  // Ladentür mit Glas, Griff, Trittblech und Oberlicht
+  const df = shade(fr, light ? 0.85 : 1.25);
+  c.front(0.72, 0.004, 2, 0.18, 39, df);
+  c.frontLit(0.745, 0.006, 6, 0.13, 26, c.frontShade(PANE));
+  c.frontLit(0.75, 0.007, 8, 0.03, 22, C.white, 0.25);
+  c.frontLit(0.745, 0.006, 35, 0.13, 4, c.frontShade(tint(PANE, 0.2)));
+  c.front(0.85, 0.008, 17, 0.012, 6, C.stainless);
+  c.front(0.735, 0.007, 2.2, 0.15, 3, C.stainlessDark);
+  c.fbox(0.69, 0, 0, 0.24, 0.12, 1.6, shade(p.plinth, 1.15));
+  // Pilaster links und rechts
+  for (const x of [0.04, 0.905]) c.fbox(x, 0, 2, 0.055, 0.04, 44, shade(fr, light ? 0.92 : 1.12));
+  // Schild: Fläche mit Profil, Emblem und Zierlinien (keine Schrift)
+  c.fbox(0.035, 0, 46.5, 0.93, 0.05, 10, s.sign);
+  c.fbox(0.03, 0, 56.5, 0.94, 0.07, 1.4, tint(p.stucco, 0.1));
   const em = s.sign === C.paper || s.sign === C.cream ? C.ink : C.white;
+  const fy = 0.051;
   if (s.emblem === 'cross') {
-    c.frontLit(0.13, 0.005, 49.6, 0.04, 5.8, c.frontShade(C.white));
-    c.frontLit(0.1, 0.005, 51.6, 0.1, 1.8, c.frontShade(C.white));
+    c.frontLit(0.13, fy, 48.2, 0.04, 6.4, c.frontShade(C.white));
+    c.frontLit(0.1, fy, 50.4, 0.1, 2, c.frontShade(C.white));
   } else if (s.emblem === 'circle') {
     const pts: [number, number][] = [];
     for (let i = 0; i < 12; i++) {
       const a = (i / 12) * Math.PI * 2;
-      pts.push([0.15 + Math.cos(a) * 0.05, 52.5 + Math.sin(a) * 2.2]);
+      pts.push([0.15 + Math.cos(a) * 0.05, 51.5 + Math.sin(a) * 2.6]);
     }
-    c.frontPoly(0.005, pts, c.frontShade(em));
+    c.frontPoly(fy, pts, c.frontShade(em));
+    c.frontPoly(
+      fy + 0.001,
+      pts.map(([x, z]) => [0.15 + (x - 0.15) * 0.45, 51.5 + (z - 51.5) * 0.45] as [number, number]),
+      c.frontShade(s.sign),
+    );
   } else if (s.emblem === 'leaf') {
     c.frontPoly(
-      0.005,
+      fy,
       [
-        [0.1, 50],
+        [0.1, 49],
         [0.16, 54.5],
-        [0.22, 50],
-        [0.16, 49.2],
+        [0.22, 49],
+        [0.16, 48.2],
       ],
       c.frontShade(em),
     );
+    c.frontLit(0.158, fy + 0.001, 48.6, 0.006, 5.4, c.frontShade(s.sign));
   } else {
-    c.frontLit(0.1, 0.005, 50.5, 0.12, 4, c.frontShade(em));
+    c.frontLit(0.1, fy, 49.4, 0.12, 4.4, c.frontShade(em));
   }
+  const line = em === C.ink ? shade(s.sign, 0.6) : tint(s.sign, 0.55);
+  c.frontLit(0.28, fy, 51.4, 0.5, 1.3, c.frontShade(line));
   c.frontLit(
     0.28,
-    0.005,
-    52,
-    0.5,
-    1.2,
-    c.frontShade(em === C.ink ? shade(s.sign, 0.6) : tint(s.sign, 0.55)),
-  );
-  c.frontLit(
-    0.28,
-    0.005,
-    49.6,
+    fy,
+    48.8,
     0.34,
-    1,
+    1.1,
     c.frontShade(em === C.ink ? shade(s.sign, 0.7) : tint(s.sign, 0.4)),
   );
   if (s.awning) awning(c, s.awning[0], s.awning[1]);
+  else c.frontLit(0.08, 0.009, 38, 0.84, 8, C.ink, 0.1);
+  if (s.nose) {
+    // Nasenschild am Ausleger rechts über der Tür, quer zur Fassade
+    c.fbox(0.86, 0, 44.2, 0.012, 0.3, 0.8, IRON);
+    c.fbevel(0.85, 0.1, 35.5, 0.03, 0.2, 8.4, s.sign, { b: 0.4 });
+    c.side(0.881, 0.12, 37, 0.16, 5.4, em === C.ink ? shade(s.sign, 0.6) : C.white);
+  }
   outside(c, s.outside);
 }
 
@@ -535,391 +747,1137 @@ export function facadeSprites(locationId: string): SpriteDef[] {
 type Box = { w: number; h: number; ox: number; oy: number };
 const canvasOf = (s: Box) => new IsoCanvas(s.w, s.h, s.ox, s.oy);
 
-/** Linde: Stamm, Baumscheibe, Krone aus gestaffelten Kuppeln in drei Grüntönen. */
+/** Laub in fünf Stufen (Schatten → Sonne) für facettierte Kronen. */
+const LEAVES = [C.leafDeep, C.leaf, C.leafMid, C.leafLight, C.leafSun] as const;
+
+/** Baumscheibe: Granit-Einfassung, gusseiserner Rost mit Schlitzen, Erde um den Stamm. */
+function treePit(c: IsoCanvas, r: number) {
+  c.bevel(-r - 0.04, -r - 0.04, 0, 2 * r + 0.08, 2 * r + 0.08, 1.4, C.stone, { b: 0.6 });
+  c.flat(-r, -r, 1.41, 2 * r, 2 * r, C.castIron);
+  // Schlitze im Rost als hellere Rahmen-Ringe
+  for (const k of [0.78, 0.52])
+    c.flat(-r * k, -r * k, 1.42, 2 * r * k, 2 * r * k, tint(C.castIron, 0.18));
+  for (const k of [0.7, 0.44]) c.flat(-r * k, -r * k, 1.43, 2 * r * k, 2 * r * k, C.castIron);
+  c.disc(0, 0, 1.44, r * 0.34, C.soil);
+}
+
+/** Stamm als Kegelstumpf mit Wurzelanlauf, Lichtkante links und zwei Ästen in die Krone. */
+function trunk(c: IsoCanvas, s: number, h: number, branches: readonly Vec3[]) {
+  c.frustum(0, 0, 1.4, 0.085 * s, 0.06 * s, 4 * s, C.bark, C.bark);
+  c.frustum(0, 0, 5, 0.06 * s, 0.045 * s, h - 5, C.bark, C.barkLight);
+  c.shine(0, 0, 5, 0.05 * s, h - 8, C.bark, 0.22);
+  for (const b of branches) {
+    strut(c, [0, 0, h * 0.72], b, shade(C.bark, 0.92), 2.6 * s);
+    strut(c, [0, 0, h * 0.72], b, C.barkLight, 1 * s, 0.6);
+  }
+}
+
+/**
+ * Linde: Baumscheibe, Stamm mit Ästen, breite Krone aus facettierten Laubballen (Sonne oben links, Schatten
+ * rechts unten), weicher Schatten der Krone auf dem Gehweg.
+ */
 function linden(small: boolean): string {
   const c = canvasOf(CITY_SPRITE.tree);
-  const s = small ? 0.72 : 1;
-  c.flat(-0.22, -0.22, 0, 0.44, 0.44, shade(C.woodDeep, 0.8));
-  c.shadowDisc(0, 0, 0, 0.55 * s, 0.22, 2.5);
-  const leaves = ['#4f8f45', '#5fa451', '#76b863', '#93cc78'];
-  // Breite, runde Krone: große flache Kuppeln außen, kleinere oben
-  const blobs: [number, number, number, number, number][] = [
-    [-0.22, 0.1, 40, 0.34, 0],
-    [0.24, 0.06, 42, 0.32, 0],
-    [0.02, -0.2, 44, 0.34, 0],
-    [0.04, 0.22, 44, 0.3, 1],
-    [-0.16, -0.06, 54, 0.32, 1],
-    [0.18, -0.08, 56, 0.3, 1],
-    [0.02, 0.08, 60, 0.32, 2],
-    [-0.06, -0.04, 70, 0.24, 2],
-    [0.08, 0.02, 76, 0.16, 3],
-  ];
-  c.cylinder(0, 0, 0, 0.06 * s, 46 * s, C.woodDeep, shade(C.woodDeep, 0.9));
-  for (const [u, v, z, r, k] of blobs)
-    c.dome(u * s, v * s, z * s, r * s, r * 64 * s, leaves[k] ?? C.matcha);
+  const s = small ? 0.74 : 1;
+  c.shadowDisc(0.04, 0.04, 0, 0.62 * s, 0.2, 3.2);
+  c.shadowDisc(0, 0, 0, 0.16 * s, 0.28, 1.2);
+  treePit(c, 0.24 * s);
+  const H = 44 * s;
+  trunk(c, s, H, [
+    [-0.18 * s, 0.06 * s, H + 6 * s],
+    [0.16 * s, -0.08 * s, H + 9 * s],
+  ]);
+  // Untere Ballen eine Stufe dunkler (verschattet von der Krone darüber), oben Sonne.
+  const balls: [number, number, number, number, number][] = small
+    ? [
+        [-0.2, 0.1, 44, 0.25, -1],
+        [0.2, -0.04, 46, 0.25, -1],
+        [0.02, 0.22, 42, 0.23, -1],
+        [0.0, -0.2, 49, 0.23, -1],
+        [-0.07, -0.02, 57, 0.28, 0],
+        [0.1, 0.08, 56, 0.25, 0],
+        [0.02, -0.02, 69, 0.2, 0],
+      ]
+    : [
+        [-0.3, 0.12, 55, 0.33, -1],
+        [0.3, -0.06, 57, 0.33, -1],
+        [0.04, 0.32, 52, 0.3, -1],
+        [0.0, -0.32, 61, 0.3, -1],
+        [-0.13, -0.1, 72, 0.37, 0],
+        [0.17, 0.14, 70, 0.34, 0],
+        [0.02, 0.0, 87, 0.28, 0],
+      ];
+  crown(c, balls, C.leaf, { tones: LEAVES, seed: small ? 3 : 1 });
   return c.svg();
 }
 
-/** Berliner Gaslaterne (Aufsatzleuchte): dunkelgrüner Mast, Laterne mit Glas und Haube. */
+/** Senkrechte Streben auf einem Kegelstumpf (Sprossen einer Laterne, Stäbe), nur die vordere Hälfte. */
+function mullions(
+  c: IsoCanvas,
+  z0: number,
+  z1: number,
+  r0: number,
+  r1: number,
+  color: string,
+  angles: readonly number[] = [-0.25, 0.25, 0.75],
+  w = 0.9,
+) {
+  for (const t of angles) {
+    const a = t * Math.PI;
+    strut(
+      c,
+      [Math.cos(a) * r0, Math.sin(a) * r0, z0],
+      [Math.cos(a) * r1, Math.sin(a) * r1, z1],
+      color,
+      w,
+    );
+  }
+}
+
+/**
+ * Berliner Gaslaterne (Aufsatzleuchte): achteckiger Gusssockel, Schaft mit Ringen und Leiterstange, Laterne
+ * mit Sprossen und warmem Glas, Dach mit Krempe und Knauf. Laternenmitte bei z ≈ 66 (Nacht-Schein der Szene).
+ */
 function lamp(): string {
   const c = canvasOf(CITY_SPRITE.prop);
-  const g = '#35524a';
-  c.shadowDisc(0, 0, 0, 0.12, 0.24);
-  c.cylinder(0, 0, 0, 0.07, 6, g, tint(g, 0.2));
-  c.cylinder(0, 0, 6, 0.03, 52, g);
-  c.shine(0, 0, 6, 0.03, 52, g, 0.3);
-  c.frustum(0, 0, 58, 0.05, 0.1, 3, g);
-  c.group(0.85, () => c.frustum(0, 0, 61, 0.1, 0.14, 9, C.lamp, tint(C.lamp, 0.4)));
-  c.frustum(0, 0, 70, 0.16, 0.05, 4, g);
-  c.dome(0, 0, 74, 0.05, 4, g);
-  return c.svg();
-}
-
-function bench(face: 'a' | 'b'): string {
-  const s = CITY_SPRITE.prop;
-  const c = new FacingCanvas(face, s.w, s.h, s.ox, s.oy);
-  c.fshadow(-0.45, -0.12, 0, 0.9, 0.3, 0.22);
-  for (const x of [-0.4, 0.34]) {
-    c.fbox(x, -0.1, 0, 0.05, 0.24, 7, IRON);
-    c.fbox(x, -0.12, 7, 0.05, 0.04, 12, IRON);
-  }
-  for (let k = 0; k < 3; k++)
-    c.fbevel(-0.45, -0.1 + k * 0.075, 7, 0.9, 0.06, 1.6, C.oakLight, { b: 0.5 });
-  for (let k = 0; k < 2; k++)
-    c.fbox(-0.45, -0.13, 11 + k * 4, 0.9, 0.025, 2.4, shade(C.oakLight, 0.95));
-  return c.svg();
-}
-
-/** Projiziert einen Kreis in der senkrechten Ebene v = const (Rad, Lenker). */
-function ringPath(c: IsoCanvas, u: number, v: number, z: number, r: number): string {
-  const pts: string[] = [];
-  for (let i = 0; i <= 18; i++) {
-    const a = (i / 18) * Math.PI * 2;
-    const [x, y] = c.p([u + Math.cos(a) * r, v, z + Math.sin(a) * r * Z_PER_TILE]);
-    pts.push(`${x.toFixed(2)},${y.toFixed(2)}`);
-  }
-  return pts.join(' ');
-}
-
-/** Fahrradbügel mit drei Rädern (Hollandrad, Rennrad, Lastenrad-Kiste), quer zum Bordstein. */
-function bikes(): string {
-  const s = CITY_SPRITE.prop;
-  const c = new IsoCanvas(s.w, s.h, s.ox, s.oy);
-  const colors = [C.teal, C.red, C.cream];
-  // Räder stehen in Ebenen v = const nebeneinander (Fahrtrichtung u); quer gestellt spiegelt die Szene.
-  for (let k = 0; k < 3; k++) {
-    const v = -0.28 + k * 0.28;
-    c.shadow(-0.32, v - 0.03, 0, 0.64, 0.08, 0.2);
-    const col = colors[k] ?? C.teal;
-    const w = 0.15;
-    for (const u of [-0.2, 0.2])
-      c.raw(
-        `<polyline points="${ringPath(c, u, v, w * Z_PER_TILE, w)}" fill="none" stroke="${C.ink}" stroke-width="1.3"/>`,
-      );
-    const P = (u: number, z: number) =>
-      c
-        .p([u, v, z])
-        .map((n) => n.toFixed(2))
-        .join(',');
-    const hub = w * Z_PER_TILE;
-    c.raw(
-      `<polyline points="${P(-0.2, hub)} ${P(-0.02, hub)} ${P(-0.06, 12)} ${P(-0.2, hub)}" fill="none" stroke="${col}" stroke-width="1.6" stroke-linejoin="round"/>`,
-    );
-    c.raw(
-      `<polyline points="${P(-0.02, hub)} ${P(0.14, 13)} ${P(-0.06, 12)}" fill="none" stroke="${col}" stroke-width="1.6" stroke-linejoin="round"/>`,
-    );
-    c.raw(
-      `<polyline points="${P(0.2, hub)} ${P(0.14, 13)} ${P(0.12, 16)}" fill="none" stroke="${shade(col, 0.8)}" stroke-width="1.4"/>`,
-    );
-    c.box(-0.1, v - 0.02, 12.5, 0.08, 0.04, 1.2, C.ink);
-    c.box(0.1, v - 0.05, 16, 0.03, 0.1, 1, C.ink);
-    if (k === 2) c.box(0.12, v - 0.06, 7, 0.14, 0.12, 6, C.woodDark);
-  }
-  // Bügel
-  c.box(-0.02, -0.36, 0, 0.03, 0.03, 10, C.stainless);
-  c.box(-0.02, 0.33, 0, 0.03, 0.03, 10, C.stainless);
-  c.box(-0.02, -0.36, 10, 0.03, 0.72, 1.4, C.stainless);
-  return c.svg();
-}
-
-/** Litfaßsäule: dunkelgrüner Sockel, Plakate als Farbbänder, Gesims und Kuppel. */
-function litfass(): string {
-  const c = canvasOf(CITY_SPRITE.prop);
-  const g = '#2f5a4a';
-  c.shadowDisc(0, 0, 0, 0.3, 0.24);
-  c.cylinder(0, 0, 0, 0.25, 5, g, tint(g, 0.2));
-  const bands = [C.sakura, C.gold, C.cobalt, C.white, C.red];
-  bands.forEach((b, i) => c.cylinder(0, 0, 5 + i * 8, 0.22, 8, b, b));
-  for (let k = 0; k < 3; k++)
-    c.cylinder(0, 0, 9 + k * 13, 0.221, 1.2, shade(C.paper, 0.9), shade(C.paper, 0.9));
-  c.cylinder(0, 0, 45, 0.26, 3, g, tint(g, 0.25));
-  c.dome(0, 0, 48, 0.24, 12, g);
-  c.cylinder(0, 0, 58, 0.03, 4, C.brass);
-  return c.svg();
-}
-
-function bin(): string {
-  const c = canvasOf(CITY_SPRITE.prop);
-  c.shadowDisc(0, 0, 0, 0.12, 0.22);
-  c.cylinder(0, 0, 0, 0.025, 10, C.ink);
-  c.cylinder(0, 0, 9, 0.11, 13, C.orange, shade(C.orange, 0.6));
-  c.shine(0, 0, 9, 0.11, 13, C.orange, 0.25);
-  c.cylinder(0, 0, 22, 0.115, 1.6, shade(C.orange, 0.85), shade(C.ink, 1.3));
-  return c.svg();
-}
-
-function bollard(): string {
-  const c = canvasOf(CITY_SPRITE.prop);
-  c.shadowDisc(0, 0, 0, 0.08, 0.22);
-  c.cylinder(0, 0, 0, 0.05, 15, IRON);
-  c.cylinder(0, 0, 10, 0.051, 2, C.white, C.white);
-  c.dome(0, 0, 15, 0.05, 3, IRON);
-  return c.svg();
-}
-
-/** Blauer Pflanzkübel des Cafés mit Buchskugeln. */
-function planter(): string {
-  const c = canvasOf(CITY_SPRITE.prop);
-  c.shadow(-0.25, -0.18, 0, 0.5, 0.36, 0.24);
-  c.bevel(-0.24, -0.16, 0, 0.48, 0.32, 12, C.cobalt, { b: 1 });
-  c.flat(-0.21, -0.13, 12.01, 0.42, 0.26, C.woodDeep);
-  c.dome(-0.1, 0, 12, 0.13, 11, C.matchaDeep);
-  c.dome(0.1, 0.01, 12, 0.13, 13, C.matcha);
-  return c.svg();
-}
-
-/** Nasenschild des Cafés: Edelstahl-Mast, blaue Tafel mit weißem Blatt (keine Schrift). */
-function cafeSign(): string {
-  const c = canvasOf(CITY_SPRITE.prop);
-  c.shadowDisc(0, 0, 0, 0.1, 0.24);
-  c.cylinder(0, 0, 0, 0.07, 2, C.stainlessDark);
-  c.cylinder(0, 0, 2, 0.025, 52, C.stainless);
-  c.shine(0, 0, 2, 0.025, 52, C.stainless, 0.4);
-  // Tafel in der Ebene u = const (zeigt nach +u), ragt in +v vom Mast weg
-  c.box(-0.02, 0.0, 34, 0.04, 0.46, 24, C.cobalt, { right: shade(C.cobalt, SHADE.right + 0.1) });
-  c.box(-0.022, 0.0, 34, 0.044, 0.46, 1.6, C.stainless);
-  c.box(-0.022, 0.0, 56.4, 0.044, 0.46, 1.6, C.stainless);
-  const L = (v: number, z: number): Vec3 => [0.0201, v, z];
-  c.poly([L(0.12, 39), L(0.15, 51), L(0.34, 53), L(0.31, 41)], C.white);
-  c.poly([L(0.14, 40), L(0.3, 52), L(0.31, 51), L(0.15, 39.5)], C.cobalt);
-  return c.svg();
-}
-
-/** Fußgängerampel mit Ampelmännchen (rot steht, grün geht). */
-function pedLight(go: boolean): string {
-  const c = canvasOf(CITY_SPRITE.prop);
-  c.shadowDisc(0, 0, 0, 0.08, 0.22);
-  c.cylinder(0, 0, 0, 0.03, 44, IRON);
-  c.box(-0.08, -0.06, 36, 0.12, 0.12, 22, C.ink);
-  const face = (z: number, on: boolean, col: string) => {
-    c.wallV(-0.07, 0.061, z, 0.1, 9, on ? col : shade(col, 0.35));
-    if (!on) return;
-    // Männchen als kleine Silhouette
-    const m = shade(col, 0.55);
-    c.wallV(-0.03, 0.062, z + 6, 0.025, 2, m);
-    c.wallV(-0.035, 0.062, z + 2.5, 0.035, 3.5, m);
-    c.wallV(go ? -0.05 : -0.03, 0.062, z + 0.5, 0.02, 2.2, m);
-    c.wallV(go ? -0.01 : -0.01, 0.062, z + 0.5, 0.02, 2.2, m);
-  };
-  face(47, !go, C.red);
-  face(37.5, go, '#5ee07a');
-  if (!go) c.glowFlat(-0.12, 0.06, 50, 0.2, 0.06, C.red, 0.35, 2);
-  else c.glowFlat(-0.12, 0.06, 41, 0.2, 0.06, '#5ee07a', 0.35, 2);
+  const g = C.lampGreen;
+  c.shadowDisc(0, 0, 0, 0.13, 0.26);
+  prism(c, ngon(0, 0, 0.1, 8, Math.PI / 8), 0, 3, g, tint(g, 0.12));
+  prism(c, ngon(0, 0, 0.075, 8, Math.PI / 8), 3, 9, g, tint(g, 0.12));
+  c.frustum(0, 0, 9, 0.06, 0.04, 4, g, tint(g, 0.15));
+  c.cylinder(0, 0, 13, 0.03, 42, g);
+  c.shine(0, 0, 13, 0.03, 42, g, 0.28);
+  for (const z of [20, 46]) c.cylinder(0, 0, z, 0.042, 1.8, tint(g, 0.08), tint(g, 0.25));
+  // Leiterstange quer zur Straße, mit Kugelenden
+  c.box(-0.13, -0.01, 49, 0.26, 0.02, 1.4, C.castIron);
+  for (const u of [-0.13, 0.13]) c.dome(u, 0, 49.5, 0.018, 2.2, C.castIron);
+  c.frustum(0, 0, 55, 0.035, 0.085, 3, g, tint(g, 0.2));
+  // Laterne: warmes Glas, Sprossen, Lichtkern
+  c.group(0.9, () => c.frustum(0, 0, 58, 0.08, 0.115, 12, C.lamp, tint(C.lamp, 0.5)));
+  c.frustum(0, 0, 60, 0.03, 0.03, 6, tint(C.lamp, 0.6), C.led);
+  mullions(c, 58, 70, 0.08, 0.115, g);
+  c.cylinder(0, 0, 69.5, 0.125, 1.6, g, tint(g, 0.2));
+  cone(c, 0, 0, 71, 0.14, 7, g);
+  c.cylinder(0, 0, 77, 0.018, 1.6, g);
+  c.dome(0, 0, 78.4, 0.03, 3.2, C.brass);
   return c.svg();
 }
 
 /**
- * Autoampel am Mast: schwarzes Gehäuse mit weiß umrandeter Kontrastblende, drei Lichter mit Schute. Die Lichter
- * zeigen zur Kamera: Achse `u` nach +x (Fahrbahn entlang x), `v` nach +y. `state` = was leuchtet.
+ * Parkbank: gusseiserne Seitenwangen mit Armlehne, drei Sitzlatten und drei leicht zurückgelehnte Rückenlatten
+ * aus Eiche; Lehne hinten (−y), man sitzt zur Kamera.
  */
-function trafficLight(axis: 'u' | 'v', state: 'red' | 'redYellow' | 'green' | 'yellow'): string {
-  const c = canvasOf(CITY_SPRITE.prop);
-  const head = C.ink;
-  c.shadowDisc(0, 0, 0, 0.09, 0.22);
-  c.cylinder(0, 0, 0, 0.05, 3, IRON, tint(IRON, 0.2));
-  c.cylinder(0, 0, 3, 0.026, 60, IRON, tint(IRON, 0.2));
-  c.shine(0, 0, 3, 0.026, 60, IRON, 0.25);
-  const z0 = 34;
-  const h = 26;
-  // Lichtebene: Fläche u = face (Achse u) bzw. v = face (Achse v); a = Lage entlang der Fläche.
-  const face = 0.075;
-  const disc = (a: number, z: number, r: number, color: string, opacity = 1) => {
-    const pts: Vec3[] = [];
-    for (let i = 0; i < 18; i++) {
-      const t = (i / 18) * Math.PI * 2;
-      const da = Math.cos(t) * r;
-      const dz = Math.sin(t) * r * Z_PER_TILE;
-      pts.push(axis === 'u' ? [face + 0.002, a + da, z + dz] : [a + da, face + 0.002, z + dz]);
-    }
-    c.poly(pts, color, opacity);
+function bench(face: 'a' | 'b'): string {
+  const s = CITY_SPRITE.prop;
+  const c = new FacingCanvas(face, s.w, s.h, s.ox, s.oy);
+  c.fshadow(-0.47, -0.16, 0, 0.94, 0.34, 0.24);
+  const wood = C.oakLight;
+  /** Seitenwange als Profil (y, z) in der Ebene x, mit Dicke dx. */
+  const cheek = (x: number) => {
+    const prof: readonly [number, number][] = [
+      [0.13, 0],
+      [0.155, 0],
+      [0.14, 7],
+      [0.15, 11.2],
+      [0.12, 12],
+      [-0.12, 12.8],
+      [-0.135, 18.5],
+      [-0.165, 18.5],
+      [-0.15, 8.2],
+      [-0.1, 0],
+      [-0.075, 0],
+      [-0.12, 7],
+      [0.12, 7],
+    ];
+    for (const dx of [0, 0.035])
+      c.fpoly(
+        prof.map(([y, z]) => [x + dx, y, z] as Vec3),
+        dx ? c.sideShade(C.castIron) : shade(C.castIron, 0.75),
+      );
+    c.fbox(x - 0.005, 0.11, 11.4, 0.045, 0.05, 1.2, tint(C.castIron, 0.1));
   };
-  const plate = (a0: number, w: number, zz: number, hh: number, color: string, off: number) =>
-    axis === 'u'
-      ? c.wallU(face - off, a0, zz, w, hh, shade(color, 0.7))
-      : c.wallV(a0, face - off, zz, w, hh, shade(color, 0.85));
-  // Kontrastblende (weißer Rand, schwarz), dahinter das Gehäuse
-  plate(-0.1, 0.2, z0 - 3, h + 6, C.white, 0.03);
-  plate(-0.09, 0.18, z0 - 2, h + 4, head, 0.029);
-  if (axis === 'u') c.box(-0.02, -0.06, z0, 0.095, 0.12, h, head);
-  else c.box(-0.06, -0.02, z0, 0.12, 0.095, h, head);
-  const lamps: { z: number; on: boolean; color: string }[] = [
-    { z: z0 + h - 5, on: state === 'red' || state === 'redYellow', color: '#ff4b3e' },
-    { z: z0 + h / 2, on: state === 'yellow' || state === 'redYellow', color: '#ffc42e' },
-    { z: z0 + 5, on: state === 'green', color: '#3ee07a' },
+  cheek(-0.43);
+  for (let k = 0; k < 3; k++) {
+    const z = 15.2 - k * 3;
+    const y = -0.15 + k * 0.012;
+    c.fbevel(-0.47, y, z, 0.94, 0.035, 2.2, wood, { b: 0.5, frontColor: shade(wood, 0.95) });
+  }
+  for (let k = 0; k < 3; k++)
+    c.fbevel(-0.47, -0.1 + k * 0.08, 7, 0.94, 0.07, 1.5, wood, { b: 0.5 });
+  cheek(0.4);
+  return c.svg();
+}
+
+/** Anlehnbügel aus Edelstahl (umgekehrtes U in der Ebene v) mit Glanzlinie. */
+function standLoop(c: IsoCanvas, v: number) {
+  const pts: Vec3[] = [[-0.2, v, 0]];
+  for (let k = 0; k <= 8; k++) {
+    const a = Math.PI - (k / 8) * Math.PI;
+    pts.push([Math.cos(a) * 0.2, v, 8 + Math.sin(a) * 2.6]);
+  }
+  pts.push([0.2, v, 0]);
+  polyline(c, pts, C.stainlessDark, 1.7);
+  polyline(
+    c,
+    pts.map(([u, vv, z]) => [u - 0.01, vv, z + 0.4] as Vec3),
+    C.stainlessLight,
+    0.6,
+  );
+  for (const u of [-0.2, 0.2]) c.shadowDisc(u, v, 0, 0.03, 0.3, 0.6);
+}
+
+/** Fahrradbügel mit drei Rädern (Hollandrad mit Korb, Rennrad, Lastenrad), quer zum Bordstein. */
+function bikes(): string {
+  const s = CITY_SPRITE.prop;
+  const c = new IsoCanvas(s.w, s.h, s.ox, s.oy);
+  // Räder stehen in Ebenen v = const nebeneinander (Fahrtrichtung u); quer gestellt spiegelt die Szene.
+  const looks: BicycleLook[] = [
+    { frame: C.teal, low: true, basket: true },
+    { frame: C.carRed, crate: C.matchaDeep },
+    { frame: C.cream, low: true, cargo: C.woodDark },
   ];
-  for (const l of lamps) {
-    if (l.on) disc(0, l.z, 0.075, l.color, 0.3);
-    disc(0, l.z, 0.048, l.on ? l.color : shade(l.color, 0.32));
-    if (l.on) disc(-0.012, l.z + 1.2, 0.016, tint(l.color, 0.7));
-    // Schute über dem Licht
-    if (axis === 'u') c.box(face, -0.05, l.z + 3.2, 0.03, 0.1, 1, shade(head, 1.2));
-    else c.box(-0.05, face, l.z + 3.2, 0.1, 0.03, 1, shade(head, 1.2));
+  const vs = [-0.27, 0.02, 0.3];
+  for (const v of vs) c.shadow(-0.32, v - 0.03, 0, 0.66, 0.07, 0.22);
+  vs.forEach((v, k) => {
+    const look = looks[k];
+    if (look) bicycle(c, k === 2 ? -0.06 : 0, v, 1, look);
+    if (k < 2) standLoop(c, v + 0.14);
+  });
+  return c.svg();
+}
+
+/**
+ * Litfaßsäule: grüner Sockel mit Profil, Plakate auf dem Mantel (je ein Motiv aus Flächen, keine Schrift),
+ * Gesims mit Zierband, Kuppel und Messingknauf.
+ */
+function litfass(): string {
+  const c = canvasOf(CITY_SPRITE.prop);
+  const g = C.pillarGreen;
+  const r = 0.22;
+  c.shadowDisc(0, 0, 0, 0.32, 0.26);
+  c.cylinder(0, 0, 0, 0.27, 2.5, g, tint(g, 0.15));
+  c.frustum(0, 0, 2.5, 0.26, 0.235, 3, g, tint(g, 0.15));
+  c.cylinder(0, 0, 5.5, r, 39, C.paper, C.paper);
+  const posters: readonly [number, number, number, number, string, string][] = [
+    [-0.25, 0.1, 7, 25, C.cobalt, C.white],
+    [0.12, 0.42, 7, 21, C.sakura, C.matchaDeep],
+    [0.45, 0.75, 7, 24, C.gold, C.red],
+    [-0.25, 0.25, 26.5, 43, C.red, C.paper],
+    [0.28, 0.75, 23, 43, C.matcha, C.cream],
+  ];
+  for (const [t0, t1, z0, z1, bg, fg] of posters) {
+    cylPatch(c, 0, 0, r + 0.002, t0 * Math.PI, t1 * Math.PI, z0, z1, bg, 4);
+    const tm = (t0 + t1) / 2;
+    cylPatch(
+      c,
+      0,
+      0,
+      r + 0.004,
+      (tm - 0.08) * Math.PI,
+      (tm + 0.08) * Math.PI,
+      z0 + (z1 - z0) * 0.45,
+      z0 + (z1 - z0) * 0.8,
+      fg,
+      2,
+    );
+    cylPatch(
+      c,
+      0,
+      0,
+      r + 0.004,
+      (t0 + 0.04) * Math.PI,
+      (t1 - 0.04) * Math.PI,
+      z0 + 1.6,
+      z0 + 3,
+      fg,
+      3,
+    );
+  }
+  c.cylinder(0, 0, 44, 0.255, 1.6, g, tint(g, 0.2));
+  c.cylinder(0, 0, 45.6, 0.27, 2.6, tint(g, 0.08), tint(g, 0.25));
+  cylPatch(c, 0, 0, 0.272, -0.25 * Math.PI, 0.75 * Math.PI, 46.2, 47.2, C.brass, 6);
+  c.dome(0, 0, 48.2, 0.25, 11, g);
+  c.cylinder(0, 0, 58, 0.03, 2.2, C.brass, tint(C.brass, 0.3));
+  facetBall(c, 0, 0, 61.4, 0.04, C.brass, { seg: 8, rings: 4 });
+  return c.svg();
+}
+
+/** Papierkorb der Stadtreinigung: orangener Zylinder mit Einwurföffnung und Deckel am Pfosten. */
+function bin(): string {
+  const c = canvasOf(CITY_SPRITE.prop);
+  const o = C.bsrOrange;
+  c.shadowDisc(0, 0, 0, 0.13, 0.26);
+  c.cylinder(0, 0, 0, 0.04, 1.4, C.castIron);
+  c.cylinder(0, 0, 1.4, 0.022, 9, C.castIron);
+  c.shine(0, 0, 1.4, 0.022, 9, C.castIron, 0.25);
+  c.frustum(0, 0, 8, 0.1, 0.115, 13, o, shade(o, 0.6));
+  c.shine(0, 0, 8.5, 0.112, 12, o, 0.3);
+  cylPatch(c, 0, 0, 0.116, 0.02 * Math.PI, 0.5 * Math.PI, 16.5, 20, shade(C.ink, 0.9), 4);
+  cylPatch(c, 0, 0, 0.117, 0.05 * Math.PI, 0.47 * Math.PI, 16.6, 17.2, shade(o, 0.7), 4);
+  c.cylinder(0, 0, 21, 0.122, 1.5, tint(o, 0.12), tint(o, 0.25));
+  return c.svg();
+}
+
+/** Berliner Poller: Gussschaft in Anthrazit mit zwei weißen Reflexbändern, Kragen und Kuppel. */
+function bollard(): string {
+  const c = canvasOf(CITY_SPRITE.prop);
+  c.shadowDisc(0, 0, 0, 0.09, 0.26);
+  c.frustum(0, 0, 0, 0.065, 0.05, 2, C.castIron, tint(C.castIron, 0.15));
+  c.cylinder(0, 0, 2, 0.047, 13, C.castIron);
+  c.shine(0, 0, 2, 0.047, 13, C.castIron, 0.3);
+  for (const z of [9.5, 12]) c.cylinder(0, 0, z, 0.048, 1.4, C.white, C.white);
+  c.cylinder(0, 0, 15, 0.055, 1.2, tint(C.castIron, 0.1), tint(C.castIron, 0.25));
+  c.dome(0, 0, 16.2, 0.047, 3.2, C.castIron);
+  return c.svg();
+}
+
+/** Blauer Pflanzkübel des Cafés: Kobalt mit Edelstahl-Abdeckung, Erde, drei Buchskugeln. */
+function planter(): string {
+  const c = canvasOf(CITY_SPRITE.prop);
+  c.shadow(-0.27, -0.2, 0, 0.54, 0.4, 0.26);
+  c.bevel(-0.25, -0.17, 0, 0.5, 0.34, 1.2, shade(C.cobalt, 0.7), { b: 0.4 });
+  c.bevel(-0.24, -0.16, 1.2, 0.48, 0.32, 10.8, C.cobalt, { b: 0.6 });
+  c.bevel(-0.25, -0.17, 11.6, 0.5, 0.34, 1.2, C.stainless, { b: 0.5, edge: 0.4 });
+  c.flat(-0.21, -0.13, 12.81, 0.42, 0.26, C.soil);
+  const box = [C.leafDeep, C.leaf, C.leafMid, C.leafLight] as const;
+  for (const [u, r, k] of [
+    [-0.13, 0.095, 4],
+    [0.01, 0.105, 5],
+    [0.14, 0.09, 6],
+  ] as const)
+    facetBall(c, u, 0, 12.8 + r * Z_PER_TILE * 0.9, r, C.leaf, {
+      tones: box,
+      lumpy: 0.06,
+      seed: k,
+    });
+  return c.svg();
+}
+
+/**
+ * Nasenschild des Cafés: Edelstahl-Mast mit Fußplatte, Ausleger mit Zierbogen, blauer Leuchtkasten mit
+ * Edelstahlrahmen und weißem Blatt (keine Schrift), kleine Lampe darüber.
+ */
+function cafeSign(): string {
+  const c = canvasOf(CITY_SPRITE.prop);
+  c.shadowDisc(0, 0, 0, 0.11, 0.26);
+  c.bevel(-0.07, -0.07, 0, 0.14, 0.14, 1.2, C.stainlessDark, { b: 0.4 });
+  c.cylinder(0, 0, 1.2, 0.026, 60, C.stainless);
+  c.shine(0, 0, 1.2, 0.026, 60, C.stainless, 0.45);
+  c.dome(0, 0, 61, 0.03, 2.4, C.stainless);
+  // Ausleger und Zierbogen in +v
+  c.box(-0.012, 0.02, 58.6, 0.024, 0.48, 1.4, C.stainlessDark);
+  polyline(
+    c,
+    [
+      [0, 0.03, 52],
+      [0, 0.12, 55.6],
+      [0, 0.26, 57.6],
+      [0, 0.4, 58.4],
+    ],
+    C.stainlessDark,
+    0.9,
+  );
+  for (const v of [0.08, 0.42]) c.box(-0.006, v, 57, 0.012, 0.012, 1.8, C.stainlessDark);
+  // Leuchtkasten (zeigt nach +u, zweiseitig)
+  c.bevel(-0.03, 0.04, 33, 0.06, 0.44, 24, C.stainless, { b: 0.6 });
+  c.box(-0.032, 0.06, 35, 0.064, 0.4, 20, C.cobalt, { right: shade(C.cobalt, SHADE.right + 0.1) });
+  const L = (v: number, z: number): Vec3 => [0.0331, v, z];
+  c.poly([L(0.14, 38), L(0.16, 50), L(0.36, 52.5), L(0.34, 40.5)], C.white);
+  c.poly([L(0.16, 39), L(0.33, 51.5), L(0.345, 50.6), L(0.17, 38.6)], C.cobalt);
+  c.poly([L(0.235, 45.2), L(0.29, 47.6), L(0.295, 47.2), L(0.24, 44.7)], C.cobalt);
+  c.poly([L(0.215, 43.4), L(0.2, 47.6), L(0.21, 47.8), L(0.225, 43.6)], C.cobalt);
+  return c.svg();
+}
+
+/**
+ * Zeichenhilfe für Signalgeber, die zu einer Achse zeigen: a = entlang der Lichtfläche, n = Abstand nach vorn
+ * (zur Kamera, +u bei Achse u, +v bei Achse v), z = Höhe.
+ */
+function facing(c: IsoCanvas, axis: 'u' | 'v') {
+  const P = (a: number, n: number, z: number): Vec3 => (axis === 'u' ? [n, a, z] : [a, n, z]);
+  return {
+    P,
+    box: (a: number, n: number, z: number, da: number, dn: number, h: number, color: string) =>
+      axis === 'u' ? c.box(n, a, z, dn, da, h, color) : c.box(a, n, z, da, dn, h, color),
+    /** Fläche in der Ebene n (zeigt nach vorn); Farbe ohne Schattierung. */
+    face: (a: number, n: number, z: number, da: number, h: number, color: string, opacity = 1) =>
+      c.poly([P(a, n, z), P(a + da, n, z), P(a + da, n, z + h), P(a, n, z + h)], color, opacity),
+    disc: (a: number, n: number, z: number, r: number, color: string, opacity = 1) =>
+      c.poly(axis === 'u' ? ringPts('u', n, a, z, r) : ringPts('v', a, n, z, r), color, opacity),
+    poly: (n: number, pts: readonly (readonly [number, number])[], color: string, opacity = 1) =>
+      c.poly(
+        pts.map(([a, z]) => P(a, n, z)),
+        color,
+        opacity,
+      ),
+    /** Helligkeit der Vorderseite (Achse u zeigt nach rechts: 70 %, Achse v nach links: 85 %). */
+    s: axis === 'u' ? SHADE.right : SHADE.left,
+  };
+}
+
+/** Mast aus verzinktem Stahl mit Fuß, Glanzkante und Kappe. */
+function signalMast(c: IsoCanvas, h: number) {
+  c.shadowDisc(0, 0, 0, 0.1, 0.26);
+  c.cylinder(0, 0, 0, 0.055, 2.5, C.castIron, tint(C.castIron, 0.2));
+  c.cylinder(0, 0, 2.5, 0.028, h - 2.5, C.galvanized);
+  c.shine(0, 0, 2.5, 0.028, h - 2.5, C.galvanized, 0.45);
+  c.cylinder(0, 0, 9, 0.031, 3, C.castIron, tint(C.castIron, 0.2));
+  c.dome(0, 0, h, 0.03, 2.4, C.galvanized);
+}
+
+type LensState = { on: boolean; color: string };
+
+/**
+ * Signalgeber: Kontrastblende mit weißem Rand, Gehäuse mit Fase, Linsen mit Schute; leuchtende Linse mit Hof,
+ * heißem Kern und Glanzpunkt, dunkle Linse mit Reflex.
+ */
+function signalHead(
+  f: ReturnType<typeof facing>,
+  z0: number,
+  w: number,
+  lenses: readonly LensState[],
+  pitch: number,
+  r: number,
+  plate: boolean,
+) {
+  const h = pitch * lenses.length + 2;
+  const n0 = 0.034;
+  const dn = 0.06;
+  if (plate) {
+    f.box(-w / 2 - 0.045, n0 - 0.008, z0 - 3.5, w + 0.09, 0.008, h + 7, C.white);
+    f.face(-w / 2 - 0.035, n0, z0 - 2.4, w + 0.07, h + 4.8, shade(C.ink, f.s));
+  }
+  f.box(-w / 2, n0, z0, w, dn, h, C.ink);
+  f.box(-w / 2, n0, z0 + h, w, dn, 0.8, tint(C.ink, 0.15));
+  const n1 = n0 + dn + 0.001;
+  lenses.forEach((l, i) => {
+    const z = z0 + h - 1 - pitch * (i + 0.5);
+    if (l.on) {
+      f.disc(0, n1 + 0.004, z, r * 1.9, l.color, 0.16);
+      f.disc(0, n1 + 0.004, z, r * 1.4, l.color, 0.3);
+    }
+    f.disc(0, n1, z, r * 1.12, shade(C.ink, 0.6));
+    f.disc(0, n1 + 0.001, z, r, l.on ? l.color : shade(l.color, 0.3));
+    if (l.on) f.disc(-r * 0.15, n1 + 0.002, z + 0.3, r * 0.55, tint(l.color, 0.55));
+    f.disc(-r * 0.4, n1 + 0.003, z + r * Z_PER_TILE * 0.45, r * 0.25, C.white, l.on ? 0.8 : 0.3);
+    // Schute: Dach und Wangen ragen über die Linse nach vorn
+    f.box(-r * 1.25, n1, z + r * Z_PER_TILE * 1.05, r * 2.5, 0.035, 0.9, shade(C.ink, 1.25));
+    for (const a of [-r * 1.25, r * 1.17])
+      f.box(
+        a,
+        n1,
+        z - r * Z_PER_TILE * 0.2,
+        r * 0.08,
+        0.035,
+        r * Z_PER_TILE * 1.25,
+        shade(C.ink, 1.1),
+      );
+  });
+}
+
+/** Fußgängerampel mit Ampelmännchen (rot steht, grün geht, beide mit Hut) und gelbem Anforderungstaster. */
+function pedLight(go: boolean): string {
+  const c = canvasOf(CITY_SPRITE.prop);
+  signalMast(c, 50);
+  const f = facing(c, 'v');
+  // Taster am Mast (zur Seite +u), gelb mit Tastenfeld
+  const t = facing(c, 'u');
+  t.box(-0.045, 0.026, 15, 0.09, 0.05, 9, C.postYellow);
+  t.face(-0.025, 0.077, 19, 0.05, 3, shade(C.ink, t.s));
+  t.disc(0, 0.078, 17, 0.015, C.white);
+  const w = 0.17;
+  const z0 = 31;
+  f.box(-w / 2, 0.034, z0, w, 0.06, 23, C.ink);
+  f.box(-w / 2, 0.034, z0 + 23, w, 0.06, 0.8, tint(C.ink, 0.15));
+  const n = 0.095;
+  const man = (zc: number, walking: boolean, col: string) => {
+    const S = (pts: readonly (readonly [number, number])[]) =>
+      f.poly(
+        n + 0.002,
+        pts.map(([a, z]) => [a * 0.06, zc + z * 0.85] as const),
+        col,
+      );
+    // Hut (Krempe und Kopf), Kopf, Rumpf
+    S([
+      [-0.55, 4.6],
+      [0.55, 4.6],
+      [0.55, 5.2],
+      [-0.55, 5.2],
+    ]);
+    S([
+      [-0.3, 5.2],
+      [0.3, 5.2],
+      [0.25, 6.4],
+      [-0.25, 6.4],
+    ]);
+    S([
+      [-0.28, 3],
+      [0.28, 3],
+      [0.28, 4.6],
+      [-0.28, 4.6],
+    ]);
+    S([
+      [-0.4, -0.6],
+      [0.4, -0.6],
+      [0.35, 3],
+      [-0.35, 3],
+    ]);
+    if (walking) {
+      S([
+        [-0.3, -0.4],
+        [0.05, -0.4],
+        [-0.55, -4.6],
+        [-0.95, -4.6],
+      ]);
+      S([
+        [-0.05, -0.4],
+        [0.3, -0.4],
+        [0.95, -4.6],
+        [0.55, -4.6],
+      ]);
+      S([
+        [0.3, 2.6],
+        [0.4, 2],
+        [1.1, 0.4],
+        [0.9, 0.1],
+      ]);
+    } else {
+      S([
+        [-0.35, -0.6],
+        [0.35, -0.6],
+        [0.3, -4.6],
+        [-0.3, -4.6],
+      ]);
+      S([
+        [-0.38, 2.8],
+        [-0.38, 2],
+        [-1.15, 0.6],
+        [-1.15, 1.4],
+      ]);
+      S([
+        [0.38, 2.8],
+        [0.38, 2],
+        [1.15, 0.6],
+        [1.15, 1.4],
+      ]);
+    }
+  };
+  for (const [zc, on, col, walking] of [
+    [z0 + 17, !go, C.signalRed, false],
+    [z0 + 6, go, C.signalGreen, true],
+  ] as const) {
+    f.face(-w / 2 + 0.015, n + 0.001, zc - 5.2, w - 0.03, 10.4, shade(C.ink, 0.55));
+    if (on) f.face(-w / 2 + 0.02, n + 0.0015, zc - 4.8, w - 0.04, 9.6, col, 0.22);
+    man(zc, walking, on ? col : shade(col, 0.32));
+    f.box(-w / 2, n, zc + 5.4, w, 0.03, 0.8, shade(C.ink, 1.25));
   }
   return c.svg();
 }
 
-/** Brückengeländer: Sandstein-Pfosten mit Eisenstäben, 1,5 Kacheln entlang u. */
+/**
+ * Autoampel am Mast: Hauptsignal mit weiß umrandeter Kontrastblende und Schuten, darunter ein kleiner Wiederholer
+ * in Augenhöhe. Die Lichter zeigen zur Kamera: Achse `u` nach +x (Fahrbahn entlang x), `v` nach +y.
+ * `state` = was leuchtet.
+ */
+function trafficLight(axis: 'u' | 'v', state: 'red' | 'redYellow' | 'green' | 'yellow'): string {
+  const c = canvasOf(CITY_SPRITE.prop);
+  signalMast(c, 68);
+  const f = facing(c, axis);
+  const lenses: LensState[] = [
+    { on: state === 'red' || state === 'redYellow', color: C.signalRed },
+    { on: state === 'yellow' || state === 'redYellow', color: C.signalYellow },
+    { on: state === 'green', color: C.signalGreen },
+  ];
+  // Halterungen (kurze Ausleger) zwischen Mast und Gehäusen
+  for (const z of [42, 62, 18, 28]) f.box(-0.012, 0.01, z, 0.024, 0.03, 1.6, C.galvanized);
+  signalHead(f, 38, 0.2, lenses, 9, 0.072, true);
+  signalHead(f, 14, 0.13, lenses, 5.4, 0.042, false);
+  return c.svg();
+}
+
+/**
+ * Brückengeländer: Sandstein-Pfosten mit Abdeckplatte, schmiedeeiserne Stäbe zwischen Hand- und Fußleiste,
+ * Ringornamente; 1,5 Kacheln entlang u.
+ */
 function railing(): string {
   const c = canvasOf(CITY_SPRITE.railing);
-  c.shadow(-0.75, -0.04, 0, 1.5, 0.1, 0.2);
-  for (let k = 0; k < 14; k++) c.box(-0.7 + k * 0.1, -0.01, 0, 0.012, 0.012, 9, IRON);
-  c.box(-0.75, -0.03, 9, 1.5, 0.06, 1.6, IRON);
-  for (const u of [-0.75, 0.66]) c.bevel(u, -0.05, 0, 0.09, 0.1, 13, C.stone, { b: 0.8 });
+  c.shadow(-0.76, -0.05, 0, 1.52, 0.12, 0.22);
+  const iron = C.castIron;
+  c.box(-0.7, -0.012, 1.2, 1.38, 0.024, 1.2, iron);
+  for (let k = 0; k < 14; k++) c.box(-0.67 + k * 0.1, -0.006, 2.4, 0.012, 0.012, 7, iron);
+  for (let k = 0; k < 7; k++)
+    polyline(
+      c,
+      [...ringPts('v', -0.62 + k * 0.2, 0.008, 6, 0.04, 10), [-0.58 + k * 0.2, 0.008, 6]],
+      tint(iron, 0.15),
+      0.6,
+    );
+  c.bevel(-0.7, -0.025, 9.4, 1.38, 0.05, 1.4, iron, { b: 0.4, edge: 0.3 });
+  for (const u of [-0.76, 0.66]) {
+    c.bevel(u, -0.055, 0, 0.1, 0.11, 11.5, C.stone, { b: 0.6 });
+    c.bevel(u - 0.012, -0.067, 11.5, 0.124, 0.134, 1.6, tint(C.stone, 0.25), {
+      b: 0.5,
+      edge: 0.35,
+    });
+    c.box(u + 0.02, 0.0551, 3, 0.06, 0.001, 5, shade(C.stone, 0.92));
+  }
   return c.svg();
 }
 
 // Autos: entlang u, Mittelpunkt bei (0, 0). „f“ = fährt nach +u (Front sichtbar), „b“ = nach −u (Heck sichtbar).
+type CarKind = 'sedan' | 'wagon' | 'van' | 'compact';
 interface CarStyle {
-  body: string;
-  roof?: string;
-  /** Kabine: Anfang/Ende entlang u (Front bei +u). */
-  cabin: [number, number];
-  len: number;
-  high: number;
+  kind: CarKind;
+  paint: string;
+  /** Taxischild auf dem Dach (Berliner Taxi: Elfenbein, gelbes Schild). */
   sign?: boolean;
+  /** Zierstreifen an der Flanke (Lieferwagen). */
   stripe?: string;
+  /** Dach in Kontrastfarbe (Kleinwagen). */
+  roof?: string;
+  /** Dachreling (Kombi ohne Taxischild). */
+  rails?: boolean;
 }
 
+/** Vier Grundtypen für den Verkehr (`car-<typ>-f|b`, `STREET_LIFE.carTypes`). */
 const CARS: CarStyle[] = [
-  { body: C.red, cabin: [-0.42, 0.12], len: 1.05, high: 9 },
-  { body: '#f2e3b3', cabin: [-0.34, 0.2], len: 1.2, high: 8.5, sign: true },
-  { body: C.white, cabin: [-0.58, 0.38], len: 1.3, high: 13, stripe: C.cobalt },
-  { body: '#77c4b1', cabin: [-0.4, 0.14], len: 1.05, high: 9 },
+  { kind: 'sedan', paint: C.carRed },
+  { kind: 'wagon', paint: C.carTaxi, sign: true },
+  { kind: 'van', paint: C.white, stripe: C.cobalt },
+  { kind: 'compact', paint: C.carMint, roof: C.white },
 ];
 
-function wheel(c: IsoCanvas, u: number, v: number) {
-  const r = 0.1;
-  const pts: Vec3[] = [];
-  for (let i = 0; i < 14; i++) {
-    const a = (i / 14) * Math.PI * 2;
-    pts.push([u + Math.cos(a) * r, v, r * Z_PER_TILE + Math.sin(a) * r * Z_PER_TILE]);
+/** Weitere Lacke je Typ für parkende Autos (`car-<typ>-p<k>-f`, `parkedCarFrame` in `data/city.ts`). */
+const CAR_PAINTS: readonly (readonly CarStyle[])[] = [
+  [{ kind: 'sedan', paint: C.carNavy }],
+  [{ kind: 'wagon', paint: C.carGreen, rails: true }],
+  [{ kind: 'van', paint: C.carSilver }],
+  [{ kind: 'compact', paint: C.carYellow, roof: C.white }],
+];
+
+type P2u = readonly [number, number];
+interface CarShape {
+  /** Unterbau (Seitenprofil u/z, Front bei +u, gegen den Uhrzeigersinn ab hinten unten). */
+  body: readonly P2u[];
+  /** Kabine (Glashaus), etwas schmaler; leer = Kasten ohne eigene Kabine. */
+  cabin: readonly P2u[];
+  /** Seitenscheiben auf der Kabinen- bzw. Kastenseite und Säulen dazwischen (u). */
+  windows: readonly P2u[];
+  pillars: readonly number[];
+  /** Index der Frontscheibe und Heckscheibe im Kabinen- bzw. Kastenprofil. */
+  screen: number;
+  rear: number;
+  W: number;
+  wheels: readonly number[];
+  r: number;
+  /** Oberkante der senkrechten Front bzw. des Hecks. */
+  noseZ: number;
+  tailZ: number;
+  /** Türfugen (u) und Gürtellinie. */
+  doors: readonly number[];
+  belt: number;
+}
+
+const SHAPES: Record<CarKind, CarShape> = {
+  sedan: {
+    body: [
+      [-0.55, 2.4],
+      [0.55, 2.4],
+      [0.56, 6.2],
+      [0.52, 8],
+      [0.3, 8.8],
+      [-0.34, 8.8],
+      [-0.5, 8.4],
+      [-0.56, 6.8],
+    ],
+    cabin: [
+      [-0.34, 8.8],
+      [0.3, 8.8],
+      [0.1, 14.6],
+      [-0.2, 14.6],
+    ],
+    windows: [
+      [-0.3, 9.4],
+      [0.26, 9.4],
+      [0.09, 14],
+      [-0.18, 14],
+    ],
+    pillars: [-0.04],
+    screen: 1,
+    rear: 3,
+    W: 0.27,
+    wheels: [-0.34, 0.33],
+    r: 0.085,
+    noseZ: 6.2,
+    tailZ: 6.8,
+    doors: [-0.05, 0.25],
+    belt: 8.8,
+  },
+  wagon: {
+    body: [
+      [-0.58, 2.4],
+      [0.58, 2.4],
+      [0.59, 6.2],
+      [0.55, 8],
+      [0.32, 8.8],
+      [-0.56, 8.8],
+      [-0.59, 7],
+    ],
+    cabin: [
+      [-0.56, 8.8],
+      [0.32, 8.8],
+      [0.12, 14.8],
+      [-0.5, 14.8],
+    ],
+    windows: [
+      [-0.51, 9.4],
+      [0.28, 9.4],
+      [0.11, 14.2],
+      [-0.47, 14.2],
+    ],
+    pillars: [-0.08, -0.32],
+    screen: 1,
+    rear: 3,
+    W: 0.27,
+    wheels: [-0.37, 0.35],
+    r: 0.085,
+    noseZ: 6.2,
+    tailZ: 7,
+    doors: [-0.09, 0.26],
+    belt: 8.8,
+  },
+  van: {
+    body: [
+      [-0.64, 2.6],
+      [0.64, 2.6],
+      [0.65, 7],
+      [0.61, 9.6],
+      [0.47, 10.6],
+      [0.35, 19],
+      [0.29, 20],
+      [-0.62, 20],
+      [-0.65, 19],
+    ],
+    cabin: [],
+    windows: [
+      [0.06, 11.2],
+      [0.43, 11.2],
+      [0.33, 18.2],
+      [0.06, 18.2],
+    ],
+    pillars: [],
+    screen: 4,
+    rear: 8,
+    W: 0.29,
+    wheels: [-0.4, 0.42],
+    r: 0.095,
+    noseZ: 7,
+    tailZ: 19,
+    doors: [0.02, -0.28],
+    belt: 10.6,
+  },
+  compact: {
+    body: [
+      [-0.45, 2.2],
+      [0.45, 2.2],
+      [0.46, 6],
+      [0.4, 8.2],
+      [0.24, 9],
+      [-0.31, 9],
+      [-0.44, 8],
+      [-0.46, 6],
+    ],
+    cabin: [
+      [-0.31, 9],
+      [0.24, 9],
+      [0.1, 15.4],
+      [-0.22, 15.4],
+    ],
+    windows: [
+      [-0.27, 9.6],
+      [0.2, 9.6],
+      [0.09, 14.8],
+      [-0.19, 14.8],
+    ],
+    pillars: [-0.02],
+    screen: 1,
+    rear: 3,
+    W: 0.25,
+    wheels: [-0.28, 0.28],
+    r: 0.08,
+    noseZ: 6,
+    tailZ: 6,
+    doors: [0.0],
+    belt: 9,
+  },
+};
+
+/** Rad in der Ebene v: Reifen mit Flanke, Felge mit Glanz, Nabe. */
+function wheel(c: IsoCanvas, u: number, v: number, r = 0.1) {
+  const z = r * Z_PER_TILE;
+  c.poly(ringPts('v', u - 0.012, v - 0.02, z, r, 16), shade(C.rubber, 0.8));
+  c.poly(ringPts('v', u, v, z, r, 16), C.rubber);
+  c.poly(ringPts('v', u, v + 0.001, z, r * 0.62, 12), C.galvanized);
+  c.poly(ringPts('v', u + r * 0.12, v + 0.002, z - r * 4, r * 0.4, 10), shade(C.galvanized, 0.82));
+  c.poly(ringPts('v', u, v + 0.003, z, r * 0.2, 8), shade(C.galvanized, 0.6));
+}
+
+/** Zwei schräge Lichtreflexe auf einer Scheibe in der Ebene v (Punkte der Scheibe als u/z-Viereck). */
+function carGlint(c: IsoCanvas, v: number, q: readonly P2u[], opacity = 0.35) {
+  const [a, b, d, e] = q;
+  if (!a || !b || !d || !e) return;
+  const lerp = (p: P2u, r: P2u, t: number): P2u => [
+    p[0] + (r[0] - p[0]) * t,
+    p[1] + (r[1] - p[1]) * t,
+  ];
+  for (const [t0, t1] of [
+    [0.18, 0.3],
+    [0.38, 0.44],
+  ] as const) {
+    const lo0 = lerp(a, b, t0);
+    const lo1 = lerp(a, b, t1);
+    const hi0 = lerp(e, d, t0 + 0.12);
+    const hi1 = lerp(e, d, t1 + 0.12);
+    c.poly(
+      [lo0, lo1, hi1, hi0].map(([u, z]) => [u, v, z] as Vec3),
+      C.white,
+      opacity,
+    );
   }
-  c.poly(pts, C.ink);
-  const hub: Vec3[] = pts.map(([x, y, z]) => [
-    u + (x - u) * 0.45,
-    y + 0.001,
-    3.9 + (z - 3.9) * 0.45,
-  ]);
-  c.poly(hub, C.stainlessDark);
 }
 
 function car(style: CarStyle, heading: 'f' | 'b'): string {
   const c = canvasOf(CITY_SPRITE.car);
-  const L = style.len / 2;
-  const W = 0.28;
+  const sh = SHAPES[style.kind];
   const s = heading === 'f' ? 1 : -1;
-  const [c0, c1] = style.cabin.map((x) => x * s).sort((a, b) => a - b) as [number, number];
-  c.shadow(-L - 0.04, -W - 0.02, 0, 2 * L + 0.08, 2 * W + 0.06, 0.3, 1.6);
-  wheel(c, -L * 0.62, W + 0.001);
-  wheel(c, L * 0.62, W + 0.001);
-  c.bevel(-L, -W, 2.5, 2 * L, 2 * W, style.high - 2.5, style.body, { b: 1.6, edge: 0.3 });
-  if (style.stripe) c.wallV(-L, W + 0.002, 5, 2 * L, 2, style.stripe);
-  // Kabine mit Scheiben
-  const top = style.high + 7.5;
-  c.bevel(c0, -W + 0.04, style.high, c1 - c0, 2 * W - 0.08, 7.5, style.roof ?? style.body, {
-    b: 1.4,
-    edge: 0.35,
+  // Gespiegelt (Heck vorn) kehrt sich der Umlaufsinn um.
+  const mir = (p: readonly P2u[]): P2u[] => {
+    const m = p.map(([u, z]) => [u * s, z] as P2u);
+    return s > 0 ? m : m.reverse();
+  };
+  const idx = (i: number, n: number) => (s > 0 ? i : n - 2 - i < 0 ? n - 1 : n - 2 - i);
+  const W = sh.W;
+  const L = Math.max(...sh.body.map(([u]) => Math.abs(u)));
+  const paint = style.paint;
+  const glassSide = shade(C.pane, 0.78);
+  const glassFront = tint(C.pane, 0.18);
+  c.shadow(-L - 0.04, -W - 0.03, 0, 2 * L + 0.08, 2 * W + 0.07, 0.32, 1.6);
+  for (const u of sh.wheels) c.shadowDisc(u * s, W - 0.02, 0, 0.08, 0.3, 0.8);
+  // Räder der fernen Seite schauen unter dem Wagen hervor
+  for (const u of sh.wheels) wheel(c, u * s, -W + 0.02, sh.r);
+  const body = mir(sh.body);
+  const boxOnly = sh.cabin.length === 0;
+  const nb = body.length;
+  extrudeU(c, body, -W, W, paint, {
+    seg: boxOnly ? (i) => (i === idx(sh.screen, nb) ? glassFront : undefined) : undefined,
   });
-  c.wallV(c0 + 0.05, W - 0.039, style.high + 1.2, c1 - c0 - 0.1, 5, C.glass);
-  c.wallV((c0 + c1) / 2 - 0.01, W - 0.038, style.high + 1.2, 0.02, 5, style.body);
-  c.wallU(c1 + 0.001, -W + 0.08, style.high + 1.2, 2 * W - 0.16, 5, shade(C.glass, 0.85));
-  // Front (Scheinwerfer) bzw. Heck (Rücklichter) auf der sichtbaren +u-Seite
-  const light = heading === 'f' ? C.led : C.red;
-  c.wallU(L + 0.002, -W + 0.04, 6, 0.1, 2.2, light);
-  c.wallU(L + 0.002, W - 0.14, 6, 0.1, 2.2, light);
-  c.wallU(L + 0.002, -0.08, 3.4, 0.16, 1.4, shade(C.ink, 1.4));
-  if (style.sign) {
-    c.box(-0.06, -0.06, top, 0.12, 0.12, 3, C.gold);
-    c.flat(-0.06, -0.06, top + 3, 0.12, 0.12, tint(C.gold, 0.4));
+  // Radläufe (dunkel, nur über der Unterkante) und Seitenschweller
+  const bottom = sh.body[0]?.[1] ?? 2.4;
+  for (const u of sh.wheels)
+    c.poly(
+      ringPts('v', u * s, W + 0.001, sh.r * Z_PER_TILE, sh.r * 1.28, 16).map(
+        ([pu, pv, pz]) => [pu, pv, Math.max(bottom, pz)] as Vec3,
+      ),
+      shade(paint, 0.32),
+    );
+  c.poly(
+    [
+      [-L + 0.05, W + 0.0015, bottom],
+      [L - 0.05, W + 0.0015, bottom],
+      [L - 0.05, W + 0.0015, bottom + 0.9],
+      [-L + 0.05, W + 0.0015, bottom + 0.9],
+    ],
+    shade(paint, 0.55),
+  );
+  // Kantenlicht unter der Gürtellinie, Zierstreifen, Türfugen und Griffe
+  const beltZ = boxOnly ? sh.belt - 0.6 : sh.belt - 0.5;
+  c.poly(
+    [
+      [-L + 0.06, W + 0.0015, beltZ - 0.5],
+      [L - 0.08, W + 0.0015, beltZ - 0.5],
+      [L - 0.08, W + 0.0015, beltZ],
+      [-L + 0.06, W + 0.0015, beltZ],
+    ],
+    tint(paint, 0.3),
+    0.7,
+  );
+  if (style.stripe)
+    c.poly(
+      [
+        [-L + 0.02, W + 0.002, 6.2],
+        [L - 0.02, W + 0.002, 6.2],
+        [L - 0.02, W + 0.002, 7.6],
+        [-L + 0.02, W + 0.002, 7.6],
+      ],
+      style.stripe,
+    );
+  for (const d of sh.doors) {
+    strut(
+      c,
+      [d * s, W + 0.002, bottom + 1],
+      [d * s, W + 0.002, boxOnly ? 18.6 : sh.belt - 0.2],
+      shade(paint, 0.62),
+      0.45,
+    );
+    const hu = (d - (boxOnly ? -0.1 : 0.12) * s * s) * s;
+    c.poly(
+      [
+        [hu - 0.035, W + 0.0025, sh.belt - 2],
+        [hu + 0.035, W + 0.0025, sh.belt - 2],
+        [hu + 0.035, W + 0.0025, sh.belt - 1.3],
+        [hu - 0.035, W + 0.0025, sh.belt - 1.3],
+      ],
+      tint(paint, 0.45),
+    );
   }
+  // Kabine mit Front-/Heckscheibe, Seitenscheiben mit Säulen und Reflexen
+  const cw = W - 0.035;
+  if (!boxOnly) {
+    const cab = mir(sh.cabin);
+    const nc = cab.length;
+    extrudeU(c, cab, -cw, cw, style.roof ?? paint, {
+      seg: (i) =>
+        i === idx(sh.screen, nc) ? glassFront : i === idx(sh.rear, nc) ? glassSide : undefined,
+      side: lit(paint, facetLight([0, 1, 0])),
+    });
+  }
+  // Reflexe auf der sichtbaren Frontscheibe
+  {
+    const prof = boxOnly ? sh.body : sh.cabin;
+    const a = heading === 'f' ? prof[sh.screen] : undefined;
+    const b = prof[sh.screen + 1];
+    const half = boxOnly ? W : cw;
+    if (a && b)
+      for (const [t0, t1] of [
+        [0.16, 0.3],
+        [0.4, 0.47],
+      ] as const) {
+        const P = (tv: number, ts: number): Vec3 => [
+          (a[0] + (b[0] - a[0]) * ts) * s,
+          -half + 2 * half * tv,
+          a[1] + (b[1] - a[1]) * ts,
+        ];
+        c.poly([P(t0, 0.1), P(t1, 0.1), P(t1 - 0.1, 0.9), P(t0 - 0.1, 0.9)], C.white, 0.3);
+      }
+  }
+  const winV = (boxOnly ? W : cw) + 0.0015;
+  const win = sh.windows.map(([u, z]) => [u * s, z] as P2u);
+  c.poly(
+    win.map(([u, z]) => [u, winV, z] as Vec3),
+    glassSide,
+  );
+  carGlint(
+    c,
+    winV + 0.0005,
+    s > 0 ? win : [win[1], win[0], win[3], win[2]].filter((x): x is P2u => !!x),
+  );
+  for (const pu of sh.pillars)
+    c.poly(
+      [
+        [pu * s - 0.022, winV + 0.001, (win[0]?.[1] ?? 9) - 0.2],
+        [pu * s + 0.022, winV + 0.001, (win[0]?.[1] ?? 9) - 0.2],
+        [pu * s + 0.022, winV + 0.001, (win[2]?.[1] ?? 14) + 0.2],
+        [pu * s - 0.022, winV + 0.001, (win[2]?.[1] ?? 14) + 0.2],
+      ],
+      lit(style.roof && !boxOnly ? paint : paint, facetLight([0, 1, 0])),
+    );
+  // Außenspiegel an der A-Säule
+  const mu = (boxOnly ? 0.44 : (sh.cabin[1]?.[0] ?? 0.3) - 0.03) * s;
+  c.box(mu - 0.03, W, sh.belt + 0.6, 0.06, 0.06, 1.8, paint);
+  // Front bzw. Heck auf der sichtbaren +u-Seite
+  const eU = L + 0.002;
+  const endZ = heading === 'f' ? sh.noseZ : sh.tailZ;
+  const F = (v0: number, v1: number, z0: number, z1: number, col: string, op = 1) =>
+    c.poly(
+      [
+        [eU, v0, z0],
+        [eU, v1, z0],
+        [eU, v1, z1],
+        [eU, v0, z1],
+      ],
+      col,
+      op,
+    );
+  F(-W + 0.01, W - 0.01, bottom, bottom + 1.3, shade(C.rubber, 1.6));
+  F(-0.07, 0.07, bottom + 0.25, bottom + 1.15, C.white);
+  const lz = Math.min(endZ - 1.6, heading === 'f' ? 5 : 5.4);
+  if (heading === 'f') {
+    F(-0.13, 0.13, bottom + 1.6, lz + 0.4, shade(C.ink, 1.3));
+    for (const v of [-W + 0.03, W - 0.11]) {
+      F(v - 0.005, v + 0.085, lz - 0.3, lz + 1.5, C.galvanized);
+      F(v, v + 0.08, lz, lz + 1.2, C.led);
+    }
+  } else {
+    for (const v of [-W + 0.03, W - 0.12]) {
+      F(v, v + 0.09, lz, lz + 1.4, C.signalRed);
+      F(v + 0.01, v + 0.04, lz + 0.2, lz + 0.8, tint(C.signalRed, 0.5));
+    }
+    if (style.kind === 'van') {
+      F(-0.004, 0.004, bottom + 1.4, endZ - 0.6, shade(paint, 0.6));
+      for (const [v0, v1] of [
+        [-W + 0.04, -0.02],
+        [0.02, W - 0.04],
+      ] as const) {
+        F(v0, v1, 12.4, 17.6, glassSide);
+        F(v0 + 0.03, v0 + 0.07, 12.8, 17.2, C.white, 0.25);
+      }
+    }
+  }
+  if (style.sign) {
+    const top = Math.max(...sh.cabin.map(([, z]) => z));
+    c.bevel(-0.07, -0.08, top, 0.14, 0.16, 3, C.postYellow, { b: 0.8, edge: 0.3 });
+    c.poly(
+      [
+        [-0.07, 0.081, top + 1],
+        [0.07, 0.081, top + 1],
+        [0.07, 0.081, top + 1.9],
+        [-0.07, 0.081, top + 1.9],
+      ],
+      C.ink,
+    );
+  }
+  if (style.rails) {
+    const top = Math.max(...sh.cabin.map(([, z]) => z));
+    for (const v of [-cw + 0.03, cw - 0.03])
+      strut(c, [-0.42 * s, v, top + 0.8], [0.06 * s, v, top + 0.8], C.castIron, 0.8);
+  }
+  // Räder der nahen Seite
+  for (const u of sh.wheels) wheel(c, u * s, W + 0.012, sh.r);
   return c.svg();
 }
 
-/** Radfahrer entlang u: Fahrrad mit dünnen Rädern, Figur mit Helm; „f“ = fährt nach +u. */
+/** Fahrrad in der Ebene v, Front nach +u·s: Räder mit Felge und Speichen, Rahmen, Schutzbleche, Sattel, Lenker. */
+interface BicycleLook {
+  frame: string;
+  /** Tiefer Einstieg (Hollandrad) statt Diamantrahmen. */
+  low?: boolean;
+  /** Korb vorn (Weidenfarbe) bzw. Kiste auf dem Gepäckträger. */
+  basket?: boolean;
+  crate?: string;
+  /** Lastenrad: Kiste zwischen Lenker und Vorderrad. */
+  cargo?: string;
+}
+
+function bicycle(c: IsoCanvas, cu: number, v: number, s: number, b: BicycleLook) {
+  const r = 0.12;
+  const wz = r * Z_PER_TILE;
+  const U = (u: number) => cu + u * s;
+  const P = (u: number, z: number, dv = 0): Vec3 => [U(u), v + dv, z];
+  const front = b.cargo ? 0.34 : 0.22;
+  const wheelAt = (u: number) => {
+    const ring = ringPts('v', U(u), v, wz, r, 20);
+    polyline(c, [...ring, ring[0] ?? ring[1] ?? [0, 0, 0]], C.rubber, 1.3);
+    const rim = ringPts('v', U(u), v + 0.001, wz, r * 0.82, 16);
+    polyline(c, [...rim, rim[0] ?? [0, 0, 0]], C.galvanized, 0.45);
+    for (let k = 0; k < 2; k++) {
+      const a = (k / 2) * Math.PI + 0.5;
+      strut(
+        c,
+        P(u + Math.cos(a) * r * 0.8, wz + Math.sin(a) * wz * 0.8, 0.002),
+        P(u - Math.cos(a) * r * 0.8, wz - Math.sin(a) * wz * 0.8, 0.002),
+        C.galvanized,
+        0.3,
+        0.8,
+      );
+    }
+    c.disc(U(u), v + 0.003, wz, 0.012, C.galvanized);
+  };
+  wheelAt(-0.22);
+  wheelAt(front);
+  const bb = P(0, wz - 0.3);
+  const seat = P(-0.07, 10);
+  const head0 = P(0.16, 8.2);
+  const head1 = P(0.15, 10.4);
+  const fr = b.frame;
+  // Schutzbleche als Bögen über den Rädern
+  for (const u of [-0.22, front]) {
+    const arc: Vec3[] = [];
+    for (let k = 0; k <= 6; k++) {
+      const a = Math.PI * (0.15 + (k / 6) * 0.7);
+      arc.push(
+        P(u + Math.cos(a) * r * 1.1 * (u > 0 ? -1 : 1), wz + Math.sin(a) * wz * 1.1, -0.003),
+      );
+    }
+    polyline(c, arc, shade(fr, 0.85), 0.8);
+  }
+  strut(c, P(-0.22, wz), bb, fr, 1.2);
+  strut(c, P(-0.22, wz), seat, fr, 1);
+  strut(c, bb, seat, fr, 1.3);
+  if (b.low) strut(c, P(0.03, wz + 0.4), head0, fr, 1.4);
+  else strut(c, seat, head1, fr, 1.2);
+  strut(c, bb, head0, fr, 1.4);
+  strut(c, head0, head1, shade(fr, 0.8), 1.5);
+  strut(c, head0, P(front, wz), shade(fr, 0.9), 1.1);
+  // Kettenschutz, Sattel, Lenker
+  c.poly(
+    [P(-0.2, wz + 0.4, 0.004), bb, P(0.03, wz + 1.4, 0.004), P(-0.18, wz + 1.6, 0.004)],
+    shade(C.ink, 1.2),
+  );
+  c.poly(
+    [P(-0.12, 10.2, -0.02), P(-0.02, 10.6, -0.02), P(-0.02, 11.4, 0.02), P(-0.12, 11, 0.02)],
+    C.ink,
+  );
+  strut(c, head1, P(0.13, 12), C.castIron, 1.1);
+  strut(c, P(0.12, 12, -0.08), P(0.12, 12, 0.08), C.rubber, 1.2);
+  if (b.basket) {
+    c.box(U(front > 0.3 ? 0.2 : 0.18) - 0.06, v - 0.06, 9.6, 0.12, 0.12, 3.6, C.oakLight);
+    c.flat(U(0.18) - 0.05, v - 0.05, 13.21, 0.1, 0.1, shade(C.oakLight, 0.7));
+  }
+  if (b.crate) {
+    strut(c, seat, P(-0.24, 9.6), C.castIron, 0.8);
+    c.bevel(U(-0.24) - 0.05, v - 0.05, 9.6, 0.1, 0.1, 3, b.crate, { b: 0.5 });
+  }
+  if (b.cargo) c.bevel(U(0.2) - 0.07, v - 0.08, 5.5, 0.14, 0.16, 4.5, b.cargo, { b: 0.6 });
+  c.raw(
+    (() => {
+      const [x, y] = c.p(P(0.17, 9.6, 0.01));
+      const [x2, y2] = c.p(P(-0.27, 8.6, 0.01));
+      return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="0.8" fill="${C.led}"/><circle cx="${x2.toFixed(2)}" cy="${y2.toFixed(2)}" r="0.7" fill="${C.signalRed}"/>`;
+    })(),
+  );
+}
+
+/** Radfahrer entlang u (Blockfigur wie die Passanten): Fahrrad, Beine an den Pedalen, Helm; „f“ = nach +u. */
 interface BikeStyle {
   frame: string;
   jacket: string;
   helmet: string;
   pants: string;
   bag?: string;
+  low?: boolean;
+  basket?: boolean;
 }
 const BIKES: BikeStyle[] = [
-  { frame: C.cobalt, jacket: '#f2c14e', helmet: C.white, pants: C.ink },
-  { frame: C.red, jacket: '#77c4b1', helmet: C.ink, pants: '#5a6b8c', bag: C.orange },
+  { frame: C.cobalt, jacket: C.carYellow, helmet: C.white, pants: C.ink, basket: true, low: true },
+  { frame: C.carRed, jacket: C.carMint, helmet: C.ink, pants: C.carNavy, bag: C.orange },
 ];
 
 function bike(style: BikeStyle, heading: 'f' | 'b'): string {
   const c = canvasOf(CITY_SPRITE.car);
   const s = heading === 'f' ? 1 : -1;
-  const r = 0.12;
-  const wz = r * Z_PER_TILE;
-  c.shadow(-0.34, -0.06, 0, 0.68, 0.12, 0.26, 1.2);
-  const ring = (u: number) => {
-    const pts: Vec3[] = [];
-    const inner: Vec3[] = [];
-    for (let i = 0; i < 18; i++) {
-      const a = (i / 18) * Math.PI * 2;
-      pts.push([u + Math.cos(a) * r, 0, wz + Math.sin(a) * wz]);
-      inner.push([u + Math.cos(a) * r * 0.78, 0.001, wz + Math.sin(a) * wz * 0.78]);
-    }
-    c.poly(pts, C.ink);
-    c.poly(inner, '#b9c1cf', 0.55);
-    c.disc(u, 0.002, wz, 0.012, C.stainlessDark);
-  };
-  const back = -0.22 * s;
-  const front = 0.22 * s;
-  ring(back);
-  ring(front);
-  // Rahmen als dünne Streben (Bildschirmlinien)
-  const line = (a: Vec3, b: Vec3, color: string, w = 1.1) => {
-    const [x0, y0] = c.p(a);
-    const [x1, y1] = c.p(b);
-    c.raw(
-      `<line x1="${x0.toFixed(2)}" y1="${y0.toFixed(2)}" x2="${x1.toFixed(2)}" y2="${y1.toFixed(2)}" stroke="${color}" stroke-width="${String(w)}" stroke-linecap="round"/>`,
-    );
-  };
-  const seat: Vec3 = [-0.06 * s, 0, 9.5];
-  const bar: Vec3 = [0.16 * s, 0, 11];
-  const crank: Vec3 = [0, 0, wz];
-  line([back, 0, wz], crank, style.frame);
-  line([back, 0, wz], seat, style.frame);
-  line(crank, seat, style.frame);
-  line(crank, [0.14 * s, 0, 9.4], style.frame);
-  line([0.14 * s, 0, 9.4], seat, style.frame);
-  line([front, 0, wz], bar, style.frame);
-  line(bar, [0.13 * s, 0, 11.6], C.ink, 1.4);
-  // Fahrer: Bein, Rumpf, Arm, Kopf mit Helm
-  line(seat, [0.04 * s, 0.02, wz + 1.2], style.pants, 2.2);
-  c.box(-0.11 * s - 0.05, -0.05, 9.5, 0.1, 0.1, 9, style.jacket);
-  if (style.bag) c.box(-0.11 * s - 0.09, -0.06, 11, 0.06, 0.12, 6, style.bag);
-  line([-0.06 * s, 0.04, 17], [0.13 * s, 0.04, 11.6], style.jacket, 1.8);
-  c.box(-0.07 * s - 0.045, -0.045, 18.5, 0.09, 0.09, 6, C.skin);
-  c.dome(-0.07 * s, 0, 23.6, 0.065, 3.2, style.helmet);
-  // Licht vorn bzw. Rücklicht
-  const [lx, ly] = c.p([(heading === 'f' ? 0.17 : 0.27) * s, 0.01, 10.4]);
-  c.raw(
-    `<circle cx="${lx.toFixed(2)}" cy="${ly.toFixed(2)}" r="0.9" fill="${heading === 'f' ? C.led : C.red}"/>`,
-  );
+  const P = (u: number, z: number, dv = 0): Vec3 => [u * s, dv, z];
+  c.shadow(-0.36, -0.07, 0, 0.72, 0.14, 0.28, 1.2);
+  // fernes Bein und Arm zuerst
+  strut(c, P(-0.06, 10.6, -0.04), P(-0.02, 6.4, -0.04), shade(style.pants, 0.8), 2.2);
+  strut(c, P(-0.02, 6.4, -0.04), P(0.02, 2.6, -0.04), shade(style.pants, 0.8), 2);
+  bicycle(c, 0, 0, s, { frame: style.frame, low: style.low, basket: style.basket });
+  // Rumpf nach vorn geneigt, Tasche, Kopf mit Helm
+  const torso: P2u[] = [
+    [-0.13, 10],
+    [-0.01, 10],
+    [0.05, 17.6],
+    [-0.06, 17.6],
+  ];
+  const t = torso.map(([u, z]) => [u * s, z] as P2u);
+  if (style.bag && s > 0) c.bevel(-0.17, -0.065, 11.5, 0.08, 0.13, 5, style.bag, { b: 0.6 });
+  extrudeU(c, s > 0 ? t : t.reverse(), -0.065, 0.065, style.jacket);
+  if (style.bag && s < 0) c.bevel(0.09, -0.065, 11.5, 0.08, 0.13, 5, style.bag, { b: 0.6 });
+  strut(c, P(-0.06, 10.6, 0.04), P(0.05, 8.6, 0.04), style.pants, 2.4);
+  strut(c, P(0.05, 8.6, 0.04), P(0.03, 4.4, 0.04), style.pants, 2.1);
+  c.box(0.03 * s - 0.03, 0.025, 3.6, 0.06, 0.04, 1.2, C.ink);
+  strut(c, P(0.03, 16.6, 0.05), P(0.12, 12.2, 0.07), style.jacket, 1.6);
+  c.bevel(-0.065, -0.065, 17.6, 0.13, 0.13, 5.4, C.skin, { b: 0.6 });
+  c.dome(-0.01 * s, 0, 22.4, 0.092, 4, style.helmet);
   return c.svg();
 }
 
@@ -950,62 +1908,174 @@ function pigeon(pose: 'stand' | 'peck' | 'fly0' | 'fly1'): string {
 }
 
 /**
- * Senkrechtes Prisma über einem konvexen Grundriss (Normale (dv, −du) jeder Kante zeigt nach außen): zeichnet nur die zur
- * Kamera zeigenden Seiten (Normale mit +u/+v-Anteil), links 85 %, rechts 70 %, Deckel 100 %.
+ * Ausflugsdampfer entlang u: weißer Rumpf mit Sprung zum Bug, roter Wasserpass, blaues Band mit Bullaugen,
+ * Salon mit Fensterband, offenes Sonnendeck mit Reling und Bänken, Steuerhaus, Mast mit Wimpel, Rettungsringe;
+ * Bugwelle und Kielwasser.
  */
-function prism(
-  c: IsoCanvas,
-  pts: readonly [number, number][],
-  z0: number,
-  z1: number,
-  color: string,
-) {
-  for (let i = 0; i < pts.length; i++) {
-    const a = pts[i];
-    const b = pts[(i + 1) % pts.length];
-    if (!a || !b) continue;
-    const nx = b[1] - a[1];
-    const ny = -(b[0] - a[0]);
-    if (nx + ny <= 0) continue;
-    const f = ny >= nx ? SHADE.left : SHADE.right;
-    c.poly(
-      [
-        [a[0], a[1], z0],
-        [b[0], b[1], z0],
-        [b[0], b[1], z1],
-        [a[0], a[1], z1],
-      ],
-      shade(color, f),
-    );
-  }
-  c.poly(
-    pts.map(([u, v]) => [u, v, z1] as Vec3),
-    color,
-  );
-}
-
-/** Ausflugsdampfer: weißer Rumpf mit blauem Band, verglastes Oberdeck, entlang u. */
 function boat(heading: 'f' | 'b'): string {
   const c = canvasOf(CITY_SPRITE.boat);
   const s = heading === 'f' ? 1 : -1;
-  c.glowFlat(-1.35, -0.5, 0, 2.7, 1, C.white, 0.3, 2.5);
+  const U = (u: number) => u * s;
+  c.glowFlat(-1.35, -0.52, 0, 2.7, 1.04, C.white, 0.28, 2.5);
+  // Bugwelle und Kielwasser als helle Keile
+  const wake = (pts: readonly (readonly [number, number])[], op: number) =>
+    c.poly(
+      pts.map(([u, v]) => [U(u), v, 0.2] as Vec3),
+      C.white,
+      op,
+    );
+  wake(
+    [
+      [1.22, 0],
+      [1.0, 0.5],
+      [0.85, 0.44],
+    ],
+    0.55,
+  );
+  wake(
+    [
+      [-1.15, 0.3],
+      [-1.5, 0.52],
+      [-1.52, 0.4],
+      [-1.15, 0.12],
+    ],
+    0.4,
+  );
   const hull: [number, number][] = [
     [-1.15, -0.4],
-    [0.95, -0.4],
+    [0.9, -0.4],
     [1.25, 0],
-    [0.95, 0.4],
+    [0.9, 0.4],
     [-1.15, 0.4],
-  ].map(([u, v]) => [(u ?? 0) * s, v ?? 0] as [number, number]);
-  // Gespiegelt ändert sich der Umlaufsinn; prism erwartet die Reihenfolge mit Normale (dv, −du) nach außen.
+    [-1.22, 0.2],
+    [-1.22, -0.2],
+  ].map(([u, v]) => [U(u ?? 0), v ?? 0] as [number, number]);
   const ordered = s > 0 ? hull : hull.slice().reverse();
-  prism(c, ordered, 0, 8, C.white);
-  c.wallV(-1.15, 0.401, 2.5, 2.1, 2, C.cobalt);
-  c.flat(-0.8, -0.3, 8.01, 1.5, 0.6, C.oakLight);
-  c.box(-0.7, -0.28, 8, 1.2, 0.56, 9, C.white);
-  c.wallV(-0.65, 0.281, 10, 1.1, 5, C.glass);
-  c.wallU(0.501, -0.24, 10, 0.48, 5, shade(C.glass, 0.85));
-  c.box(-0.75, -0.32, 17, 1.3, 0.64, 1.4, C.cobalt);
-  c.cylinder(-0.25 * s, 0, 18.4, 0.05, 6, C.cobalt);
+  prism(c, ordered, 0, 2.2, C.carRed);
+  prism(c, ordered, 2.2, 9, C.white);
+  // blaues Band mit Bullaugen, Scheuerleiste
+  c.poly(
+    [
+      [U(-1.15), 0.401, 3.6],
+      [U(0.9), 0.401, 3.6],
+      [U(0.9), 0.401, 5.6],
+      [U(-1.15), 0.401, 5.6],
+    ],
+    C.cobalt,
+  );
+  for (let k = 0; k < 9; k++)
+    c.poly(ringPts('v', U(-0.95 + k * 0.2), 0.402, 4.6, 0.028, 8), C.paneDark);
+  c.poly(
+    [
+      [U(-1.15), 0.402, 8.4],
+      [U(0.9), 0.402, 8.4],
+      [U(0.9), 0.402, 9],
+      [U(-1.15), 0.402, 9],
+    ],
+    tint(C.white, 0.5),
+  );
+  // Deck (Planken) und Salon mit Fensterband
+  c.poly(
+    ordered.map(([u, v]) => [u * 0.94, v * 0.9, 9.02] as Vec3),
+    C.oakLight,
+  );
+  const a0 = s > 0 ? -0.95 : -0.55;
+  const a1 = s > 0 ? 0.55 : 0.95;
+  c.bevel(a0, -0.3, 9, a1 - a0, 0.6, 9.5, C.white, { b: 0.8 });
+  c.poly(
+    [
+      [a0 + 0.06, 0.301, 11.2],
+      [a1 - 0.06, 0.301, 11.2],
+      [a1 - 0.06, 0.301, 16.4],
+      [a0 + 0.06, 0.301, 16.4],
+    ],
+    C.paneDark,
+  );
+  for (let k = 1; k < 7; k++) {
+    const u = a0 + 0.06 + ((a1 - a0 - 0.12) * k) / 7;
+    c.poly(
+      [
+        [u - 0.012, 0.302, 11.2],
+        [u + 0.012, 0.302, 11.2],
+        [u + 0.012, 0.302, 16.4],
+        [u - 0.012, 0.302, 16.4],
+      ],
+      C.white,
+    );
+  }
+  for (const t of [0.15, 0.55])
+    c.poly(
+      [
+        [a0 + (a1 - a0) * t, 0.3025, 11.6],
+        [a0 + (a1 - a0) * (t + 0.08), 0.3025, 11.6],
+        [a0 + (a1 - a0) * (t + 0.11), 0.3025, 16],
+        [a0 + (a1 - a0) * (t + 0.03), 0.3025, 16],
+      ],
+      C.white,
+      0.22,
+    );
+  const ue = a1 + 0.001;
+  c.poly(
+    [
+      [ue, -0.24, 11.2],
+      [ue, 0.24, 11.2],
+      [ue, 0.24, 16.4],
+      [ue, -0.24, 16.4],
+    ],
+    shade(C.paneDark, 0.9),
+  );
+  // Sonnendeck: Planken, blaue Bänke, Reling
+  c.flat(a0, -0.3, 18.51, a1 - a0, 0.6, C.oakLight);
+  for (let k = 0; k < 4; k++) {
+    const u = a0 + 0.18 + k * ((a1 - a0 - 0.36) / 3);
+    c.bevel(u - 0.06, -0.18, 18.5, 0.12, 0.36, 1.6, C.cobalt, { b: 0.5 });
+  }
+  // Steuerhaus am Bug, Mast mit Wimpel und Positionslicht
+  const wh = s > 0 ? a1 - 0.34 : a0 + 0.04;
+  c.bevel(wh, -0.2, 18.5, 0.3, 0.4, 7, C.white, { b: 0.8 });
+  c.poly(
+    [
+      [wh + 0.3 + 0.001, -0.16, 21],
+      [wh + 0.3 + 0.001, 0.16, 21],
+      [wh + 0.3 + 0.001, 0.16, 24.4],
+      [wh + 0.3 + 0.001, -0.16, 24.4],
+    ],
+    C.paneDark,
+  );
+  c.bevel(wh - 0.03, -0.23, 25.5, 0.36, 0.46, 1.2, C.cobalt, { b: 0.4 });
+  const mu = U(-0.6);
+  c.cylinder(mu, 0, 18.5, 0.014, 14, C.white);
+  c.poly(
+    [
+      [mu, 0, 32],
+      [mu - 0.22 * s, 0, 30.6],
+      [mu, 0, 29.2],
+    ],
+    C.cobalt,
+  );
+  c.disc(mu, 0, 32.6, 0.02, C.signalYellow);
+  const rail = (pts: Vec3[]) => polyline(c, pts, C.white, 0.7);
+  rail([
+    [a0, 0.3, 21.6],
+    [a1, 0.3, 21.6],
+    [a1, -0.3, 21.6],
+  ]);
+  for (let k = 0; k <= 10; k++)
+    strut(
+      c,
+      [a0 + ((a1 - a0) * k) / 10, 0.3, 18.5],
+      [a0 + ((a1 - a0) * k) / 10, 0.3, 21.6],
+      C.white,
+      0.5,
+    );
+  for (let k = 0; k <= 4; k++)
+    strut(c, [a1, -0.3 + k * 0.15, 18.5], [a1, -0.3 + k * 0.15, 21.6], C.white, 0.5);
+  // Rettungsringe an der Bordwand des Salons
+  for (const u of [a0 + 0.02, a1 - 0.12])
+    if (u > a0) {
+      c.poly(ringPts('v', u + 0.05, 0.303, 10.6 + 3, 0.045, 10), C.orange);
+      c.poly(ringPts('v', u + 0.05, 0.304, 10.6 + 3, 0.022, 8), C.paneDark);
+    }
   return c.svg();
 }
 
@@ -1015,7 +2085,10 @@ function boat(heading: 'f' | 'b'): string {
 const wide = () => canvasOf(CITY_SPRITE.wide);
 const small = () => canvasOf(CITY_SPRITE.prop);
 
-/** Gestreiftes Schrägdach (Marktstand, Kiosk): Streifen entlang u, Neigung nach +v. */
+/**
+ * Gestreiftes Schrägdach (Marktstand, Kiosk): Bahnen entlang u, Neigung nach +v, vorn und an der +u-Seite ein
+ * Volant mit Bögen; Unterseite der Bahnen als dunkler Saum.
+ */
 function stripedRoof(
   c: IsoCanvas,
   u0: number,
@@ -1040,183 +2113,625 @@ function stripedRoof(
       ],
       k % 2 ? b : a,
     );
-    c.wallV(x0, v0 + d, zFront - 3, x1 - x0, 3, shade(k % 2 ? b : a, SHADE.left));
   }
+  valance(
+    c,
+    [u0 + w, v0, zBack],
+    [u0 + w, v0 + d, zFront],
+    2.6,
+    [a, b],
+    Math.max(2, Math.round(n * (d / w))),
+    SHADE.right,
+  );
+  valance(c, [u0, v0 + d, zFront], [u0 + w, v0 + d, zFront], 2.6, [a, b], n, SHADE.left);
 }
 
-/** Zeitungs- und Getränkekiosk im Park: grüner Pavillon mit Fensterklappe und Markise. */
+/** Obst/Gemüse als kleine Kugeln in einer Kiste (Reihen × Spalten), leicht gehäuft. */
+function produce(
+  c: IsoCanvas,
+  u: number,
+  v: number,
+  z: number,
+  w: number,
+  d: number,
+  colors: readonly string[],
+  r = 0.042,
+) {
+  const cols = Math.max(2, Math.round(w / (r * 2.2)));
+  const rows = Math.max(2, Math.round(d / (r * 2.2)));
+  for (let j = 0; j < rows; j++)
+    for (let i = 0; i < cols; i++) {
+      const cu = u + ((i + 0.5) * w) / cols;
+      const cv = v + ((j + 0.5) * d) / rows;
+      const col = colors[(i * 3 + j * 5) % colors.length] ?? C.red;
+      c.dome(cu, cv, z + (j % 2) * 0.4, r, r * 46, col);
+    }
+}
+
+/** Holzkiste mit Lattenfugen, schräg zur Kundschaft; `fill` zeichnet den Inhalt. */
+function crate(c: IsoCanvas, u: number, v: number, z: number, w: number, d: number, h: number) {
+  c.bevel(u, v, z, w, d, h, C.oakLight, { b: 0.5, edge: 0.25 });
+  c.wallV(u + 0.01, v + d + 0.001, z + h * 0.45, w - 0.02, 0.5, shade(C.oakLight, 0.7));
+}
+
+/**
+ * Zeitungs- und Getränkekiosk im Park: grüner Pavillon mit Kassettenwänden, offene Verkaufsklappe mit Auslage
+ * (Zeitschriften, Gläser mit Süßem, Getränke), Tür mit Plakaten, Walmdach mit Knauf, Markise mit Volant,
+ * Zeitungsständer davor.
+ */
 function kiosk(): string {
   const c = wide();
-  const g = '#2f5a4a';
-  c.shadow(-0.6, -0.5, 0, 1.2, 1.1, 0.26, 1.6);
-  c.bevel(-0.55, -0.45, 0, 1.1, 0.9, 30, g, { b: 1.2 });
-  c.wallV(-0.45, 0.451, 12, 0.9, 12, '#eadfc8');
-  for (let k = 0; k < 5; k++)
-    c.wallV(
-      -0.42 + k * 0.17,
-      0.452,
-      14,
-      0.12,
-      8,
-      [C.red, C.gold, C.cobalt, C.sakura, C.white][k] ?? C.red,
-    );
-  c.box(-0.5, 0.42, 10, 1, 0.12, 2, C.oakLight);
-  c.wallU(0.551, -0.35, 4, 0.5, 20, shade(C.cream, SHADE.right));
-  stripedRoof(c, -0.62, -0.5, 1.24, 1.15, 34, 29, C.matchaDeep, C.white, 7);
-  c.dome(0, 0, 34, 0.2, 8, g);
-  c.cylinder(0, 0, 41, 0.02, 6, C.gold);
+  const g = C.pillarGreen;
+  c.shadow(-0.66, -0.54, 0, 1.32, 1.18, 0.28, 1.8);
+  c.bevel(-0.57, -0.47, 0, 1.14, 0.94, 2.2, C.stone, { b: 0.6 });
+  c.bevel(-0.55, -0.45, 2.2, 1.1, 0.9, 27.8, g, { b: 1 });
+  // Kassetten an der rechten Seite und Tür
+  for (const [v0, w] of [
+    [-0.4, 0.22],
+    [0.18, 0.22],
+  ] as const) {
+    c.wallU(0.551, v0, 5, w, 9, shade(tint(g, 0.12), SHADE.right));
+    c.wallU(0.552, v0 + 0.02, 6, w - 0.04, 7, shade(g, SHADE.right * 0.92));
+  }
+  c.wallU(0.551, -0.14, 2.2, 0.28, 22, shade(C.doorWood, SHADE.right));
+  c.wallU(0.552, -0.11, 12, 0.22, 10, shade(C.pane, SHADE.right));
+  c.wallU(0.553, -0.1, 3.6, 0.2, 7, shade(C.sakura, SHADE.right));
+  c.wallU(0.554, -0.06, 5, 0.12, 3, shade(C.white, SHADE.right));
+  c.wallU(0.551, 0.2, 16, 0.18, 9, shade(C.gold, SHADE.right));
+  c.wallU(0.552, 0.23, 18, 0.1, 4, shade(C.red, SHADE.right));
+  // Verkaufsfenster vorn: dunkles Inneres, Regale mit Ware, Klappe darüber
+  c.wallV(-0.47, 0.451, 11, 0.94, 15, shade(C.paneDark, 0.9));
+  for (const z of [14, 19.5]) {
+    c.wallV(-0.45, 0.452, z - 0.6, 0.9, 0.6, C.oak);
+    for (let k = 0; k < 9; k++)
+      c.wallV(
+        -0.43 + k * 0.1,
+        0.453,
+        z,
+        0.07,
+        3.6 + (k % 3),
+        [C.red, C.gold, C.cobalt, C.sakura, C.white, C.matcha][(k + z) % 6] ?? C.red,
+      );
+  }
+  c.wallV(-0.47, 0.452, 24.4, 0.94, 1.6, tint(g, 0.2));
+  c.bevel(-0.52, 0.42, 10, 1.04, 0.13, 1.4, C.oakLight, { b: 0.5, edge: 0.3 });
+  for (const [u, col] of [
+    [-0.38, C.sakura],
+    [-0.28, C.gold],
+    [-0.18, C.matchaFoam],
+  ] as const) {
+    c.group(0.75, () => c.cylinder(u, 0.49, 11.4, 0.035, 4.2, C.glass, tint(C.glass, 0.4)));
+    c.cylinder(u, 0.49, 11.4, 0.028, 2.4, col, col);
+    c.cylinder(u, 0.49, 15.6, 0.03, 0.8, C.red, tint(C.red, 0.3));
+  }
+  c.box(0.1, 0.44, 11.4, 0.22, 0.1, 1.6, C.paper);
+  c.box(0.12, 0.45, 13, 0.18, 0.08, 1.2, tint(C.cobaltLight, 0.4));
+  // Walmdach mit Überstand, Knauf
+  const eave = 30;
+  const top = 41;
+  const [U0, U1, V0, V1] = [-0.64, 0.64, -0.54, 0.54];
+  c.poly(
+    [
+      [U0, V1, eave],
+      [U1, V1, eave],
+      [0.12, 0.08, top],
+      [-0.12, 0.08, top],
+    ],
+    shade(C.lampGreen, 0.95),
+  );
+  c.poly(
+    [
+      [U1, V0, eave],
+      [U1, V1, eave],
+      [0.12, 0.08, top],
+      [0.12, -0.08, top],
+    ],
+    shade(C.lampGreen, 0.78),
+  );
+  c.poly(
+    [
+      [-0.12, -0.08, top],
+      [0.12, -0.08, top],
+      [0.12, 0.08, top],
+      [-0.12, 0.08, top],
+    ],
+    tint(C.lampGreen, 0.2),
+  );
+  c.wallV(U0, V1, eave - 1.2, U1 - U0, 1.2, shade(C.lampGreen, 0.7));
+  c.wallU(U1, V0, eave - 1.2, V1 - V0, 1.2, shade(C.lampGreen, 0.6));
+  c.cylinder(0, 0, top, 0.02, 3, C.brass);
+  facetBall(c, 0, 0, top + 4.5, 0.045, C.brass, { seg: 8, rings: 4 });
+  stripedRoof(c, -0.6, 0.45, 1.2, 0.16, 28.5, 26.5, C.matchaDeep, C.white, 8);
+  // Zeitungsständer links vor dem Kiosk
+  c.shadow(-0.86, 0.5, 0, 0.18, 0.12, 0.22);
+  c.box(-0.85, 0.52, 0, 0.16, 0.08, 9, shade(C.castIron, 1.2));
+  for (let k = 0; k < 3; k++)
+    c.wallV(-0.84, 0.601, 2 + k * 2.6, 0.14, 2, [C.paper, C.white, C.cream][k] ?? C.paper);
   return c.svg();
 }
 
-/** Marktstand: Tisch mit Ware, Stangen und gestreiftes Dach (vier Farben/Waren). */
+const STALLS: readonly {
+  roof: [string, string];
+  cloth: string;
+  /** Inhalt der drei Kisten (je eine Farbfolge) bzw. Blumen-Eimer. */
+  wares: readonly (readonly string[])[];
+  kind: 'produce' | 'flowers' | 'bakery';
+}[] = [
+  {
+    roof: [C.canvasRed, C.white],
+    cloth: C.canvasRed,
+    wares: [
+      [C.red, shade(C.red, 0.8)],
+      [C.orange, C.gold],
+      [C.leafLight, C.leafMid],
+      [C.carYellow, C.gold],
+    ],
+    kind: 'produce',
+  },
+  {
+    roof: [C.cobalt, C.white],
+    cloth: C.cobalt,
+    wares: [
+      [C.sakura, C.white],
+      [C.carYellow, C.orange],
+      [C.red, C.sakura],
+      [C.plum, C.cobaltLight],
+    ],
+    kind: 'flowers',
+  },
+  {
+    roof: [C.matchaDeep, C.linen],
+    cloth: C.matchaDeep,
+    wares: [
+      [C.leafMid, C.leaf],
+      [C.matchaFoam, C.leafLight],
+      [C.carRed, C.red],
+      [C.cream, C.sage],
+    ],
+    kind: 'produce',
+  },
+  {
+    roof: [C.orange, C.linen],
+    cloth: C.orange,
+    wares: [[C.oakLight, C.woodDark], [C.cream, C.oakLight], [C.sakura, C.cream], [C.coffee]],
+    kind: 'bakery',
+  },
+];
+
+/**
+ * Marktstand: Tisch mit Stoffbehang, schräge Kisten mit Ware (Obst/Gemüse, Blumen-Eimer oder Brote unter
+ * Glasglocke), Waage und Tafel, Kisten dahinter, Stangen und gestreiftes Dach mit Volant.
+ */
 function stall(variant: number): string {
   const c = wide();
-  const [a, b] = (
-    [
-      [C.red, C.white],
-      [C.cobalt, C.white],
-      [C.matchaDeep, C.cream],
-      [C.orange, C.cream],
-    ] as const
-  )[variant] ?? [C.red, C.white];
-  const wares = [
-    [C.red, C.orange, C.matcha, C.gold],
-    [C.sakura, C.white, C.cobaltLight, C.cream],
-    [C.matcha, C.matchaDeep, C.sage, C.gold],
-    [C.coffee, C.oakLight, C.cream, C.sakura],
-  ][variant] ?? [C.red];
-  c.shadow(-0.65, -0.35, 0, 1.3, 0.75, 0.24);
+  const st = STALLS[variant % STALLS.length] ?? STALLS[0];
+  if (!st) return c.svg();
+  const [a, b] = st.roof;
+  c.shadow(-0.68, -0.38, 0, 1.36, 0.82, 0.26, 1.8);
+  // Kisten hinten (Vorrat)
+  crate(c, -0.5, -0.32, 0, 0.26, 0.18, 6);
+  crate(c, -0.46, -0.3, 6, 0.22, 0.15, 5);
+  crate(c, 0.26, -0.32, 0, 0.26, 0.18, 6);
   for (const [u, v] of [
-    [-0.6, -0.3],
-    [0.58, -0.3],
-    [-0.6, 0.36],
-    [0.58, 0.36],
+    [-0.6, -0.36],
+    [0.58, -0.36],
+    [-0.6, 0.14],
+    [0.58, 0.14],
   ] as const)
-    c.box(u, v, 0, 0.03, 0.03, 30, C.stainlessDark);
-  c.box(-0.55, -0.2, 0, 1.1, 0.5, 12, C.oak);
-  c.wallV(-0.55, 0.301, 2, 1.1, 8, shade(a, 0.95));
-  for (let k = 0; k < 6; k++) {
-    const col = wares[k % wares.length] ?? C.red;
-    c.box(-0.5 + k * 0.17, -0.15, 12, 0.14, 0.4, 2.5, shade(C.woodDark, 1.1));
-    for (let m = 0; m < 3; m++) c.dome(-0.43 + k * 0.17, -0.08 + m * 0.13, 14.5, 0.045, 2.6, col);
-  }
-  stripedRoof(c, -0.66, -0.36, 1.32, 0.82, 32, 27, a, b, 6);
+    if (v < 0) c.box(u, v, 0, 0.03, 0.03, 33, C.stainlessDark);
+  c.bevel(-0.56, -0.18, 0, 1.12, 0.5, 11, st.cloth, { b: 0.8 });
+  // Behang mit hellem Saum, Tischplatte
+  c.wallV(-0.56, 0.321, 1, 1.12, 1.2, tint(st.cloth, 0.5));
+  c.bevel(-0.58, -0.2, 11, 1.16, 0.54, 1, C.oak, { b: 0.4, edge: 0.3 });
+  const wares = st.wares;
+  wares.forEach((w, k) => {
+    const u = -0.53 + k * 0.27;
+    if (st.kind === 'flowers') {
+      c.cylinder(u + 0.12, 0.06, 12, 0.08, 6, C.galvanized, shade(C.galvanized, 0.7));
+      for (let m = 0; m < 5; m++) {
+        const du = Math.cos(m * 1.3) * 0.05;
+        const dv = Math.sin(m * 1.3) * 0.05;
+        strut(c, [u + 0.12, 0.06, 17], [u + 0.12 + du, 0.06 + dv, 22], C.leaf, 0.8);
+        c.dome(u + 0.12 + du, 0.06 + dv, 22, 0.035, 2.6, w[m % w.length] ?? C.sakura);
+      }
+    } else if (st.kind === 'bakery') {
+      c.bevel(u, -0.12, 12, 0.24, 0.36, 1.2, C.woodDark, { b: 0.4 });
+      for (let m = 0; m < 3; m++)
+        c.dome(
+          u + 0.06 + m * 0.07,
+          -0.02 + (m % 2) * 0.14,
+          13.2,
+          0.05,
+          3.2,
+          w[m % w.length] ?? C.oakLight,
+        );
+    } else {
+      crate(c, u, -0.12, 12, 0.24, 0.36, 2.6);
+      produce(c, u + 0.02, -0.1, 14.6, 0.2, 0.32, w);
+    }
+  });
+  if (st.kind === 'bakery') c.group(0.45, () => c.dome(0.42, 0.1, 13, 0.1, 7, C.glass));
+  // Waage und Tafel (ohne Schrift) vorn rechts
+  c.bevel(0.42, 0.18, 12, 0.1, 0.08, 1.6, C.stainless, { b: 0.4 });
+  c.disc(0.47, 0.22, 13.7, 0.05, C.stainlessLight);
+  c.wallV(0.18, 0.321, 6, 0.16, 5, C.ink);
+  c.wallV(0.2, 0.322, 9, 0.12, 0.6, C.white);
+  c.wallV(0.2, 0.322, 7.4, 0.08, 0.6, C.white);
+  for (const u of [-0.6, 0.58]) c.box(u, 0.14, 0, 0.03, 0.03, 30.5, C.stainlessDark);
+  stripedRoof(c, -0.68, -0.4, 1.36, 0.58, 34, 30, a, b, 7);
   return c.svg();
 }
 
-/** Imbisswagen: Kastenwagen mit Verkaufsklappe, Markise und Theke (zwei Lackfarben). */
+/**
+ * Imbisswagen (zwei Lacke): Kastenwagen mit rundem Fahrerhaus, Verkaufsklappe mit Markise und Volant, Theke mit
+ * Servietten und Bechern, Menütafel aus Farbfeldern, Dachaufsteller mit Becher-Emblem, Gasflaschen hinten.
+ */
 function foodtruck(variant: number): string {
   const c = wide();
-  const body = variant ? C.cobalt : C.gold;
-  c.shadow(-0.95, -0.38, 0, 1.9, 0.76, 0.3, 1.6);
-  for (const u of [-0.55, 0.55]) wheel(c, u, 0.34);
-  c.bevel(-0.95, -0.34, 3, 1.9, 0.68, 24, body, { b: 2, edge: 0.3 });
-  c.bevel(0.55, -0.3, 27, 0.4, 0.6, 3, shade(body, 0.9), { b: 1 });
-  c.wallV(-0.6, 0.341, 10, 1, 11, '#2b2f3f');
-  c.wallV(-0.55, 0.342, 12, 0.9, 7, '#eadfc8');
-  for (let k = 0; k < 4; k++)
-    c.wallV(-0.5 + k * 0.22, 0.343, 13, 0.12, 4, [C.red, C.matcha, C.white, C.orange][k] ?? C.red);
-  c.box(-0.62, 0.34, 10, 1.04, 0.12, 1.4, C.stainless);
-  c.poly(
-    [
-      [-0.65, 0.34, 22],
-      [0.45, 0.34, 22],
-      [0.45, 0.62, 18],
-      [-0.65, 0.62, 18],
-    ],
-    variant ? C.white : C.red,
-  );
-  c.wallU(0.951, -0.25, 12, 0.5, 9, shade(C.glass, 0.85));
-  return c.svg();
-}
-
-/** Spielplatz: Schaukel und Rutsche auf Sand. */
-function playground(): string {
-  const c = wide();
-  c.shadow(-0.9, -0.5, 0, 1.8, 1, 0.18, 2);
-  // Schaukel: Gestell entlang u, zwei Sitze
-  for (const u of [-0.85, -0.05]) {
-    c.box(u, -0.25, 0, 0.04, 0.04, 30, C.red);
-    c.box(u, 0.25, 0, 0.04, 0.04, 30, C.red);
+  const body = variant ? C.cobalt : C.carYellow;
+  const trim = variant ? C.white : C.canvasRed;
+  const W = 0.34;
+  c.shadow(-0.98, -0.4, 0, 1.96, 0.8, 0.32, 1.8);
+  for (const u of [-0.55, 0.58]) wheel(c, u, -W + 0.02, 0.12);
+  for (const v of [-0.12, 0.08]) {
+    c.cylinder(-1.04, v, 3, 0.05, 9, C.galvanized, tint(C.galvanized, 0.3));
+    c.dome(-1.04, v, 12, 0.05, 2.2, C.galvanized);
   }
-  c.box(-0.85, -0.25, 30, 0.84, 0.04, 2, C.red);
-  for (const u of [-0.65, -0.3]) {
-    c.box(u, -0.24, 10, 0.006, 0.006, 20, C.ink);
-    c.box(u + 0.1, -0.24, 10, 0.006, 0.006, 20, C.ink);
-    c.box(u - 0.01, -0.27, 9, 0.13, 0.08, 1.5, C.gold);
-  }
-  // Rutsche: Turm mit Dach, Rutschbahn nach +v
-  c.box(0.3, -0.3, 0, 0.4, 0.4, 18, C.oak);
-  c.box(0.28, -0.32, 18, 0.44, 0.44, 2, C.oakLight);
-  c.poly(
+  extrudeU(
+    c,
     [
-      [0.32, -0.32, 34],
-      [0.72, -0.32, 34],
-      [0.72, 0.12, 26],
-      [0.32, 0.12, 26],
+      [-0.96, 3],
+      [0.95, 3],
+      [0.96, 9],
+      [0.92, 12],
+      [0.84, 13],
+      [0.72, 24],
+      [0.64, 26],
+      [-0.94, 26],
+      [-0.97, 24],
     ],
-    C.cobalt,
+    -W,
+    W,
+    body,
+    { seg: (i) => (i === 4 ? tint(C.pane, 0.18) : undefined) },
   );
-  c.poly(
-    [
-      [0.4, 0.1, 18],
-      [0.62, 0.1, 18],
-      [0.62, 0.6, 2],
-      [0.4, 0.6, 2],
-    ],
-    C.gold,
-  );
-  c.box(0.4, 0.1, 18, 0.02, 0.5, 2, shade(C.gold, 0.8));
-  return c.svg();
-}
-
-/** Brunnen: runde Steinschale mit Wasser und Fontäne. */
-function fountain(): string {
-  const c = wide();
-  c.shadowDisc(0, 0, 0, 0.75, 0.2, 2);
-  c.cylinder(0, 0, 0, 0.7, 5, C.stone, tint(C.stone, 0.3));
-  c.disc(0, 0, 5, 0.62, '#5fa8d8');
-  c.disc(-0.15, -0.1, 5.1, 0.3, '#8cc6ea');
-  c.cylinder(0, 0, 5, 0.12, 10, C.stone, tint(C.stone, 0.3));
-  c.disc(0, 0, 15, 0.1, '#8cc6ea');
-  c.group(0.7, () => c.frustum(0, 0, 15, 0.04, 0.16, 14, C.ice, C.white));
-  return c.svg();
-}
-
-/** Eiswagen mit Schirm. */
-function icecart(): string {
-  const c = small();
-  c.shadow(-0.3, -0.18, 0, 0.6, 0.36, 0.24);
-  wheel(c, -0.2, 0.16);
-  c.bevel(-0.3, -0.16, 3, 0.6, 0.32, 13, C.white, { b: 1.4 });
-  c.wallV(-0.28, 0.161, 6, 0.56, 4, C.sakura);
-  for (let k = 0; k < 3; k++)
-    c.disc(-0.15 + k * 0.15, 0, 16.2, 0.05, [C.sakura, C.matchaFoam, C.cream][k] ?? C.cream);
-  c.cylinder(0.22, 0, 16, 0.012, 22, C.white);
-  const [cx, cy] = c.p([0.22, 0, 38]);
-  c.raw(
-    `<path d="M${(cx - 20).toFixed(1)},${(cy + 3).toFixed(1)} Q${cx.toFixed(1)},${(cy - 12).toFixed(1)} ${(cx + 20).toFixed(1)},${(cy + 3).toFixed(1)} Z" fill="${C.sakura}"/><path d="M${(cx - 20).toFixed(1)},${(cy + 3).toFixed(1)} Q${cx.toFixed(1)},${(cy - 4).toFixed(1)} ${(cx + 20).toFixed(1)},${(cy + 3).toFixed(1)} Z" fill="${shade(C.sakura, 0.85)}"/>`,
-  );
-  return c.svg();
-}
-
-/** Fußballtor (Rahmen und Netz), entlang u. */
-function goal(): string {
-  const c = wide();
-  c.shadow(-0.8, -0.1, 0, 1.6, 0.4, 0.15);
-  for (const u of [-0.8, 0.77]) c.box(u, 0, 0, 0.03, 0.03, 24, C.white);
-  c.box(-0.8, 0, 24, 1.6, 0.03, 2, C.white);
-  c.group(0.35, () => {
+  const F = (u0: number, z0: number, w: number, h: number, col: string, op = 1) =>
     c.poly(
       [
-        [-0.78, 0.02, 24],
-        [0.78, 0.02, 24],
-        [0.78, -0.35, 0],
-        [-0.78, -0.35, 0],
+        [u0, W + 0.001, z0],
+        [u0 + w, W + 0.001, z0],
+        [u0 + w, W + 0.001, z0 + h],
+        [u0, W + 0.001, z0 + h],
+      ],
+      col,
+      op,
+    );
+  F(-0.96, 3, 1.9, 1.4, shade(body, 0.5));
+  F(-0.96, 7.2, 1.62, 1.2, trim);
+  // Fahrerhaus: Tür mit Scheibe
+  F(0.44, 4.4, 0.02, 20, shade(body, 0.6));
+  F(0.48, 13.4, 0.26, 9, shade(C.pane, 0.8));
+  F(0.5, 14, 0.06, 8, C.white, 0.25);
+  // Verkaufsklappe: Rahmen, Inneres, Menütafel, Theke
+  F(-0.72, 10, 1.06, 13, shade(C.ink, 1.05));
+  F(-0.7, 11, 1.02, 11.4, shade(C.paneDark, 0.95));
+  F(-0.66, 15, 0.3, 6, C.ink);
+  for (let k = 0; k < 3; k++)
+    F(-0.64, 16 + k * 1.7, 0.18, 0.7, [C.white, C.gold, C.white][k] ?? C.white);
+  F(-0.3, 12, 0.28, 8, C.stainless);
+  F(0.04, 15, 0.24, 6, C.paper);
+  F(0.07, 16, 0.08, 4, C.red);
+  F(0.17, 16, 0.08, 4, C.matcha);
+  c.bevel(-0.74, W - 0.02, 10, 1.1, 0.14, 1.4, C.stainless, { b: 0.5, edge: 0.35 });
+  c.cylinder(-0.5, W + 0.06, 11.4, 0.03, 3.4, C.cup, C.matchaFoam);
+  c.cylinder(-0.42, W + 0.06, 11.4, 0.03, 3.4, C.cup, C.coffee);
+  c.bevel(0.15, W + 0.02, 11.4, 0.08, 0.06, 2.6, C.white, { b: 0.4 });
+  // Markise über der Klappe
+  c.poly(
+    [
+      [-0.76, W, 24],
+      [0.38, W, 24],
+      [0.38, W + 0.3, 20.5],
+      [-0.76, W + 0.3, 20.5],
+    ],
+    trim,
+  );
+  for (let k = 1; k < 8; k += 2) {
+    const u0 = -0.76 + (k * 1.14) / 8;
+    c.poly(
+      [
+        [u0, W, 24],
+        [u0 + 1.14 / 8, W, 24],
+        [u0 + 1.14 / 8, W + 0.3, 20.5],
+        [u0, W + 0.3, 20.5],
       ],
       C.white,
     );
+  }
+  valance(c, [-0.76, W + 0.3, 20.5], [0.38, W + 0.3, 20.5], 2.2, [trim, C.white], 8, SHADE.left);
+  // Dachaufsteller mit Becher-Emblem, Gasflaschen am Heck
+  c.box(-0.42, -0.02, 26, 0.04, 0.04, 3, C.ink);
+  c.box(-0.06, -0.02, 26, 0.04, 0.04, 3, C.ink);
+  c.bevel(-0.5, -0.04, 29, 0.52, 0.08, 9, C.white, { b: 0.6 });
+  c.wallV(-0.46, 0.041, 30, 0.44, 7, trim);
+  c.poly(
+    [
+      [-0.29, 0.042, 31.2],
+      [-0.19, 0.042, 31.2],
+      [-0.165, 0.042, 35.4],
+      [-0.315, 0.042, 35.4],
+    ],
+    C.white,
+  );
+  c.wallV(-0.33, 0.043, 35.4, 0.18, 0.9, C.white);
+  c.wallV(-0.3, 0.043, 32.8, 0.12, 0.9, trim);
+  // Front: Scheinwerfer, Stoßstange
+  const eU = 0.962;
+  c.poly(
+    [
+      [eU, -W + 0.02, 3],
+      [eU, W - 0.02, 3],
+      [eU, W - 0.02, 4.6],
+      [eU, -W + 0.02, 4.6],
+    ],
+    shade(C.rubber, 1.6),
+  );
+  for (const v of [-W + 0.05, W - 0.13])
+    c.poly(
+      [
+        [eU, v, 6.4],
+        [eU, v + 0.08, 6.4],
+        [eU, v + 0.08, 8],
+        [eU, v, 8],
+      ],
+      C.led,
+    );
+  for (const u of [-0.55, 0.58]) wheel(c, u, W + 0.012, 0.12);
+  return c.svg();
+}
+
+/**
+ * Spielplatz: Sandfläche mit Einfassung, Doppelschaukel mit Ketten, Kletterturm mit Dach, Leiter und Rutsche,
+ * Federwippe.
+ */
+function playground(): string {
+  const c = wide();
+  c.flat(-0.88, -0.48, 0.2, 1.76, 0.96, C.oakLight);
+  c.flat(-0.84, -0.44, 0.3, 1.68, 0.88, tint(C.carTaxi, 0.2));
+  // Schaukel: zwei A-Gestelle, Querbalken, Sitze an Ketten
+  const post = C.carRed;
+  for (const u of [-0.82, -0.08]) {
+    strut(c, [u, -0.34, 0], [u, -0.06, 28], shade(post, 0.85), 2);
+    strut(c, [u, 0.22, 0], [u, -0.06, 28], post, 2);
+  }
+  c.bevel(-0.84, -0.08, 27.4, 0.78, 0.04, 2, post, { b: 0.5 });
+  for (const u of [-0.68, -0.36]) {
+    for (const du of [0, 0.12])
+      strut(c, [u + du, -0.06, 27.4], [u + du, -0.06, 8.6], C.castIron, 0.5);
+    c.bevel(u - 0.02, -0.1, 7.6, 0.16, 0.08, 1.2, C.rubber, { b: 0.4 });
+  }
+  // Kletterturm mit Dach, Leiter vorn, Rutsche zur +v-Seite
+  const wood = C.oak;
+  for (const [u, v] of [
+    [0.28, -0.4],
+    [0.7, -0.4],
+    [0.28, -0.02],
+    [0.7, -0.02],
+  ] as const)
+    c.box(u, v, 0, 0.05, 0.05, 30, wood);
+  c.bevel(0.26, -0.42, 14, 0.5, 0.44, 1.6, C.oakLight, { b: 0.5 });
+  c.box(0.28, 0.025, 15.6, 0.47, 0.012, 5, shade(wood, 0.9));
+  c.wallU(0.751, -0.38, 16, 0.36, 5, C.carGreen);
+  c.poly(
+    [
+      [0.22, -0.46, 30],
+      [0.8, -0.46, 30],
+      [0.51, -0.21, 37],
+    ],
+    shade(C.cobalt, 0.85),
+  );
+  c.poly(
+    [
+      [0.8, -0.46, 30],
+      [0.8, 0.04, 30],
+      [0.51, -0.21, 37],
+    ],
+    shade(C.cobalt, 0.7),
+  );
+  c.poly(
+    [
+      [0.22, 0.04, 30],
+      [0.8, 0.04, 30],
+      [0.51, -0.21, 37],
+    ],
+    C.cobalt,
+  );
+  for (let k = 0; k < 4; k++) c.box(0.78, -0.3 + k * 0.0, 2 + k * 3.4, 0.14, 0.04, 0.9, C.oakLight);
+  strut(c, [0.86, -0.32, 0], [0.86, -0.32, 15], wood, 1.3);
+  strut(c, [0.86, -0.22, 0], [0.86, -0.22, 15], wood, 1.3);
+  c.poly(
+    [
+      [0.36, 0.02, 15.6],
+      [0.6, 0.02, 15.6],
+      [0.6, 0.56, 1.5],
+      [0.36, 0.56, 1.5],
+    ],
+    C.carYellow,
+  );
+  c.poly(
+    [
+      [0.6, 0.02, 15.6],
+      [0.62, 0.02, 17.4],
+      [0.62, 0.56, 3.3],
+      [0.6, 0.56, 1.5],
+    ],
+    shade(C.carYellow, 0.75),
+  );
+  c.poly(
+    [
+      [0.34, 0.02, 17.4],
+      [0.36, 0.02, 15.6],
+      [0.36, 0.56, 1.5],
+      [0.34, 0.56, 3.3],
+    ],
+    shade(C.carYellow, 0.9),
+  );
+  // Federwippe (Tier aus Flächen)
+  c.shadowDisc(-0.3, 0.32, 0.3, 0.1, 0.25);
+  polyline(
+    c,
+    [
+      [-0.3, 0.32, 0.3],
+      [-0.31, 0.32, 2.4],
+      [-0.29, 0.32, 4.4],
+      [-0.31, 0.32, 6.4],
+    ],
+    C.galvanized,
+    1.4,
+  );
+  c.bevel(-0.42, 0.28, 6.4, 0.24, 0.09, 3.6, C.carMint, { b: 0.8 });
+  c.bevel(-0.2, 0.29, 9, 0.08, 0.07, 3.4, C.carMint, { b: 0.8 });
+  c.box(-0.36, 0.27, 10, 0.03, 0.11, 2, C.carYellow);
+  return c.svg();
+}
+
+/**
+ * Brunnen: runde Steinschale mit profiliertem Rand, Wasser mit Ringen und Glanz, Säule mit Schale, aus der
+ * Wasser in Schleiern fällt; Düse oben bei z ≈ 32 (Tropfen der Szene).
+ */
+function fountain(): string {
+  const c = wide();
+  c.shadowDisc(0, 0, 0, 0.8, 0.22, 2.2);
+  c.cylinder(0, 0, 0, 0.74, 2, shade(C.stone, 0.9), shade(C.stone, 0.9));
+  c.cylinder(0, 0, 2, 0.7, 4, C.stone, tint(C.stone, 0.3));
+  c.disc(0, 0, 6, 0.6, shade(C.stone, 0.85));
+  c.disc(0, 0, 5.2, 0.58, C.water);
+  for (const [r, op] of [
+    [0.45, 0.35],
+    [0.3, 0.45],
+  ] as const) {
+    c.raw(
+      (() => {
+        const [cx, cy] = c.p([0, 0, 5.3]);
+        const rx = r * c.k * Math.SQRT2;
+        return `<ellipse cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" rx="${rx.toFixed(2)}" ry="${(rx / 2).toFixed(2)}" fill="none" stroke="${C.waterLight}" stroke-width="0.8" stroke-opacity="${String(op)}"/>`;
+      })(),
+    );
+  }
+  c.disc(-0.24, -0.16, 5.3, 0.14, tint(C.water, 0.45));
+  // Säule mit Schaftring, obere Schale, fallendes Wasser, Düse
+  c.cylinder(0, 0, 5, 0.12, 3, C.stone, tint(C.stone, 0.2));
+  c.cylinder(0, 0, 8, 0.07, 12, C.stone);
+  c.shine(0, 0, 8, 0.07, 12, C.stone, 0.3);
+  c.frustum(0, 0, 20, 0.08, 0.3, 4.6, C.stone, tint(C.stone, 0.3));
+  c.disc(0, 0, 24.6, 0.26, C.water);
+  for (let k = 0; k < 7; k++) {
+    const a = (-0.2 + k * 0.15) * Math.PI;
+    strut(
+      c,
+      [Math.cos(a) * 0.29, Math.sin(a) * 0.29, 24.4],
+      [Math.cos(a) * 0.37, Math.sin(a) * 0.37, 5.6],
+      C.waterLight,
+      1.3,
+      0.55,
+    );
+  }
+  c.disc(-0.08, -0.06, 24.7, 0.08, tint(C.water, 0.5));
+  c.cylinder(0, 0, 24.6, 0.05, 4, C.stone, tint(C.stone, 0.3));
+  facetBall(c, 0, 0, 30, 0.055, C.stone, { seg: 8, rings: 4 });
+  c.group(0.7, () => c.frustum(0, 0, 30, 0.02, 0.07, 4, C.ice, C.white));
+  return c.svg();
+}
+
+/** Eiswagen: Kühlbox auf Rädern mit Glasaufsatz und Eiswannen, Waffeltüten, Schirm mit Volant, Schiebebügel. */
+function icecart(): string {
+  const c = small();
+  c.shadow(-0.32, -0.2, 0, 0.64, 0.4, 0.26);
+  wheel(c, -0.2, -0.17, 0.09);
+  c.bevel(-0.3, -0.17, 3, 0.6, 0.34, 12, C.white, { b: 1.2 });
+  c.wallV(-0.28, 0.171, 6, 0.56, 4, C.sakura);
+  c.wallV(-0.28, 0.172, 7.5, 0.56, 1, C.white);
+  c.wallU(0.301, -0.12, 5, 0.24, 8, shade(C.sakura, SHADE.right));
+  // Glasaufsatz mit drei Eiswannen
+  c.bevel(-0.27, -0.14, 15, 0.54, 0.28, 0.8, C.stainless, { b: 0.3 });
+  for (let k = 0; k < 3; k++) {
+    const u = -0.17 + k * 0.17;
+    c.disc(u, 0, 15.9, 0.065, C.stainlessDark);
+    c.dome(u, 0, 15.8, 0.055, 2.6, [C.sakura, C.matchaFoam, C.cream][k] ?? C.cream);
+  }
+  c.group(0.4, () => {
+    c.box(-0.27, -0.14, 15.8, 0.54, 0.28, 4, C.glass);
   });
+  // Tütenhalter, Schiebebügel
+  for (let k = 0; k < 3; k++)
+    c.frustum(-0.33, -0.08 + k * 0.08, 11, 0.008, 0.025, 4, C.oakLight, C.oakLight);
+  strut(c, [-0.3, -0.12, 14], [-0.42, -0.12, 18], C.stainlessDark, 1);
+  strut(c, [-0.3, 0.12, 14], [-0.42, 0.12, 18], C.stainlessDark, 1);
+  strut(c, [-0.42, -0.12, 18], [-0.42, 0.12, 18], C.rubber, 1.4);
+  wheel(c, -0.2, 0.18, 0.09);
+  wheel(c, 0.2, 0.18, 0.09);
+  // Schirm: Mast, acht Bahnen, Volant
+  c.cylinder(0.22, 0, 16, 0.012, 22, C.white);
+  const [cx, cy] = c.p([0.22, 0, 38]);
+  const R = 20;
+  for (let i = 0; i < 8; i++) {
+    const a0 = (i / 8) * Math.PI * 2;
+    const a1 = ((i + 1) / 8) * Math.PI * 2;
+    const col = i % 2 ? C.white : C.sakura;
+    const litSide = Math.sin((a0 + a1) / 2) > 0;
+    const f = (n: number) => n.toFixed(2);
+    c.raw(
+      `<polygon points="${f(cx)},${f(cy - 7)} ${f(cx + Math.cos(a0) * R)},${f(cy + Math.sin(a0) * R * 0.5)} ${f(cx + Math.cos(a1) * R)},${f(cy + Math.sin(a1) * R * 0.5)}" fill="${litSide ? col : shade(col, 0.86)}"/>`,
+    );
+    if (litSide) {
+      const pts: string[] = [];
+      for (let k = 0; k <= 4; k++) {
+        const a = a0 + ((a1 - a0) * k) / 4;
+        pts.push(
+          `${f(cx + Math.cos(a) * R)},${f(cy + Math.sin(a) * R * 0.5 + 2.2 + Math.sin((k / 4) * Math.PI) * 1.2)}`,
+        );
+      }
+      c.raw(
+        `<polygon points="${f(cx + Math.cos(a0) * R)},${f(cy + Math.sin(a0) * R * 0.5)} ${f(cx + Math.cos(a1) * R)},${f(cy + Math.sin(a1) * R * 0.5)} ${pts.reverse().join(' ')}" fill="${shade(col, 0.8)}"/>`,
+      );
+    }
+  }
+  c.raw(`<circle cx="${cx.toFixed(2)}" cy="${(cy - 7.4).toFixed(2)}" r="1.2" fill="${C.white}"/>`);
+  return c.svg();
+}
+
+/** Fußballtor (Pfosten, Latte, Bodenrahmen, Netz als feines Gitter), entlang u, Netz nach −v. */
+function goal(): string {
+  const c = wide();
+  c.shadow(-0.82, -0.42, 0, 1.64, 0.5, 0.16);
+  const net = (a: Vec3, b: Vec3) => strut(c, a, b, C.white, 0.35, 0.65);
+  // Netz: Rückwand und Dach als Gitter
+  for (let k = 0; k <= 10; k++) {
+    const u = -0.78 + k * (1.56 / 10);
+    net([u, 0, 24], [u, -0.36, 8]);
+    net([u, -0.36, 8], [u, -0.38, 0]);
+  }
+  for (let k = 0; k <= 3; k++) {
+    const t = k / 3;
+    net([-0.78, -0.36 * t, 24 - 16 * t], [0.78, -0.36 * t, 24 - 16 * t]);
+  }
+  for (let k = 0; k <= 2; k++) net([-0.78, -0.37, k * 4], [0.78, -0.37, k * 4]);
+  polyline(
+    c,
+    [
+      [-0.8, 0, 0.3],
+      [-0.8, -0.4, 0.3],
+      [0.8, -0.4, 0.3],
+      [0.8, 0, 0.3],
+    ],
+    C.galvanized,
+    0.9,
+  );
+  for (const u of [-0.8, 0.77]) {
+    c.box(u, -0.015, 0, 0.03, 0.03, 24, C.white);
+    strut(c, [u + 0.015, 0, 24], [u + 0.015, -0.38, 8], C.galvanized, 0.8);
+  }
+  c.box(-0.8, -0.015, 24, 1.6, 0.03, 1.8, C.white);
   return c.svg();
 }
 
@@ -1265,46 +2780,108 @@ function busstop(open: 1 | -1): string {
   return c.svg();
 }
 
-/** Gelber Briefkasten am Pfosten. */
+/** Gelber Briefkasten am Pfosten: gewölbtes Dach, Einwurfklappe, Leerungsschild, Emblemkreis (ohne Logo). */
 function mailbox(): string {
   const c = small();
-  c.shadowDisc(0, 0, 0, 0.1, 0.22);
-  c.cylinder(0, 0, 0, 0.025, 12, C.ink);
-  c.bevel(-0.1, -0.08, 12, 0.2, 0.16, 16, C.gold, { b: 1.6 });
-  c.wallV(-0.06, 0.081, 22, 0.12, 1.2, C.ink);
-  c.wallV(-0.05, 0.081, 15, 0.1, 3, shade(C.gold, 0.8));
+  const y = C.postYellow;
+  c.shadowDisc(0, 0, 0, 0.11, 0.26);
+  c.cylinder(0, 0, 0, 0.04, 1.2, C.castIron);
+  c.cylinder(0, 0, 1.2, 0.025, 11, C.castIron);
+  c.shine(0, 0, 1.2, 0.025, 11, C.castIron, 0.25);
+  c.bevel(-0.1, -0.085, 11.5, 0.2, 0.17, 15, y, { b: 1, edge: 0.3 });
+  // gewölbtes Dach entlang u
+  extrudeU(
+    c,
+    [
+      [-0.1, 26.5],
+      [0.1, 26.5],
+      [0.085, 28.2],
+      [0.04, 29.2],
+      [-0.04, 29.2],
+      [-0.085, 28.2],
+    ],
+    -0.085,
+    0.085,
+    y,
+  );
+  const F = (u0: number, z0: number, w: number, h: number, col: string) =>
+    c.wallV(u0, 0.0855, z0, w, h, col);
+  F(-0.075, 22.6, 0.15, 2.2, shade(C.ink, 1.1));
+  F(-0.075, 24.8, 0.15, 0.7, shade(y, 0.75));
+  F(-0.05, 15, 0.1, 4.6, C.white);
+  F(-0.04, 16.6, 0.08, 0.6, shade(C.ink, 1.4));
+  F(-0.04, 17.8, 0.05, 0.6, shade(C.ink, 1.4));
+  c.poly(ringPts('u', 0.1005, 0, 20.4, 0.035, 10), shade(C.ink, 1.1));
   return c.svg();
 }
 
-/** Zwei E-Roller am Ständer. */
+/** Zwei E-Roller am Ständer: Trittbrett mit Griffband, Lenkstange mit Display, Räder, Licht. */
 function scooters(): string {
   const c = small();
   for (const [v, col] of [
-    [-0.12, C.matcha],
-    [0.12, C.ink],
+    [-0.13, C.matcha],
+    [0.13, C.carNavy],
   ] as const) {
-    c.shadow(-0.25, v - 0.03, 0, 0.5, 0.06, 0.2);
-    c.box(-0.22, v - 0.02, 1, 0.42, 0.05, 1.6, col);
-    c.box(0.18, v - 0.01, 2.6, 0.02, 0.02, 20, C.stainless);
-    c.box(0.18, v - 0.08, 22, 0.02, 0.16, 1, C.ink);
-    for (const u of [-0.2, 0.18]) c.cylinder(u, v, 0, 0.04, 1, C.ink);
+    c.shadow(-0.27, v - 0.04, 0, 0.54, 0.08, 0.24);
+    for (const u of [-0.2, 0.19]) {
+      c.poly(ringPts('v', u, v - 0.01, 1.8, 0.05, 12), shade(C.rubber, 0.8));
+      c.poly(ringPts('v', u, v + 0.02, 1.8, 0.05, 12), C.rubber);
+      c.disc(u, v + 0.021, 1.8, 0.015, C.galvanized);
+    }
+    c.bevel(-0.22, v - 0.03, 2.2, 0.42, 0.06, 1.4, col, { b: 0.5 });
+    c.flat(-0.17, v - 0.022, 3.61, 0.3, 0.044, C.rubber);
+    strut(c, [0.19, v, 2.4], [0.15, v, 21], C.stainlessDark, 1.4);
+    strut(c, [0.19, v, 2.4], [0.155, v, 14], col, 1.6);
+    strut(c, [0.15, v - 0.09, 21], [0.15, v + 0.09, 21], C.rubber, 1.3);
+    c.box(0.13, v - 0.02, 20.2, 0.04, 0.04, 1.2, C.ink);
+    c.disc(0.21, v + 0.02, 6.5, 0.012, C.led);
+    strut(c, [-0.06, v + 0.03, 2.4], [-0.12, v + 0.08, 0.2], C.ink, 0.6);
   }
   return c.svg();
 }
 
-/** Imbiss-Tisch mit zwei Stühlen vor dem Laden (zwei Farben). */
+/** Imbiss-Tisch mit zwei Bistrostühlen (Rohrgestell, Lattensitz) vor dem Laden; zwei Farben. */
 function bistro(variant: number): string {
   const c = small();
-  const chair = variant ? C.red : C.matchaDeep;
-  c.shadowDisc(0, 0, 0, 0.32, 0.18);
-  for (const u of [-0.26, 0.2]) {
-    c.box(u, -0.06, 0, 0.12, 0.12, 6, C.stainless);
-    c.bevel(u - 0.01, -0.07, 6, 0.14, 0.14, 1.6, chair, { b: 0.5 });
-    c.box(u + (u < 0 ? -0.01 : 0.11), -0.07, 7.6, 0.03, 0.14, 7, chair);
-  }
-  c.cylinder(0, 0, 0, 0.012, 11, C.stainless);
-  c.cylinder(0, 0, 11, 0.13, 1, C.white, C.white);
-  c.cylinder(-0.03, 0.02, 12, 0.025, 3, C.cup, C.matchaFoam);
+  const col = variant ? C.carRed : C.matchaDeep;
+  c.shadowDisc(0, 0, 0, 0.34, 0.2, 2);
+  const chair = (u: number, back: 'left' | 'right') => {
+    c.shadow(u - 0.02, -0.09, 0, 0.18, 0.18, 0.2);
+    for (const [du, dv] of [
+      [0, -0.06],
+      [0.13, -0.06],
+      [0, 0.07],
+      [0.13, 0.07],
+    ] as const)
+      strut(c, [u + du, dv, 0], [u + du + (du ? -0.01 : 0.01), dv, 6.4], C.stainlessDark, 0.8);
+    for (let k = 0; k < 3; k++)
+      c.bevel(u - 0.01, -0.08 + k * 0.055, 6.4, 0.16, 0.045, 1.2, col, { b: 0.4 });
+    const bu = back === 'left' ? u - 0.01 : u + 0.13;
+    strut(
+      c,
+      [bu + 0.01, -0.07, 6.4],
+      [bu + (back === 'left' ? -0.01 : 0.03), -0.07, 13.5],
+      C.stainlessDark,
+      0.8,
+    );
+    strut(
+      c,
+      [bu + 0.01, 0.08, 6.4],
+      [bu + (back === 'left' ? -0.01 : 0.03), 0.08, 13.5],
+      C.stainlessDark,
+      0.8,
+    );
+    for (const z of [10, 12.4])
+      c.bevel(bu + (back === 'left' ? -0.015 : 0.02), -0.08, z, 0.03, 0.17, 1.4, col, { b: 0.4 });
+  };
+  chair(-0.3, 'left');
+  c.cylinder(0, 0, 0, 0.09, 0.8, C.stainlessDark);
+  c.cylinder(0, 0, 0.8, 0.014, 10.4, C.stainless);
+  c.cylinder(0, 0, 11.2, 0.15, 1.1, tint(C.stainless, 0.4), C.white);
+  c.cylinder(-0.05, 0.03, 12.3, 0.026, 3.4, C.cup, C.matchaFoam);
+  c.cylinder(0.05, -0.03, 12.3, 0.022, 4.4, C.glass, tint(C.glass, 0.4));
+  c.bevel(0.02, 0.04, 12.3, 0.05, 0.03, 2.6, C.stainless, { b: 0.3 });
+  chair(0.18, 'right');
   return c.svg();
 }
 
@@ -1352,6 +2929,13 @@ export function citySprites(): SpriteDef[] {
     out.push({ name: `car-${String(i)}-f`, svg: car(s, 'f') });
     out.push({ name: `car-${String(i)}-b`, svg: car(s, 'b') });
   });
+  // Weitere Lacke nur für parkende Autos (Front oder Heck vorn wie der Fahrstreifen daneben, quer gespiegelt)
+  CAR_PAINTS.forEach((list, t) =>
+    list.slice(0, PARKED_CAR_PAINTS).forEach((s, k) => {
+      out.push({ name: `car-${String(t)}-p${String(k + 1)}-f`, svg: car(s, 'f') });
+      out.push({ name: `car-${String(t)}-p${String(k + 1)}-b`, svg: car(s, 'b') });
+    }),
+  );
   // Radfahrer: Typen nach den Autos (`STREET_LIFE.bikeTypes`)
   BIKES.forEach((s, i) => {
     const t = CARS.length + i;

@@ -1258,11 +1258,25 @@ export function propCanvas(kind: PropKind): { w: number; h: number; ox: number; 
   return CITY_SPRITE.prop;
 }
 
+/** Zusätzliche Lacke je Autotyp für parkende Autos (`car-<typ>-p<k>-f`), der Verkehr fährt die Grundlacke. */
+export const PARKED_CAR_PAINTS = 1;
+
+/**
+ * Parkendes Auto: Typ aus `variant`, Lack aus der Position (Grundlack oder eine der Zusatzfarben), Front oder Heck
+ * vorn nach `heading` (wie der Fahrstreifen daneben).
+ */
+export function parkedCarFrame(p: PropDef): string {
+  const type = String(p.variant ?? 0);
+  const k = Math.floor(hash01(p.x, p.y, 23) * (PARKED_CAR_PAINTS + 1));
+  const end = p.heading === -1 ? 'b' : 'f';
+  return k === 0 ? `car-${type}-${end}` : `car-${type}-p${String(k)}-${end}`;
+}
+
 /** Frame-Name eines Objekts im `city`-Atlas (Varianten und Ausrichtung im Namen). */
 export function propFrame(p: PropDef): string {
   switch (p.kind) {
     case 'parked':
-      return `car-${String(p.variant ?? 0)}-${p.heading === -1 ? 'b' : 'f'}`;
+      return parkedCarFrame(p);
     case 'bench':
       return `bench-${p.axis ?? 'u'}`;
     case 'pedLight':
