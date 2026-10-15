@@ -1,8 +1,8 @@
 /**
- * Rendert die Sprites aus `scripts/art/sprites.ts` (SVG) mit Chromium als PNG 2× und packt sie in
+ * Rendert die Sprites aus `scripts/art/sprites.ts` (SVG) mit Chromium in 2× und packt sie in
  * Texture-Atlanten (Phaser JSON-Hash). Eigener Shelf-Packer statt TexturePacker/free-tex-packer,
- * damit keine neue Abhängigkeit nötig ist. Ausgabe wird eingecheckt; nur nach Änderungen an den
- * Sprites neu ausführen: `pnpm art`.
+ * damit keine neue Abhängigkeit nötig ist; die Atlanten werden als 8-Bit-Palette-PNG geschrieben
+ * (`art/png.ts`). Ausgabe wird eingecheckt; nur nach Änderungen an den Sprites neu ausführen: `pnpm art`.
  *
  *   public/assets/sprites/common.png|json      Stationen, Ambiente, Figuren, Effekte
  *   public/assets/sprites/theme-<ort>.png|json Boden/Wände je Standort (Lazy-Loading)
@@ -20,12 +20,14 @@ import {
   themeSprites,
   type SpriteDef,
 } from './art/sprites';
+import { encodePalettePng } from './art/png';
 
 const OUT = 'public/assets/sprites';
 const LOCATIONS = ['berlin', 'kyoto', 'tokyo', 'seoul', 'newyork', 'bali'];
 
 interface Packed {
-  png: string;
+  /** RGBA-Pixel des Atlas, Base64. */
+  rgba: string;
   w: number;
   h: number;
   frames: Record<string, { x: number; y: number; w: number; h: number }>;
@@ -80,7 +82,12 @@ async function pack(sprites: SpriteDef[], maxW = 2048): Promise<Packed> {
         const f = frames[name];
         if (f) ctx.drawImage(img, f.x, f.y);
       }
-      return { png: canvas.toDataURL('image/png'), w: width, h: height, frames };
+      // Rohpixel statt PNG: Node schreibt daraus ein Palette-PNG.
+      const data = ctx.getImageData(0, 0, width, height).data;
+      let bin = '';
+      for (let i = 0; i < data.length; i += 0x8000)
+        bin += String.fromCharCode(...data.subarray(i, Math.min(data.length, i + 0x8000)));
+      return { rgba: btoa(bin), w: width, h: height, frames };
     },
     { sprites, maxW },
   );
@@ -143,7 +150,8 @@ const writePng = (path: string, dataUrl: string): void => {
 };
 
 function writeAtlas(name: string, p: Packed): void {
-  writePng(`${OUT}/${name}.png`, p.png);
+  const rgba = new Uint8Array(Buffer.from(p.rgba, 'base64'));
+  writeFileSync(`${OUT}/${name}.png`, encodePalettePng(rgba, p.w, p.h));
   const frames = Object.fromEntries(
     Object.entries(p.frames)
       .sort(([a], [b]) => a.localeCompare(b))
