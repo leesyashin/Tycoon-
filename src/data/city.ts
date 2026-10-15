@@ -300,8 +300,11 @@ function streetProps(): PropDef[] {
     if ((s + 60) % 7 === 3) {
       out.push({ kind: 'lamp', x: s, y: near + 0.3 });
       out.push({ kind: 'lamp', x: near + 0.3, y: s });
-      out.push({ kind: 'lamp', x: s + 2, y: far - 0.3 });
-      out.push({ kind: 'lamp', x: far - 0.3, y: s + 2 });
+      // gegenüber versetzt: der versetzte Platz darf nicht auf die Querstraße fallen
+      if (!blockedAt(s + 2, 1.5)) {
+        out.push({ kind: 'lamp', x: s + 2, y: far - 0.3 });
+        out.push({ kind: 'lamp', x: far - 0.3, y: s + 2 });
+      }
     }
     // Leben vor den Läden: Fahrräder, Roller, Briefkasten, Imbiss-Tische, Litfaßsäulen
     if ((s + 60) % 11 === 5 && !frontOfCafe) {
@@ -313,11 +316,11 @@ function streetProps(): PropDef[] {
       out.push({ kind: 'bistro', x: O - 2.2, y: s + 0.5, variant: (s + 61) % 2 });
     }
     if ((s + 60) % 17 === 9) {
-      out.push({ kind: 'scooters', x: s, y: far - 0.4, axis: 'u' });
+      out.push({ kind: 'scooters', x: s, y: far - 0.3, axis: 'u' });
       out.push({ kind: 'mailbox', x: far - 0.4, y: s - 1.5 });
     }
     if ((s + 60) % 23 === 11) {
-      out.push({ kind: 'litfass', x: s, y: far - 0.9 });
+      out.push({ kind: 'litfass', x: s, y: far - 0.15 });
       out.push({ kind: 'litfass', x: near - 0.4, y: s });
     }
   }
@@ -945,4 +948,51 @@ export function propFacing(p: PropDef): readonly [number, number] | null {
     default:
       return null;
   }
+}
+
+/** Grundfläche je Objekt-Art in Zeichnungs-Koordinaten `[u0, u1, v0, v1]` (u entlang der Achse, v quer dazu). */
+const FOOTPRINT: Readonly<Record<PropKind, readonly [number, number, number, number]>> = {
+  linden: [-0.22, 0.22, -0.22, 0.22],
+  lindenSmall: [-0.18, 0.18, -0.18, 0.18],
+  lamp: [-0.1, 0.1, -0.1, 0.1],
+  bench: [-0.45, 0.45, -0.13, 0.12],
+  bikes: [-0.32, 0.32, -0.36, 0.36],
+  litfass: [-0.28, 0.28, -0.28, 0.28],
+  bin: [-0.12, 0.12, -0.12, 0.12],
+  planter: [-0.25, 0.25, -0.18, 0.18],
+  bollard: [-0.06, 0.06, -0.06, 0.06],
+  cafeSign: [-0.07, 0.07, -0.07, 0.07],
+  pedLight: [-0.08, 0.08, -0.08, 0.08],
+  trafficLight: [-0.08, 0.08, -0.08, 0.08],
+  parked: [-0.65, 0.65, -0.3, 0.3],
+  railing: [-0.75, 0.75, -0.05, 0.05],
+  kiosk: [-0.6, 0.6, -0.5, 0.55],
+  stall: [-0.66, 0.66, -0.36, 0.46],
+  foodtruck: [-0.95, 0.95, -0.38, 0.62],
+  playground: [-0.9, 0.75, -0.35, 0.6],
+  fountain: [-0.72, 0.72, -0.72, 0.72],
+  icecart: [-0.3, 0.3, -0.18, 0.18],
+  goal: [-0.8, 0.8, -0.35, 0.05],
+  // offen nach +v; mit `front: -1` gespiegelt (Schild an der offenen Seite bei u = −0,95)
+  busstop: [-1.0, 0.78, -0.22, 0.3],
+  mailbox: [-0.1, 0.1, -0.1, 0.1],
+  scooters: [-0.25, 0.22, -0.17, 0.17],
+  bistro: [-0.32, 0.34, -0.16, 0.16],
+};
+
+/** Grundfläche eines Objekts im Grid (Achse und offene Seite eingerechnet). */
+export function propFootprint(p: PropDef): GridRect {
+  const [u0, u1, a, b] = FOOTPRINT[p.kind];
+  const [v0, v1] = p.front === -1 ? [-b, -a] : [a, b];
+  return p.axis === 'v'
+    ? { x0: p.x + v0, x1: p.x + v1, y0: p.y + u0, y1: p.y + u1 }
+    : { x0: p.x + u0, x1: p.x + u1, y0: p.y + v0, y1: p.y + v1 };
+}
+
+/** Darf ein Objekt dieser Art auf dieser Bodenart stehen? (Parker auf der Fahrbahn, Geländer am Ufer.) */
+export function groundAllows(kind: PropKind, ground: GroundKind | null): boolean {
+  if (ground === null) return false;
+  if (kind === 'parked') return ground === 'road';
+  if (kind === 'railing') return ground === 'quay' || ground === 'bridge' || ground === 'sidewalk';
+  return ground !== 'road' && ground !== 'bridge' && ground !== 'water' && ground !== 'quay';
 }

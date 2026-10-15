@@ -7,10 +7,12 @@ import {
   STREET_LIFE,
   UPPER_CELLS,
   buildingHeight,
+  groundAllows,
   groundAt,
   groundCellFor,
   hash01,
   propFacing,
+  propFootprint,
   propFrame,
   upperCellFor,
   type GridRect,
@@ -41,6 +43,16 @@ function seeded(seed = 1): () => number {
 
 const CAFE: GridRect = { x0: 0, y0: 0, x1: 14, y1: 14 };
 
+/** Neun Prüfpunkte einer Grundfläche (Ecken knapp innen, Kantenmitten, Mitte). */
+function samples(r: GridRect): [number, number][] {
+  const e = 0.01;
+  const xs = [r.x0 + e, (r.x0 + r.x1) / 2, r.x1 - e];
+  const ys = [r.y0 + e, (r.y0 + r.y1) / 2, r.y1 - e];
+  return xs.flatMap((x) => ys.map((y): [number, number] => [x, y]));
+}
+const label = (p: { kind: string; x: number; y: number }) =>
+  `${p.kind} (${p.x.toFixed(2)}, ${p.y.toFixed(2)})`;
+
 describe('Stadtviertel: Grundriss', () => {
   it('Häuser überlappen sich nicht und stehen weder auf dem Café-Grundstück noch auf Straße oder Gehweg', () => {
     const open = CITY.ground
@@ -64,6 +76,32 @@ describe('Stadtviertel: Grundriss', () => {
       if (p.kind === 'linden' || p.kind === 'lindenSmall')
         expect(p.x >= 0 && p.x <= 14 && p.y < 19, `${p.kind} vor dem Café`).toBe(false);
     }
+  });
+
+  it('Objekte stehen auf passendem Boden: nicht auf Fahrbahn, Brücke, Wasser oder Überweg', () => {
+    const crossing = (x: number, y: number) =>
+      CITY.crossings.some(
+        (c) => x >= c.rect.x0 && x < c.rect.x1 && y >= c.rect.y0 && y < c.rect.y1,
+      );
+    const roads = CITY.roads.map((r) =>
+      r.axis === 'u'
+        ? { axis: r.axis, x0: CITY.extent.x0, x1: CITY.extent.x1, y0: r.at, y1: r.at + 4 }
+        : { axis: r.axis, x0: r.at, x1: r.at + 4, y0: CITY.extent.y0, y1: CITY.extent.y1 },
+    );
+    const bad = new Set<string>();
+    for (const p of [...CITY.props, ...CITY.backProps]) {
+      const f = propFootprint(p);
+      for (const [x, y] of samples(f)) {
+        if (!groundAllows(p.kind, groundAt(x, y)))
+          bad.add(`${label(p)} auf ${String(groundAt(x, y))}`);
+        if (crossing(x, y)) bad.add(`${label(p)} auf dem Überweg`);
+      }
+      // Parker nur am Rand ihrer Fahrbahn, nicht auf Kreuzungen
+      if (p.kind === 'parked')
+        for (const r of roads)
+          if (r.axis !== (p.axis ?? 'u') && overlap(f, r)) bad.add(`${label(p)} auf der Kreuzung`);
+    }
+    expect([...bad]).toEqual([]);
   });
 
   it('Passanten bleiben auf Gehwegen und Überwegen', () => {
