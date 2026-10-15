@@ -53,6 +53,23 @@ function samples(r: GridRect): [number, number][] {
   const ys = [r.y0 + e, (r.y0 + r.y1) / 2, r.y1 - e];
   return xs.flatMap((x) => ys.map((y): [number, number] => [x, y]));
 }
+/** Punkte auf allen Passanten-Wegen (alle 0,05 Kacheln), nur innerhalb der gezeichneten Fläche. */
+function walkSamples(): [number, number][] {
+  const out: [number, number][] = [];
+  for (const w of CITY.walks)
+    for (let i = 0; i + 1 < w.points.length; i++) {
+      const a = w.points[i];
+      const b = w.points[i + 1];
+      if (!a || !b) continue;
+      const n = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 0.05);
+      for (let k = 0; k <= n; k++) {
+        const x = a.x + ((b.x - a.x) * k) / n;
+        const y = a.y + ((b.y - a.y) * k) / n;
+        if (x >= CITY.extent.x0 && y >= CITY.extent.y0) out.push([x, y]);
+      }
+    }
+  return out;
+}
 const grow = (r: GridRect, d: number): GridRect => ({
   x0: r.x0 - d,
   y0: r.y0 - d,
@@ -146,28 +163,51 @@ describe('Stadtviertel: Grundriss', () => {
     expect(bad).toEqual([]);
   });
 
-  it('Passanten bleiben auf Gehwegen und Überwegen', () => {
-    const walkable = [
-      ...CITY.ground.filter((g) => g.kind === 'sidewalk').map((g) => g.rect),
-      ...CITY.crossings.map((c) => c.rect),
-    ];
-    for (const w of CITY.walks) {
-      for (let i = 0; i + 1 < w.points.length; i++) {
-        const a = w.points[i];
-        const b = w.points[i + 1];
-        if (!a || !b) continue;
-        for (let t = 0; t <= 1; t += 0.05) {
-          const x = a.x + (b.x - a.x) * t;
-          const y = a.y + (b.y - a.y) * t;
-          // Start/Ende liegen knapp außerhalb der gezeichneten Fläche.
-          if (x < CITY.extent.x0 || y < CITY.extent.y0) continue;
-          expect(
-            walkable.some((r) => inside(r, x, y)),
-            `${String(x)},${String(y)}`,
-          ).toBe(true);
-        }
-      }
+  it('Passanten bleiben auf Gehwegen, Parkwegen und Überwegen (Fahrbahn mit Verkehr nur am Zebrastreifen)', () => {
+    const crossing = (x: number, y: number) => CITY.crossings.some((c) => inside(c.rect, x, y));
+    // Fahrbahnen mit Fahrstreifen (Verkehr): nur über den Zebrastreifen
+    const busy = CITY.lanes.map((l) =>
+      l.axis === 'u'
+        ? { x0: CITY.extent.x0, x1: CITY.extent.x1, y0: Math.floor(l.at), y1: Math.floor(l.at) + 1 }
+        : {
+            x0: Math.floor(l.at),
+            x1: Math.floor(l.at) + 1,
+            y0: CITY.extent.y0,
+            y1: CITY.extent.y1,
+          },
+    );
+    const bad = new Set<string>();
+    for (const [x, y] of walkSamples()) {
+      if (crossing(x, y)) continue;
+      const g = groundAt(x, y);
+      const ok =
+        g === 'sidewalk' ||
+        g === 'path' ||
+        g === 'plaza' ||
+        (g === 'road' && !busy.some((r) => inside(r, x, y)));
+      if (!ok) bad.add(`${x.toFixed(1)},${y.toFixed(1)} auf ${String(g)}`);
     }
+    expect([...bad]).toEqual([]);
+  });
+
+  it('Fahrradbügel: Räder stehen quer zum Bordstein der nächsten Fahrbahn', () => {
+    const bikes = CITY.props.filter((p) => p.kind === 'bikes');
+    expect(bikes.length).toBeGreaterThan(0);
+    for (const p of bikes) {
+      const dist = (r: (typeof CITY.roads)[number]) =>
+        Math.max(0, Math.abs((r.axis === 'u' ? p.y : p.x) - (r.at + 2)) - 2);
+      const road = [...CITY.roads].sort((a, b) => dist(a) - dist(b))[0];
+      // Räder entlang u gezeichnet; quer gestellt (axis v) entlang y
+      expect(p.axis ?? 'u', label(p)).not.toBe(road?.axis);
+    }
+  });
+
+  it('Passanten laufen nicht durch Objekte (Bäume, Laternen, Räder, Säulen, Brunnen, Ampeln …)', () => {
+    const body = 0.12;
+    const bad = new Set<string>();
+    for (const [x, y] of walkSamples())
+      for (const p of CITY.props) if (inside(grow(propFootprint(p), body), x, y)) bad.add(label(p));
+    expect([...bad]).toEqual([]);
   });
 
   it('Gäste kommen über den Gehweg ins Café', () => {
@@ -354,11 +394,11 @@ describe('Stadtviertel: Verkehr und Passanten', () => {
       life.walkers.forEach((w, i) => {
         const b = before[i];
         if (!b?.active || !w.active) return;
-        // Betritt die vordere Fahrbahn (y 15..19) nur, wenn die Fahrbahn entlang x Rot hat.
-        const entersU = b.y < 15 && w.y >= 15 && w.x > 12 && w.x < 15;
-        if (entersU) expect(life.signal()).not.toBe('u');
-        const entersV = b.x > 19 && w.x <= 19 && w.y > 12 && w.y < 15;
-        if (entersV) expect(life.signal()).not.toBe('v');
+        // Betritt die Fahrbahn entlang x (y 15..19) von einer der beiden Seiten nur, wenn sie Rot hat; ebenso entlang y.
+        const onU = (y: number) => y >= 15 && y <= 19;
+        const onV = (x: number) => x >= 15 && x <= 19;
+        if (!onU(b.y) && onU(w.y) && w.x > 12 && w.x < 15) expect(life.signal()).not.toBe('u');
+        if (!onV(b.x) && onV(w.x) && w.y > 12 && w.y < 15) expect(life.signal()).not.toBe('v');
       });
     }
     expect(life.walkers.some((w) => w.active)).toBe(true);

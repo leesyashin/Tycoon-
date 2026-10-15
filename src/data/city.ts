@@ -472,8 +472,8 @@ function streetProps(ground: readonly GroundArea[], buildings: readonly Building
     const frontOfCafe = s > -1 && s < 15;
     // Linden auf beiden Seiten, nicht direkt vor dem Café (Blick frei)
     if (s % 5 === 0 && !frontOfCafe) {
-      out.push({ kind: 'linden', x: s, y: near + 0.1 });
-      out.push({ kind: 'linden', x: near + 0.1, y: s });
+      out.push({ kind: 'linden', x: s, y: near + 0.2 });
+      out.push({ kind: 'linden', x: near + 0.2, y: s });
     }
     if ((s + 60) % 5 === 2) {
       out.push({ kind: 'linden', x: s, y: far - 0.1 });
@@ -494,8 +494,9 @@ function streetProps(ground: readonly GroundArea[], buildings: readonly Building
     }
     // Leben vor den Läden: Fahrräder, Roller, Briefkasten, Imbiss-Tische, Litfaßsäulen
     if ((s + 60) % 11 === 5 && !frontOfCafe) {
-      out.push({ kind: 'bikes', x: s, y: near, axis: 'u' });
-      out.push({ kind: 'bikes', x: near, y: s, axis: 'v' });
+      // Räder quer zum Bordstein, Bügel entlang der Bordsteinkante (die Laufzeile bleibt frei)
+      out.push({ kind: 'bikes', x: s, y: near + 0.21, axis: 'v' });
+      out.push({ kind: 'bikes', x: near + 0.21, y: s, axis: 'u' });
     }
     if ((s + 60) % 13 === 7 && !frontOfCafe) {
       out.push({ kind: 'bistro', x: s + 0.35, y: O - 2, variant: (s + 60) % 2 });
@@ -507,7 +508,7 @@ function streetProps(ground: readonly GroundArea[], buildings: readonly Building
     }
     if ((s + 60) % 23 === 11) {
       out.push({ kind: 'litfass', x: s, y: far - 0.15 });
-      out.push({ kind: 'litfass', x: near - 0.4, y: s });
+      out.push({ kind: 'litfass', x: near + 0.17, y: s });
     }
   }
   const fixed: PropDef[] = [
@@ -521,11 +522,11 @@ function streetProps(ground: readonly GroundArea[], buildings: readonly Building
     { kind: 'planter', x: 12.25, y: 5.2 },
     { kind: 'pedLight', x: 12.4, y: 14.8, axis: 'u' },
     { kind: 'pedLight', x: 14.8, y: 12.4, axis: 'v' },
-    // Autoampeln an allen vier Ecken der Kreuzung (Lichter zeigen zur Kamera: entlang x nach +x, entlang y nach +y)
-    { kind: 'trafficLight', x: O + ROAD + 0.6, y: O - 0.6, axis: 'u' },
-    { kind: 'trafficLight', x: O + ROAD + 0.6, y: O + ROAD + 0.6, axis: 'v' },
-    { kind: 'trafficLight', x: O - 0.6, y: O + ROAD + 0.6, axis: 'u' },
-    { kind: 'trafficLight', x: O - 0.6, y: O - 0.6, axis: 'v' },
+    // Autoampeln an den Bordsteinecken der Kreuzung (Lichter zeigen zur Kamera: entlang x nach +x, entlang y nach +y)
+    { kind: 'trafficLight', x: O + ROAD + 0.3, y: O - 0.3, axis: 'u' },
+    { kind: 'trafficLight', x: O + ROAD + 0.3, y: O + ROAD + 0.3, axis: 'v' },
+    { kind: 'trafficLight', x: O - 0.3, y: O + ROAD + 0.3, axis: 'u' },
+    { kind: 'trafficLight', x: O - 0.3, y: O - 0.3, axis: 'v' },
     // Haltestellen am Bordstein gegenüber, offen zur Fahrbahn (die liegt bei kleinerem y bzw. x)
     { kind: 'busstop', x: 4, y: far, axis: 'u', front: -1 },
     { kind: 'busstop', x: far, y: -3, axis: 'v', front: -1 },
@@ -620,64 +621,79 @@ const LANES: LaneDef[] = [
   { axis: 'v', at: O + 2.5, dir: -1, stopAt: O + ROAD + 0.4 },
 ];
 
-const SIDE_NEAR = 14.3;
+/** Laufzeilen der Passanten: zwischen Terrasse/Auslagen und den Möbeln am Bordstein (diesseits bzw. gegenüber). */
+const SIDE_NEAR = 14.2;
 const SIDE_FAR = 20.3;
 const FAR_END = -62;
+/** Querung über den Zebrastreifen: über die Fahrbahn entlang x zwischen den Pollern, über die entlang y. */
+const CROSS_U = 13.95;
+const CROSS_V = 13.6;
+type P = { x: number; y: number; cross?: 'u' | 'v' };
+/** Um die Litfaßsäule an der Ecke am Café (−1,6 | 14,2) zur Hauswand hin ausweichen. */
+const LITFASS_DETOUR: P[] = [
+  { x: -2.8, y: SIDE_NEAR },
+  { x: -1.6, y: 13.55 },
+  { x: -0.4, y: SIDE_NEAR },
+];
+const NEAR_TO_CORNER: P[] = [{ x: FAR_END, y: SIDE_NEAR }, ...LITFASS_DETOUR];
+const CORNER_TO_NEAR: P[] = [...NEAR_TO_CORNER].reverse();
 const WALKS: WalkPath[] = [
   // Ums Café herum (vorn → Ecke → rechts) und zurück
   {
+    points: [...NEAR_TO_CORNER, { x: SIDE_NEAR, y: SIDE_NEAR }, { x: SIDE_NEAR, y: FAR_END }],
+  },
+  {
+    points: [{ x: SIDE_NEAR, y: FAR_END }, { x: SIDE_NEAR, y: SIDE_NEAR }, ...CORNER_TO_NEAR],
+  },
+  // Gegenüber am Park entlang, über den Zebrastreifen zum Café und rechts weiter
+  {
     points: [
-      { x: FAR_END, y: SIDE_NEAR },
+      { x: FAR_END, y: SIDE_FAR },
+      { x: CROSS_U, y: SIDE_FAR },
+      { x: CROSS_U, y: SIDE_NEAR, cross: 'u' },
       { x: SIDE_NEAR, y: SIDE_NEAR },
       { x: SIDE_NEAR, y: FAR_END },
     ],
   },
+  // Gegenüber am Kanal entlang, über den Zebrastreifen zum Café und vorn weiter
   {
     points: [
-      { x: SIDE_NEAR, y: FAR_END },
+      { x: SIDE_FAR, y: FAR_END },
+      { x: SIDE_FAR, y: CROSS_V },
+      { x: SIDE_NEAR, y: CROSS_V, cross: 'v' },
       { x: SIDE_NEAR, y: SIDE_NEAR },
-      { x: FAR_END, y: SIDE_NEAR },
+      ...CORNER_TO_NEAR,
     ],
   },
-  // Gegenüber am Park bzw. am Kanal entlang
+  // Über den Zebrastreifen (Ampel), dann in den Park, links am Brunnen vorbei
   {
     points: [
-      { x: FAR_END, y: SIDE_FAR },
-      { x: SIDE_FAR, y: SIDE_FAR },
-      { x: SIDE_FAR, y: FAR_END },
-    ],
-  },
-  {
-    points: [
-      { x: SIDE_FAR, y: FAR_END },
-      { x: SIDE_FAR, y: SIDE_FAR },
-      { x: FAR_END, y: SIDE_FAR },
-    ],
-  },
-  // Über die Überwege (Ampel), dann in den Park
-  {
-    points: [
-      { x: FAR_END, y: SIDE_NEAR },
-      { x: 13.6, y: SIDE_NEAR },
-      { x: 13.6, y: SIDE_FAR, cross: 'u' },
+      ...NEAR_TO_CORNER,
+      { x: CROSS_U, y: SIDE_NEAR },
+      { x: CROSS_U, y: SIDE_FAR, cross: 'u' },
       { x: 5.5, y: SIDE_FAR },
-      { x: 5.5, y: 28.75 },
+      { x: 5.5, y: 27.4 },
+      { x: 4.58, y: 27.82 },
+      { x: 4.58, y: 28.75 },
       { x: -10, y: 28.75 },
     ],
   },
   {
     points: [
       { x: SIDE_FAR, y: FAR_END },
-      { x: SIDE_FAR, y: 13.6 },
-      { x: SIDE_NEAR, y: 13.6, cross: 'v' },
+      { x: SIDE_FAR, y: CROSS_V },
+      { x: SIDE_NEAR, y: CROSS_V, cross: 'v' },
       { x: SIDE_NEAR, y: FAR_END },
     ],
   },
-  // Durch den Park
+  // Durch den Park, rechts am Brunnen vorbei
   {
     points: [
       { x: 5.5, y: 42 },
-      { x: 5.5, y: 28.75 },
+      { x: 5.5, y: 30.3 },
+      { x: 6.42, y: 29.65 },
+      { x: 6.42, y: 27.85 },
+      { x: 5.5, y: 27.2 },
       { x: 5.5, y: SIDE_FAR },
       { x: -40, y: SIDE_FAR },
     ],
