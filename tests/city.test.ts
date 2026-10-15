@@ -242,6 +242,22 @@ describe('Stadtviertel: Ausrichtung', () => {
   });
 });
 
+describe('Stadtviertel: Ausrichtung der Fahrzeuge und Ampeln', () => {
+  it('Parker stehen in Fahrtrichtung des Fahrstreifens daneben (nicht gegen den Verkehr)', () => {
+    const parked = CITY.props.filter((p) => p.kind === 'parked');
+    expect(parked.length).toBeGreaterThan(0);
+    for (const p of parked) {
+      const axis = p.axis ?? 'u';
+      const across = axis === 'v' ? p.x : p.y;
+      const lane = CITY.lanes
+        .filter((l) => l.axis === axis)
+        .sort((a, b) => Math.abs(a.at - across) - Math.abs(b.at - across))[0];
+      const [dx, dy] = propFacing(p) ?? [0, 0];
+      expect(axis === 'v' ? dy : dx, label(p)).toBe(lane?.dir);
+    }
+  });
+});
+
 describe('Stadtviertel: Kamera und Wege', () => {
   it('die Kamera-Grenzen liegen ganz in der gezeichneten Fläche (kein Rand sichtbar)', () => {
     const v = CITY.view;

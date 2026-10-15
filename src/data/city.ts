@@ -95,6 +95,8 @@ export interface PropDef {
   axis?: 'u' | 'v';
   /** Haltestelle: offene Seite mit Bank quer zur Achse, +1 nach +y bzw. +x (zur Kamera), −1 nach −y bzw. −x. */
   front?: 1 | -1;
+  /** Parker: Front entlang der Achse, +1 nach +x bzw. +y, −1 nach −x bzw. −y (wie der Fahrstreifen daneben). */
+  heading?: 1 | -1;
 }
 
 /** Fahrstreifen: Autos fahren entlang `axis` auf der Linie `at`, Richtung `dir`. */
@@ -311,7 +313,7 @@ export function propFacing(p: PropDef): readonly [number, number] | null {
     case 'trafficLight':
       return along(1);
     case 'parked':
-      return along(1);
+      return along(p.heading ?? 1);
     default:
       return null;
   }
@@ -532,19 +534,26 @@ function streetProps(ground: readonly GroundArea[], buildings: readonly Building
     { kind: 'busstop', x: far, y: -3, axis: 'v', front: -1 },
     { kind: 'mailbox', x: 11, y: far - 0.4 },
   ];
-  // Parkende Autos am Bordstein (nicht vor dem Café, nicht auf Kreuzungen)
+  // Parkende Autos am Bordstein (nicht vor dem Café, nicht auf Kreuzungen), in Fahrtrichtung des Streifens daneben
   for (let s = -58; s < 44; s += 3.4) {
     const v = Math.floor(hash01(s * 10, 3) * 4);
     if (blockedAt(s, 2.5)) continue;
     const notCafe = s < -2 || s > 15;
     if (hash01(s, 1) < 0.55 && notCafe)
-      out.push({ kind: 'parked', x: s, y: O + 0.5, axis: 'u', variant: v });
+      out.push({ kind: 'parked', x: s, y: O + 0.5, axis: 'u', variant: v, heading: -1 });
     if (hash01(s, 2) < 0.5)
       out.push({ kind: 'parked', x: s + 1.2, y: O + ROAD - 0.5, axis: 'u', variant: (v + 1) % 4 });
     if (hash01(s, 5) < 0.5 && notCafe)
       out.push({ kind: 'parked', x: O + 0.5, y: s, axis: 'v', variant: (v + 2) % 4 });
     if (hash01(s, 6) < 0.5)
-      out.push({ kind: 'parked', x: O + ROAD - 0.5, y: s + 1.2, axis: 'v', variant: (v + 3) % 4 });
+      out.push({
+        kind: 'parked',
+        x: O + ROAD - 0.5,
+        y: s + 1.2,
+        axis: 'v',
+        variant: (v + 3) % 4,
+        heading: -1,
+      });
   }
   return [...fixed, ...placeFree(out, fixed, ground, buildings)];
 }
@@ -1138,7 +1147,7 @@ export function propCanvas(kind: PropKind): { w: number; h: number; ox: number; 
 export function propFrame(p: PropDef): string {
   switch (p.kind) {
     case 'parked':
-      return `car-${String(p.variant ?? 0)}-f`;
+      return `car-${String(p.variant ?? 0)}-${p.heading === -1 ? 'b' : 'f'}`;
     case 'bench':
       return `bench-${p.axis ?? 'u'}`;
     case 'pedLight':
