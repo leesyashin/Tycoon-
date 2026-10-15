@@ -4,7 +4,7 @@ current: -
 branch: session/s10-service
 started: -
 next: S12
-## Letzte Session: S10/S11 – Phase 2 „bedientes Café“ (2026-10-15, PR #PRNUM, Basis `session/s9-release`)
+## Letzte Session: S10/S11 – Phase 2 „bedientes Café“ (2026-10-15, PR #13, Basis `session/s9-release`)
 Vorgabe Vincent (2026-10-15): Das Café-Prinzip war falsch (Selbstbedienung an acht Verkaufsstationen). Jetzt
 bestellen die Gäste an einer Bestelltheke, Baristas bereiten an der Barista-Theke zu, Bedienungen geben aus
 oder servieren am Tisch, Putzkräfte halten alles sauber; die Gegenstände und Figuren sollten besser aussehen,
