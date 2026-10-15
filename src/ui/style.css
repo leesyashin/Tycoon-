@@ -1438,3 +1438,65 @@ legend {
     transform: translateX(-50%);
   }
 }
+
+/* ---------- Phase 2: Service-Pipeline (GAME_DESIGN § 7.2) ---------- */
+.pipeline {
+  margin-bottom: 10px;
+}
+.pipeline-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  margin-bottom: 8px;
+}
+.pipeline-head h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 400;
+}
+.pipeline-chip {
+  background: var(--c-danger-ink);
+  color: var(--c-text);
+}
+.pipeline-chip.pipeline-chip--ok {
+  background: var(--c-success);
+  color: var(--c-ink);
+}
+.pipeline-row.is-bottleneck .stat-bar-fill {
+  background: var(--c-danger-ink);
+}
+.pipeline-row.is-bottleneck > span:first-child {
+  font-weight: 700;
+}
+.pipeline-row .stat-bar-fill {
+  background: var(--c-periwinkle);
+}
+.pipeline-row.is-ok .stat-bar-fill {
+  background: var(--c-success);
+}
+.pipeline-served {
+  margin: 8px 0 0;
+  font-weight: 700;
+}
+.pipeline-hint {
+  margin: 4px 0 0;
+}
+.shop-row.is-bottleneck {
+  box-shadow:
+    var(--shadow-card),
+    inset 4px 0 0 var(--c-danger-ink);
+}
+.shop-area {
+  list-style: none;
+  margin: 8px 0 2px;
+  font-family: var(--font-display);
+  font-size: 16px;
+  color: var(--c-text);
+}
+.station-area {
+  display: block;
+  font-size: var(--fs-label);
+  color: var(--c-ink-muted);
+}

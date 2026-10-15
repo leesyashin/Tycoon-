@@ -15,8 +15,8 @@ export function isTutorialStepComplete(state: GameState, def: TutorialStepDef): 
       return false;
     case 'stationLevel':
       return (loc.stations[def.check.stationId]?.level ?? 0) >= def.check.level;
-    case 'anyStaff':
-      return Object.values(loc.staff).some((n) => n > 0);
+    case 'staffTotal':
+      return Object.values(loc.staff).reduce((a, b) => a + b, 0) >= def.check.count;
   }
 }
 

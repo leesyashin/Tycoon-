@@ -64,7 +64,7 @@ describe('Einnahmen je Station', () => {
     const r = computeLocationRates(s, 'berlin');
     const sum = Object.values(r.perStationIncome).reduce((a, b) => a.add(b), D(0));
     expect(sum.toNumber()).toBeCloseTo(r.incomePerSec.toNumber());
-    expect(r.perStationIncome['matchaBar']?.gt(0)).toBe(true);
+    expect(r.perStationIncome['matchaStation']?.gt(0)).toBe(true);
   });
 });
 

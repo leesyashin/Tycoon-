@@ -2,6 +2,8 @@ import { t } from '@i18n/index';
 import { getLocation, type GameState } from '@core/GameState';
 import { needsTerrace } from '@core/economy';
 import type { Unlock } from '@data/unlocks';
+import type { StationArea } from '@data/stations';
+import type { StageId } from '@core/customers';
 
 export function stationName(locationId: string, stationId: string): string {
   return t(`station.${locationId}.${stationId}.name`);
@@ -35,4 +37,18 @@ export function productName(stationId: string, quality: number): string {
     quality: t(`quality.tier.${String(quality)}.prefix`),
     product: t(`product.${stationId}`),
   });
+}
+
+/** Name einer Stufe der Service-Pipeline (GAME_DESIGN § 7.2). */
+export function stageName(stage: StageId): string {
+  return t(`stage.${stage}`);
+}
+
+/** Name eines Theken-Bereichs (§ 4). */
+export function areaName(area: StationArea): string {
+  return t(`station.area.${area}`);
+}
+
+export function roleName(role: string): string {
+  return t(`staff.${role}.name`);
 }

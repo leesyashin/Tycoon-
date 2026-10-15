@@ -1,56 +1,58 @@
 import { BALANCE } from '@data/balance';
-import { STAFF_ROLES } from '@data/staff';
-import { STATIONS } from '@data/stations';
 import type { LocationState } from '../GameState';
 
+/** Köpfe (Service-Rollen) bzw. Stufe (Filialleiter, Social Media) einer Rolle. */
 export function getStaffLevel(loc: LocationState, id: string): number {
   return loc.staff[id] ?? 0;
 }
 
-/**
- * Tempo-Faktor aus Personal je Verkaufsstation (GAME_DESIGN § 6); Rollen multiplizieren sich.
- * Die Kasse ist nicht dabei: der Kassierer wirkt dort über `getCheckoutThroughput`.
- */
-export function staffSpeedMults(loc: LocationState): Record<string, number> {
-  const out: Record<string, number> = {};
-  for (const s of STATIONS) out[s.id] = 1;
-  for (const role of STAFF_ROLES) {
-    const lvl = getStaffLevel(loc, role.id);
-    if (!role.speed || lvl <= 0) continue;
-    for (const id of role.speed.stations)
-      out[id] = (out[id] ?? 1) * (1 + lvl * role.speed.perLevel);
-  }
-  return out;
-}
-
-/** Netto-Änderung der Sauberkeit pro Minute: Verfall (gedämpft durch Reinigung) plus Aufwischen ab Stufe 3. */
-export function cleanlinessRatePerMin(loc: LocationState): number {
+/** Verschmutzung pro Minute: Grundwert plus Anteil je bedientem Gast (GAME_DESIGN § 7.3). */
+export function dirtPerMin(servedPerSec: number): number {
   const c = BALANCE.cleanliness;
-  const cleaner = getStaffLevel(loc, 'cleaner');
-  const decay = c.decayPerMin * Math.max(0, 1 - cleaner * c.decayReductionPerCleaner);
-  const regen = cleaner >= c.regenFromCleanerLevel ? c.regenPerMin : 0;
-  return regen - decay;
+  return c.decayPerMin + Math.max(0, servedPerSec) * 60 * c.dirtPerCustomer;
 }
 
-/** Untergrenze, unter die der Verfall nicht führt (0 ohne Reinigungskraft). */
-export function cleanlinessFloor(loc: LocationState): number {
-  return getStaffLevel(loc, 'cleaner') >= 1 ? BALANCE.cleanliness.floorWithCleaner : 0;
+/** Putzleistung pro Minute bei leerem Café (Putzkräfte × Leistung × Dreck-Faktor); wirkt × (1 − Sauberkeit/100). */
+function cleaningPower(loc: LocationState): number {
+  const c = BALANCE.cleanliness;
+  return getStaffLevel(loc, 'cleaner') * c.cleanPerCleanerPerMin * c.dirtFactor;
 }
 
-/** Sauberkeit nach `dtSec` Sekunden. Liegt sie schon unter der Untergrenze, sinkt sie nur nicht weiter. */
-export function advanceCleanliness(loc: LocationState, dtSec: number): number {
-  const rate = cleanlinessRatePerMin(loc) / 60;
-  const cur = loc.cleanliness;
-  if (rate >= 0) return Math.min(BALANCE.cleanliness.max, cur + rate * dtSec);
-  return Math.max(Math.min(cur, cleanlinessFloor(loc)), cur + rate * dtSec);
+/** Putzleistung pro Minute beim aktuellen Schmutz: je dreckiger, desto mehr lässt sich wegwischen. */
+export function cleanPerMin(loc: LocationState, cleanliness: number = loc.cleanliness): number {
+  return cleaningPower(loc) * (1 - cleanliness / BALANCE.cleanliness.max);
 }
 
-/** Wert, auf den sich die Sauberkeit langfristig einpendelt (für Panel-Erklärung und Balance-Sim). */
-export function cleanlinessEquilibrium(loc: LocationState): number {
-  const rate = cleanlinessRatePerMin(loc);
-  if (rate > 0) return BALANCE.cleanliness.max;
-  if (rate === 0) return loc.cleanliness;
-  return Math.min(loc.cleanliness, cleanlinessFloor(loc));
+/** Netto-Änderung der Sauberkeit pro Minute beim aktuellen Stand. */
+export function cleanlinessRatePerMin(loc: LocationState, servedPerSec: number): number {
+  return cleanPerMin(loc) - dirtPerMin(servedPerSec);
+}
+
+/** Wert, auf den sich die Sauberkeit einpendelt: 100 × (1 − Schmutz/Putzleistung), ohne Putzkraft 0. */
+export function cleanlinessEquilibrium(loc: LocationState, servedPerSec: number): number {
+  const power = cleaningPower(loc);
+  if (power <= 0) return 0;
+  const max = BALANCE.cleanliness.max;
+  return Math.min(max, Math.max(0, max * (1 - dirtPerMin(servedPerSec) / power)));
+}
+
+/**
+ * Sauberkeit nach `dtSec` Sekunden – exakte Lösung der linearen Gleichung
+ * dc/dt = power × (1 − c/max) − dirt, damit lange Ticks dasselbe ergeben wie viele kurze.
+ */
+export function advanceCleanliness(
+  loc: LocationState,
+  dtSec: number,
+  servedPerSec: number,
+): number {
+  const max = BALANCE.cleanliness.max;
+  const minutes = Math.max(0, dtSec) / 60;
+  const power = cleaningPower(loc);
+  const cur = Math.min(max, Math.max(0, loc.cleanliness));
+  if (power <= 0) return Math.max(0, cur - dirtPerMin(servedPerSec) * minutes);
+  const target = cleanlinessEquilibrium(loc, servedPerSec);
+  const next = target + (cur - target) * Math.exp(-(power / max) * minutes);
+  return Math.min(max, Math.max(0, next));
 }
 
 export function canAutoBuy(loc: LocationState): boolean {

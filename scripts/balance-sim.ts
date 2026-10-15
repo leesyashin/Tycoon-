@@ -71,16 +71,52 @@ function arg(name: string, fallback: number): number {
 }
 
 /**
+ * Experimente ohne Dateiänderung: `--set spawn.base=0.17 --set service.dineInShare=0.5` überschreibt Werte in
+ * `BALANCE`, `--staffGrowth 1.6` das Kosten-Wachstum der Köpfe-Rollen, `--attachScale 0.8` die Anteile aller
+ * Produktlinien außer der Matcha-Station. Nur für den Balancing-Pass (PLAN S12); die Daten bleiben die Wahrheit.
+ */
+function applyOverrides(): void {
+  const argv = process.argv;
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] !== '--set') continue;
+    const [path, raw] = (argv[i + 1] ?? '').split('=');
+    const value = Number(raw);
+    if (!path || !Number.isFinite(value)) continue;
+    const keys = path.split('.');
+    let obj: Record<string, unknown> = BALANCE as unknown as Record<string, unknown>;
+    for (const k of keys.slice(0, -1)) obj = obj[k] as Record<string, unknown>;
+    obj[keys[keys.length - 1] ?? ''] = value;
+    console.log(`override BALANCE.${path} = ${String(value)}`);
+  }
+  const growth = arg('staffGrowth', 0);
+  if (growth > 0) {
+    for (const r of STAFF_ROLES) if (r.headcount) (r as { growth: number }).growth = growth;
+    console.log(`override staff growth (headcount) = ${String(growth)}`);
+  }
+  const attach = arg('attachScale', 0);
+  if (attach > 0) {
+    for (const d of STATIONS) {
+      if (d.area === 'bar' && d.attachRate < 1) (d as { attachRate: number }).attachRate *= attach;
+    }
+    console.log(`override attachScale = ${String(attach)}`);
+  }
+}
+applyOverrides();
+
+/**
  * Einkommen, nachdem sich Sauberkeit und Zufriedenheit eingependelt haben. Sonst sähe der Greedy-
  * Spieler den Wert der Reinigungskraft nie, weil sie das Einkommen erst über Minuten verändert.
  */
 function settledIncome(state: GameState, id: string): number {
   let s = state;
-  const l0 = getLocation(s, id);
-  s = withLocation(s, id, { ...l0, cleanliness: cleanlinessEquilibrium(l0) });
   for (let i = 0; i < SETTLE_ITERATIONS; i++) {
-    const target = computeLocationRates(s, id).satisfaction.target;
-    s = withLocation(s, id, { ...getLocation(s, id), satisfaction: target });
+    const l = getLocation(s, id);
+    const r = computeLocationRates(s, id);
+    s = withLocation(s, id, {
+      ...l,
+      cleanliness: cleanlinessEquilibrium(l, r.served),
+      satisfaction: r.satisfaction.target,
+    });
   }
   return getIncomePerSec(s, id).toNumber();
 }
@@ -371,7 +407,7 @@ for (let t = 0; t < hours * 3600; t += STEP_MS / 1000) {
       if (pick.kind === 'staff') mark('firstStaff', t);
       if (pick.kind === 'staff' && pick.id === 'cleaner') mark('cleaner', t);
       if (pick.kind === 'quality') mark(`quality${pick.id}`, t);
-      if ((loc.stations['checkout']?.level ?? 0) > 0) mark('checkout', t);
+      if ((loc.stations['register']?.level ?? 0) > 0) mark('checkout', t);
       for (const lv of [3, 5, 10, 15, 20]) if (loc.level >= lv) mark(`cafe${String(lv)}`, t);
     }
   }
@@ -383,12 +419,12 @@ const fmt = (key: string): string => {
 };
 const rows: [string, string, string][] = [
   ['Erstes Upgrade', '< 10 s', fmt('firstUpgrade')],
-  ['Zweite Station (Kasse)', '1–2 min', fmt('checkout')],
+  ['Kasse gekauft', '1–2 min', fmt('checkout')],
   ['Erster Personal-Kauf', '~5 min', fmt('firstStaff')],
-  ['Erste Reinigungskraft', '–', fmt('cleaner')],
+  ['Erste Putzkraft', '–', fmt('cleaner')],
   ['Erste Kampagne', '–', fmt('campaign')],
-  ['Iced-Bar (Café-Level 3)', '10–15 min', fmt('cafe3')],
-  ['Bäckerei (Café-Level 5)', '~30 min', fmt('cafe5')],
+  ['Kühl-/Eisfach (Café-Level 3)', '10–15 min', fmt('cafe3')],
+  ['Ofen (Café-Level 5)', '~30 min', fmt('cafe5')],
   ['Café-Level 10', '~90 min', fmt('cafe10')],
   ['Café-Level 15', '–', fmt('cafe15')],
   ['Qualität Stufe 1 (Café Grade)', '–', fmt('quality1')],

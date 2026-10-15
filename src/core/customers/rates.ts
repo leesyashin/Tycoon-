@@ -1,15 +1,16 @@
 import { BALANCE } from '@data/balance';
-import { STATIONS, CHECKOUT_ID } from '@data/stations';
+import { PRODUCT_LINES, REGISTER_ID, SERVING_STATION_ID, getStationDef } from '@data/stations';
 import { Decimal, D, ZERO } from '../math/bignum';
 import { getLocation, type GameState, type LocationState } from '../GameState';
 import { collectModifiers } from '../economy/modifiers';
-import { getCheckoutThroughput, getStationPrice, getStationThroughput } from '../economy/stations';
+import { getStationPrice, getStationSpeed } from '../economy/stations';
+import { getStaffLevel } from '../staff/effects';
 import { BOOST_RULES } from '@data/leaves';
 import {
+  attachRate,
   customerTypeShares,
   influencerHypeMult,
   regularTipMult,
-  stationDemandWeight,
   tipSatisfactionTerm,
 } from './types';
 
@@ -17,7 +18,6 @@ export interface SatisfactionBreakdown {
   base: number;
   decor: number;
   quality: number;
-  teaMaster: number;
   /** Meta-Upgrade „Basis-Zufriedenheit“ (Zen). */
   zen: number;
   /** Laufende Events (Hanami +10). */
@@ -27,8 +27,13 @@ export interface SatisfactionBreakdown {
   target: number;
 }
 
+/** Stufen der Service-Pipeline (GAME_DESIGN § 7.2); `demand` ist die Nachfrage selbst. */
+export type StageId = 'demand' | 'order' | 'production' | 'service';
+export const STAGES: readonly StageId[] = ['demand', 'order', 'production', 'service'];
+
 export interface LocationRates {
   spawnRate: number;
+  /** Kleinste Kapazität der drei Personal-Stufen (Bestellung, Zubereitung, Ausgabe). */
   totalThroughput: number;
   served: number;
   incomePerSec: Decimal;
@@ -38,9 +43,19 @@ export interface LocationRates {
   /** Erwarteter Spawn-Faktor aus Influencer-Hype (GAME_DESIGN § 7.5), schon in `spawnRate` enthalten. */
   influencerHypeMult: number;
   satisfaction: SatisfactionBreakdown;
-  /** Kunden/s pro Verkaufsstation. */
+  /** Kapazität je Stufe in Gästen/s (`demand` = Nachfrage). */
+  stages: Record<StageId, number>;
+  /** Stufe mit der kleinsten Kapazität – das, was gerade bremst. */
+  bottleneck: StageId;
+  /** Barista-Sekunden je Gast (Warenkorb, § 4). */
+  loadPerCustomer: number;
+  /** Durchschnittliche Servicezeit je Gast (Übergabe/Tischservice gemischt). */
+  avgServeTime: number;
+  /** Durchschnittlicher Bon je Gast (ohne Trinkgeld und Boosts, mit Event-Preisen). */
+  avgTicket: Decimal;
+  /** Bestellungen/s je Produktlinie. */
   perStation: Record<string, number>;
-  /** Einnahmen/s pro Verkaufsstation (inkl. Trinkgeld und Boosts); Summe = `incomePerSec`. */
+  /** Einnahmen/s je Produktlinie (inkl. Trinkgeld und Boosts); Summe = `incomePerSec`. */
   perStationIncome: Record<string, Decimal>;
 }
 
@@ -90,11 +105,10 @@ export function computeSatisfactionTarget(
   const s = BALANCE.satisfaction;
   const decor = (loc.ambience['decor'] ?? 0) * s.perDecor;
   const quality = Math.max(0, loc.quality - qualityPenalty) * s.perQuality;
-  const teaMaster = (loc.staff['teaMaster'] ?? 0) * s.perTeaMaster;
   const wait = -waitPressure * s.waitPressureWeight;
   const cleanliness = (loc.cleanliness - s.cleanlinessNeutral) * s.cleanlinessWeight;
   const target = clamp(
-    s.base + decor + quality + teaMaster + zenBonus + eventBonus + wait + cleanliness,
+    s.base + decor + quality + zenBonus + eventBonus + wait + cleanliness,
     0,
     100,
   );
@@ -102,13 +116,61 @@ export function computeSatisfactionTarget(
     base: s.base,
     decor,
     quality,
-    teaMaster,
     zen: zenBonus,
     event: eventBonus,
     waitPressure: wait,
     cleanliness,
     target,
   };
+}
+
+/** Durchschnittliche Servicezeit je Gast: Übergabe an der Ausgabe oder Tischservice (§ 7.2). */
+export function averageServeTime(): number {
+  const s = BALANCE.service;
+  return (1 - s.dineInShare) * s.handoverTime + s.dineInShare * s.tableServiceTime;
+}
+
+/** Kapazität der Bestelltheke in Gästen/s: Verkäufer × Kassen-Tempo / Bestellzeit. */
+export function orderCapacity(loc: LocationState, speedBoost = 1): number {
+  const register = getStationDef(REGISTER_ID);
+  const speed = getStationSpeed(register, loc.stations[REGISTER_ID]?.level ?? 0);
+  return (getStaffLevel(loc, 'cashier') * speed * speedBoost) / BALANCE.order.orderTime;
+}
+
+/** Kapazität der Ausgabe in Gästen/s: Bedienungen × Tempo der Ausgabe-Station / Ø Servicezeit. */
+export function serviceCapacity(loc: LocationState, speedBoost = 1): number {
+  const serving = getStationDef(SERVING_STATION_ID);
+  const speed = getStationSpeed(serving, loc.stations[SERVING_STATION_ID]?.level ?? 0);
+  return (getStaffLevel(loc, 'waiter') * speed * speedBoost) / averageServeTime();
+}
+
+export interface ProductionLoad {
+  /** Barista-Sekunden je Gast über alle Linien auf der Karte. */
+  loadPerCustomer: number;
+  /** Anteil der Gäste je Linie (mit Touristen-Bonus). */
+  attach: Record<string, number>;
+}
+
+/** Warenkorb-Modell (§ 4): jede Linie mit Level ≥ 1 ist auf der Karte und kostet Barista-Zeit. */
+export function productionLoad(loc: LocationState, locationId: string): ProductionLoad {
+  const shares = customerTypeShares(locationId);
+  const attach: Record<string, number> = {};
+  let load = 0;
+  for (const def of PRODUCT_LINES) {
+    const lvl = loc.stations[def.id]?.level ?? 0;
+    if (lvl <= 0) continue;
+    const a = attachRate(def, shares.tourist);
+    attach[def.id] = a;
+    load += (a * def.workTime) / getStationSpeed(def, lvl);
+  }
+  return { loadPerCustomer: load, attach };
+}
+
+/** Kapazität der Barista-Theke in Gästen/s: Baristas / Barista-Sekunden je Gast. */
+export function productionCapacity(loc: LocationState, locationId: string, speedBoost = 1): number {
+  const { loadPerCustomer } = productionLoad(loc, locationId);
+  if (loadPerCustomer <= 0) return 0;
+  return (getStaffLevel(loc, 'barista') * speedBoost) / loadPerCustomer;
 }
 
 export interface RateOptions {
@@ -126,22 +188,15 @@ export function computeLocationRates(
 ): LocationRates {
   const loc = getLocation(state, locationId);
   const mods = collectModifiers(state, locationId);
-
-  const perStationCap: Record<string, number> = {};
-  let sumThroughput = 0;
-  for (const def of STATIONS) {
-    if (def.basePrice <= 0) continue;
-    const lvl = loc.stations[def.id]?.level ?? 0;
-    const staff = mods.staffSpeedMult[def.id] ?? 1;
-    const th = getStationThroughput(def, lvl, staff, mods.speedMult);
-    perStationCap[def.id] = th;
-    sumThroughput += th;
-  }
-  const checkoutLevel = loc.stations[CHECKOUT_ID]?.level ?? 0;
-  const checkout = getCheckoutThroughput(checkoutLevel, loc.staff['cashier'] ?? 0, mods.speedMult);
-  const totalThroughput = Math.min(sumThroughput, checkout);
-
   const shares = customerTypeShares(locationId);
+
+  const { loadPerCustomer, attach } = productionLoad(loc, locationId);
+  const order = orderCapacity(loc, mods.speedMult);
+  const production =
+    loadPerCustomer > 0 ? (getStaffLevel(loc, 'barista') * mods.speedMult) / loadPerCustomer : 0;
+  const service = serviceCapacity(loc, mods.speedMult);
+  const totalThroughput = Math.min(order, production, service);
+
   // Influencer-Hype aus dem Spawn ohne Hype (sonst Rückkopplung). Er hebt nur die Nachfrage, nicht die
   // Sitzplätze, und zählt wie ein Boost zum Deckel ×12.
   const hype =
@@ -158,33 +213,35 @@ export function computeLocationRates(
     0,
     BALANCE.satisfaction.waitPressureMax,
   );
+  const stages: Record<StageId, number> = { demand: spawnRate, order, production, service };
+  let bottleneck: StageId = 'demand';
+  if (spawnRate > totalThroughput) {
+    bottleneck = 'order';
+    for (const id of ['production', 'service'] as const) {
+      if (stages[id] < stages[bottleneck]) bottleneck = id;
+    }
+  }
 
-  const perStation: Record<string, number> = {};
-  const perStationIncome: Record<string, Decimal> = {};
-  let income = ZERO;
   const tips = tipRate(loc, locationId) * mods.tipMult;
   const priceMult = (1 + tips) * mods.incomeMult * mods.priceMult * mods.prestigeMult;
-  // Verteilung nach Durchsatz, Merch-Station mit Touristen-Bonus gewichtet.
-  const weight = (id: string): number =>
-    (perStationCap[id] ?? 0) * stationDemandWeight(id, shares.tourist);
-  let sumWeight = 0;
-  for (const id of Object.keys(perStationCap)) sumWeight += weight(id);
-  for (const def of STATIONS) {
-    const cap = perStationCap[def.id];
-    if (cap === undefined || sumWeight <= 0) continue;
-    const customers = served * (weight(def.id) / sumWeight);
-    perStation[def.id] = customers;
-    const revenue = getStationPrice(def, loc.stations[def.id]?.level ?? 0, locationId).mul(
-      customers * (mods.stationPriceMult[def.id] ?? 1),
+  const perStation: Record<string, number> = {};
+  const perStationIncome: Record<string, Decimal> = {};
+  let ticket = ZERO;
+  for (const def of PRODUCT_LINES) {
+    const a = attach[def.id];
+    if (a === undefined) continue;
+    const price = getStationPrice(def, loc.stations[def.id]?.level ?? 0, locationId).mul(
+      mods.stationPriceMult[def.id] ?? 1,
     );
-    perStationIncome[def.id] = revenue.mul(priceMult);
-    if (customers > 0) income = income.add(revenue);
+    ticket = ticket.add(price.mul(a));
+    perStation[def.id] = served * a;
+    perStationIncome[def.id] = price.mul(served * a).mul(priceMult);
   }
   return {
     spawnRate,
     totalThroughput,
     served,
-    incomePerSec: D(income).mul(priceMult),
+    incomePerSec: D(ticket).mul(served).mul(priceMult),
     waitPressure,
     satisfactionFactor: satisfactionFactor(loc.satisfaction),
     tipRate: tips,
@@ -196,6 +253,11 @@ export function computeLocationRates(
       mods.eventSatisfaction,
       mods.qualityPenalty,
     ),
+    stages,
+    bottleneck,
+    loadPerCustomer,
+    avgServeTime: averageServeTime(),
+    avgTicket: D(ticket),
     perStation,
     perStationIncome,
   };

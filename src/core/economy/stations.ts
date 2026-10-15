@@ -1,6 +1,6 @@
 import { BALANCE } from '@data/balance';
 import { getLocationDef } from '@data/locations';
-import type { StationDef } from '@data/stations';
+import { REGISTER_ID, type StationDef } from '@data/stations';
 import { Decimal, D } from '../math/bignum';
 
 /** Tempo-Meilensteine sind bis Index 3 immer Tempo, danach wechseln sich Preis (gerade) und Tempo (ungerade) ab. */
@@ -85,33 +85,27 @@ export function getMaxAffordable(
   return n;
 }
 
+/** Preis je Stück: base × level × Standort × Preis-Meilensteine (0 ohne Level oder ohne Produkt). */
 export function getStationPrice(def: StationDef, level: number, locationId: string): Decimal {
-  if (level <= 0) return D(0);
+  if (level <= 0 || def.basePrice <= 0) return D(0);
   return D(def.basePrice * level * getLocationDef(locationId).scale).mul(milestonePriceMult(level));
 }
 
-/** Kunden/s einer Station. */
-export function getStationThroughput(
-  def: StationDef,
-  level: number,
-  staffSpeedMult = 1,
-  speedBoost = 1,
-): number {
-  if (level <= 0) return 0;
-  return (def.parallel * milestoneSpeedMult(level) * staffSpeedMult * speedBoost) / def.serviceTime;
+/**
+ * Arbeitstempo der Ausstattung (GAME_DESIGN § 4): jedes Level über 1 macht sie schneller, Meilensteine
+ * verdoppeln. Ohne Level: Kasse = Handkasse, Ausgabe-Station = Tempo 1 (Bedienungen arbeiten auch so),
+ * Produktlinie = 0 (nicht auf der Karte).
+ */
+export function getStationSpeed(def: StationDef, level: number): number {
+  if (level <= 0) {
+    if (def.id === REGISTER_ID) return BALANCE.order.handRegisterSpeed;
+    return def.area === 'service' ? 1 : 0;
+  }
+  return (1 + (level - 1) * BALANCE.equipment.speedPerLevel) * milestoneSpeedMult(level);
 }
 
-export function getStationRevenuePerSec(
-  def: StationDef,
-  level: number,
-  locationId: string,
-  servedShare: number,
-): Decimal {
-  return getStationPrice(def, level, locationId).mul(servedShare);
-}
-
-export function getCheckoutThroughput(level: number, cashierLevel = 0, speedBoost = 1): number {
-  const c = BALANCE.checkout;
-  if (level <= 0) return c.baselineThroughput * speedBoost;
-  return c.base * level ** c.levelExponent * (1 + cashierLevel * c.perCashier) * speedBoost;
+/** Sekunden je Vorgang bei diesem Level (`Infinity`, wenn das Gerät nicht arbeitet). */
+export function getStationWorkSeconds(def: StationDef, level: number): number {
+  const speed = getStationSpeed(def, level);
+  return speed > 0 ? def.workTime / speed : Infinity;
 }

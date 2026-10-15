@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { CROWD, getLayout, LAYOUTS } from '@data/layouts';
+import { CROWD, getLayout, LAYOUTS, visibleTables } from '@data/layouts';
 import { STATIONS } from '@data/stations';
 import { CUSTOMER_TYPES } from '@data/customerTypes';
 import { createInitialState, getLocation, type GameState } from '@core/GameState';
 import { computeLocationRates, customerTypeShares, pickCustomerType } from '@core/customers';
 import { createStore } from '@core/store';
 import { serialize } from '@core/save';
-import { CustomerCrowd, pickLook, serveDuration } from '@scenes/agents/crowd';
+import { CustomerCrowd, pickLook, serveDuration, type CrowdInput } from '@scenes/agents/crowd';
 import { CUSTOMER_LOOKS } from '@data/art';
 
 /** Deterministischer Zufall für reproduzierbare Tests. */
@@ -18,25 +18,45 @@ function lcg(seed = 1): () => number {
   };
 }
 
-function run(crowd: CustomerCrowd, perStation: Record<string, number>, seconds: number) {
+const input = (patch: Partial<CrowdInput> = {}): CrowdInput => ({
+  served: 1,
+  orderCap: 2,
+  waiters: 2,
+  cleaners: 1,
+  tables: 6,
+  cleanliness: 100,
+  ...patch,
+});
+
+function run(crowd: CustomerCrowd, inp: CrowdInput, seconds: number): number {
   let purchases = 0;
-  for (let t = 0; t < seconds * 60; t++)
-    purchases += crowd.update(1 / 60, perStation).purchases.length;
+  for (let t = 0; t < seconds * 60; t++) purchases += crowd.update(1 / 60, inp).purchases.length;
   return purchases;
 }
 
-describe('Layouts', () => {
-  it('jede Station hat genau eine Platzierung im Raster', () => {
+describe('Grundriss (Phase 2)', () => {
+  it('jede Ausstattung hat genau eine Platzierung im Raster, Theke und Tische liegen im Raum', () => {
     for (const layout of Object.values(LAYOUTS)) {
       const ids = layout.stations.map((s) => s.stationId).sort();
       expect(ids).toEqual(STATIONS.map((s) => s.id).sort());
       const inGrid = (p: { x: number; y: number }) =>
         p.x >= 0 && p.y >= 0 && p.x < layout.gridSize && p.y < layout.gridSize;
-      for (const s of layout.stations) {
-        expect(inGrid(s.tile) && inGrid(s.access)).toBe(true);
-        for (const w of s.path) expect(inGrid(w)).toBe(true);
-        expect(Math.abs(s.queueDir.x) + Math.abs(s.queueDir.y)).toBe(1);
+      for (const s of layout.stations) expect(inGrid(s.tile) && inGrid(s.workSpot)).toBe(true);
+      for (const c of layout.counter) expect(inGrid(c)).toBe(true);
+      for (const w of layout.order.path) expect(inGrid(w)).toBe(true);
+      expect(Math.abs(layout.order.queueDir.x) + Math.abs(layout.order.queueDir.y)).toBe(1);
+      for (const tb of layout.tables) {
+        expect(inGrid(tb.tile) && inGrid(tb.side)).toBe(true);
+        // Kein Tisch auf einer Theken-, Geräte- oder Gangkachel.
+        expect(layout.counter.some((c) => c.x === tb.tile.x && c.y === tb.tile.y)).toBe(false);
+        expect(tb.tile.y).toBeGreaterThan(layout.walkRows.top);
+        expect(tb.tile.y).toBeLessThan(layout.walkRows.bottom);
       }
+      expect(layout.tables).toHaveLength(12);
+      expect(visibleTables(layout, 0)).toHaveLength(0);
+      expect(visibleTables(layout, 3)).toHaveLength(3);
+      expect(visibleTables(layout, 50)).toHaveLength(12);
+      expect(layout.pickup.waiterHomes.length).toBeGreaterThanOrEqual(CROWD.maxWaiters);
     }
     expect(() => getLayout('atlantis')).toThrow();
   });
@@ -63,14 +83,14 @@ describe('Kundentypen', () => {
   });
 });
 
-describe('Kunden-Agenten (kosmetisch)', () => {
+describe('Gäste, Bedienungen und Putzkräfte (kosmetisch)', () => {
   it('jede Figur trägt eine Variante ihres Typs, gemischt über die Varianten', () => {
     expect(pickLook('student', 0)).toBe(CUSTOMER_LOOKS.student[0]);
     expect(pickLook('student', 0.999999)).toBe(CUSTOMER_LOOKS.student.at(-1));
     expect(pickLook('critic', 1)).toBe(CUSTOMER_LOOKS.critic.at(-1));
     expect(pickLook('critic', -1)).toBe(CUSTOMER_LOOKS.critic[0]);
     const crowd = new CustomerCrowd(getLayout('berlin'), 'berlin', lcg(5));
-    run(crowd, { matchaBar: 3, togoWindow: 3 }, 20);
+    run(crowd, input({ served: 3 }), 20);
     const seen = new Set<string>();
     for (const a of crowd.agents) {
       if (!a.active) continue;
@@ -79,40 +99,70 @@ describe('Kunden-Agenten (kosmetisch)', () => {
     }
     expect(seen.size).toBeGreaterThan(3);
   });
-  it('bei 1 Kunde/s sind Kunden unterwegs und kaufen', () => {
+  it('bei 1 Gast/s stellen sich Gäste an, werden bedient und gehen wieder', () => {
     const crowd = new CustomerCrowd(getLayout('berlin'), 'berlin', lcg());
-    const purchases = run(crowd, { matchaBar: 1 }, 30);
+    const purchases = run(crowd, input(), 40);
     expect(crowd.activeCount).toBeGreaterThan(0);
     expect(crowd.activeCount).toBeLessThan(CROWD.maxAgents);
-    expect(purchases).toBeGreaterThan(15);
+    // Bestellen, hinsetzen, bedient werden dauert; nach 40 s ist ein guter Teil durch.
+    expect(purchases).toBeGreaterThanOrEqual(10);
     expect(crowd.hiddenCount).toBe(0);
+    // Sitzgäste und Abholer kommen beide vor.
+    const phases = new Set(crowd.agents.filter((a) => a.active).map((a) => a.phase));
+    expect(phases.size).toBeGreaterThan(1);
+    expect(crowd.agents.some((a) => a.active && a.table >= 0)).toBe(true);
+  });
+  it('Bedienungen laufen zu Tischen; ohne sichtbare Bedienung holen Gäste über die Theke ab', () => {
+    const layout = getLayout('berlin');
+    const withWaiter = new CustomerCrowd(layout, 'berlin', lcg(5));
+    run(withWaiter, input({ waiters: 1 }), 30);
+    expect(withWaiter.waiters.filter((w) => w.active)).toHaveLength(1);
+    expect(withWaiter.waiters.some((w) => w.phase !== 'idle')).toBe(true);
+    const none = new CustomerCrowd(layout, 'berlin', lcg(5));
+    const purchases = run(none, input({ waiters: 0 }), 60);
+    expect(none.waiters.every((w) => !w.active)).toBe(true);
+    expect(purchases).toBeGreaterThan(0);
+    // Höchstens `maxWaiters` Figuren, egal wie viele eingestellt sind.
+    const many = new CustomerCrowd(layout, 'berlin', lcg(5));
+    run(many, input({ waiters: 20 }), 5);
+    expect(many.waiters.filter((w) => w.active)).toHaveLength(CROWD.maxWaiters);
   });
   it('bei 100/s bleibt es bei 40 Agenten, der Rest wird als +N gezählt', () => {
     const crowd = new CustomerCrowd(getLayout('berlin'), 'berlin', lcg(7));
-    run(crowd, { matchaBar: 60, togoWindow: 40 }, 20);
+    run(crowd, input({ served: 100, orderCap: 120, waiters: 3, tables: 12 }), 20);
     expect(crowd.activeCount).toBe(CROWD.maxAgents);
     expect(crowd.hiddenCount).toBeGreaterThan(0);
-    expect(crowd.queueLength('matchaBar') + crowd.queueLength('togoWindow')).toBeGreaterThan(0);
   });
-  it('ohne Rate kommt niemand, Stationen ohne Platzierung werden ignoriert', () => {
+  it('ohne Rate kommt niemand', () => {
     const crowd = new CustomerCrowd(getLayout('berlin'), 'berlin', lcg());
-    expect(run(crowd, { matchaBar: 0, unknown: 5 }, 10)).toBe(0);
+    expect(run(crowd, input({ served: 0 }), 10)).toBe(0);
     expect(crowd.activeCount).toBe(0);
   });
   it('Agenten verlassen das Café wieder, wenn die Rate wegfällt', () => {
     const crowd = new CustomerCrowd(getLayout('berlin'), 'berlin', lcg(3));
-    run(crowd, { matchaBar: 2 }, 10);
+    run(crowd, input({ served: 2 }), 10);
     expect(crowd.activeCount).toBeGreaterThan(0);
-    run(crowd, { matchaBar: 0.0001 }, 120);
+    run(crowd, input({ served: 0.0001 }), 120);
     expect(crowd.activeCount).toBe(0);
-    expect(crowd.queueLength('matchaBar')).toBe(0);
+    expect(crowd.waitingCount).toBe(0);
+    expect(crowd.awaitingServiceCount).toBe(0);
+  });
+  it('dreckige Tische folgen der Sauberkeit und werden von Putzkräften gewischt', () => {
+    const crowd = new CustomerCrowd(getLayout('berlin'), 'berlin', lcg(9));
+    run(crowd, input({ tables: 12, cleanliness: 0, cleaners: 0 }), 60);
+    expect(crowd.dirty.size).toBeGreaterThan(0);
+    expect(crowd.cleaners.every((c) => !c.active)).toBe(true);
+    const before = crowd.dirty.size;
+    run(crowd, input({ tables: 12, cleanliness: 100, cleaners: 2 }), 60);
+    expect(crowd.dirty.size).toBeLessThan(before);
+    expect(crowd.cleaners.filter((c) => c.active)).toHaveLength(2);
   });
   it('ungültige Zeitschritte bewegen nichts', () => {
     const crowd = new CustomerCrowd(getLayout('berlin'), 'berlin', lcg());
-    expect(crowd.update(Number.NaN, { matchaBar: 5 }).spawned).toBe(0);
-    expect(crowd.update(-1, { matchaBar: 5 }).spawned).toBe(0);
+    expect(crowd.update(Number.NaN, input({ served: 5 })).spawned).toBe(0);
+    expect(crowd.update(-1, input({ served: 5 })).spawned).toBe(0);
   });
-  it('Bedienzeit folgt der Stationsrate, begrenzt', () => {
+  it('Bestellzeit folgt der Kapazität der Bestelltheke, begrenzt', () => {
     expect(serveDuration(1)).toBe(1);
     expect(serveDuration(1000)).toBe(CROWD.minServeSec);
     expect(serveDuration(0)).toBe(CROWD.maxServeSec);
@@ -130,25 +180,35 @@ describe('Szene beeinflusst keine Einnahmen', () => {
           ...loc,
           level: 3,
           ambience: { seats: 5 },
+          staff: { cashier: 2, barista: 3, waiter: 2, cleaner: 1 },
           stations: {
             ...loc.stations,
-            matchaBar: { level: 30, unlocked: true },
-            checkout: { level: 10, unlocked: true },
-            togoWindow: { level: 5, unlocked: true },
+            matchaStation: { level: 30, unlocked: true },
+            register: { level: 10, unlocked: true },
+            coffeeMachine: { level: 5, unlocked: true },
           },
         },
       },
     };
   }
-  it('mit und ohne Kunden-Agenten sind die Zustände identisch', () => {
+  it('mit und ohne Figuren sind die Zustände identisch', () => {
     const withScene = createStore(busyState());
     const without = createStore(busyState());
     const crowd = new CustomerCrowd(getLayout('berlin'), 'berlin', lcg(11));
     let visiblePurchases = 0;
     for (let f = 0; f < 60 * 60; f++) {
       withScene.advance(1000 / 60);
-      const rates = computeLocationRates(withScene.getState(), 'berlin');
-      visiblePurchases += crowd.update(1 / 60, rates.perStation).purchases.length;
+      const s = withScene.getState();
+      const loc = getLocation(s, 'berlin');
+      const rates = computeLocationRates(s, 'berlin');
+      visiblePurchases += crowd.update(1 / 60, {
+        served: rates.served,
+        orderCap: rates.stages.order,
+        waiters: loc.staff['waiter'] ?? 0,
+        cleaners: loc.staff['cleaner'] ?? 0,
+        tables: loc.ambience['seats'] ?? 0,
+        cleanliness: loc.cleanliness,
+      }).purchases.length;
       without.advance(1000 / 60);
     }
     expect(visiblePurchases).toBeGreaterThan(0);

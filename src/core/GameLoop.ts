@@ -32,7 +32,7 @@ export function tick(state: GameState, dtMs: number): GameState {
       coins: loc.coins.add(gain),
       earnedThisRun: loc.earnedThisRun.add(gain),
       satisfaction,
-      cleanliness: advanceCleanliness(loc, dt),
+      cleanliness: advanceCleanliness(loc, dt, rates.served),
     };
     earnedTotal = earnedTotal.add(gain);
     served += rates.served * dt;

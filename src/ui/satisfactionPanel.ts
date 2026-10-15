@@ -6,18 +6,10 @@ import { cleanlinessRatePerMin } from '@core/staff';
 import { h, setText, type View } from './dom';
 import { fmtSigned, fmtSmall } from './format';
 import type { PanelContent } from './panel';
+import { stageName } from './labels';
 
 type Part = keyof Omit<SatisfactionBreakdown, 'target'>;
-const PARTS: Part[] = [
-  'base',
-  'decor',
-  'quality',
-  'teaMaster',
-  'zen',
-  'event',
-  'waitPressure',
-  'cleanliness',
-];
+const PARTS: Part[] = ['base', 'decor', 'quality', 'zen', 'event', 'waitPressure', 'cleanliness'];
 
 /** Zufriedenheits-Detail (GAME_DESIGN § 7.3): Einzelbeiträge zum Ziel, damit klar ist, was drückt und was hebt. */
 export function createSatisfactionPanel(store: Store): PanelContent {
@@ -60,7 +52,7 @@ export function createSatisfactionPanel(store: Store): PanelContent {
       const v = b[x.p];
       const extra =
         x.p === 'cleanliness'
-          ? ` (${fmtSmall(loc.cleanliness, 0)} %, ${fmtSigned(cleanlinessRatePerMin(loc))}/min)`
+          ? ` (${fmtSmall(loc.cleanliness, 0)} %, ${fmtSigned(cleanlinessRatePerMin(loc, rates.served))}/min)`
           : '';
       setText(x.label, `${t(`satisfaction.part.${x.p}`)}${extra}`);
       setText(x.value, fmtSigned(v));
@@ -77,7 +69,7 @@ export function createSatisfactionPanel(store: Store): PanelContent {
         : worst === 'cleanliness' && (loc.staff['cleaner'] ?? 0) > 0
           ? 'moreCleaners'
           : worst;
-    setText(hint, t(`satisfaction.hint.${key}`));
+    setText(hint, t(`satisfaction.hint.${key}`, { stage: stageName(rates.bottleneck) }));
   };
   const view: View = { el, update };
   return { title: t('satisfaction.title'), view };

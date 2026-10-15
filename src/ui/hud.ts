@@ -1,6 +1,6 @@
 import { t } from '@i18n/index';
 import { getLocation, type GameState } from '@core/GameState';
-import { getIncomePerSec, mood } from '@core/customers';
+import { computeLocationRates, mood } from '@core/customers';
 import { getBoostRemaining, isFreeBoostReady } from '@core/events';
 import { getCafeClock } from '@core/time/dayCycle';
 import { BOOSTS } from '@data/leaves';
@@ -9,6 +9,7 @@ import { QUALITY_TIERS } from '@data/quality';
 import { h, on, setText, type View } from './dom';
 import { icon, setIcon, type IconName } from './icons';
 import { fmt, fmtClock, fmtTime } from './format';
+import { stageName } from './labels';
 
 export interface HudActions {
   onSatisfaction(): void;
@@ -100,6 +101,14 @@ export function createHud(actions: HudActions): View {
     icon('broom'),
     cleanValue,
   );
+  // Engpass der Service-Pipeline (GAME_DESIGN § 7.2), nur wenn Gäste warten.
+  const bottleneckValue = h('span');
+  const bottleneck = h(
+    'span',
+    { class: 'chip chip-warn', 'data-testid': 'hud-bottleneck' },
+    icon('warning-circle'),
+    bottleneckValue,
+  );
 
   // Boost-Pillen mit Restzeit (§ 3.2/3.5); der Gratis-Boost erscheint als Knopf, wenn er bereit ist.
   const pills = BOOST_PILLS.map((def) => {
@@ -150,7 +159,7 @@ export function createHud(actions: HudActions): View {
     { class: 'hud', 'data-testid': 'hud' },
     pill,
     status,
-    h('div', { class: 'status-row' }, satisfaction, cleanliness),
+    h('div', { class: 'status-row' }, satisfaction, cleanliness, bottleneck),
     boosts,
   );
   if (import.meta.env.DEV) el.append(h('div', { class: 'hud-hint', text: t('scene.debugHint') }));
@@ -167,7 +176,10 @@ export function createHud(actions: HudActions): View {
       const c = getCafeClock(s.playtimeSec);
       setText(clock, fmtClock(c.hour, c.minute));
       setText(coins.value, fmt(s, loc.coins));
-      setText(income, `+${fmt(s, getIncomePerSec(s, s.activeLocationId))} ${t('hud.income')}`);
+      const rates = computeLocationRates(s, s.activeLocationId);
+      setText(income, `+${fmt(s, rates.incomePerSec)} ${t('hud.income')}`);
+      bottleneck.hidden = rates.waitPressure <= 0;
+      setText(bottleneckValue, t('hud.bottleneck', { stage: stageName(rates.bottleneck) }));
       setText(leaves.value, fmt(s, s.meta.goldenLeaves));
       setText(satValue, `${String(Math.round(loc.satisfaction))} %`);
       setIcon(satIcon, MOOD_ICON[mood(loc.satisfaction)] ?? 'smiley');

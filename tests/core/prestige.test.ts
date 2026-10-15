@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { foundingStaff } from '@data/staff';
 import {
   SCHEMA_VERSION,
   createInitialState,
@@ -79,9 +80,9 @@ function grown(): GameState {
   s = patch(s, {
     stations: {
       ...loc(s).stations,
-      matchaBar: { level: 120, unlocked: true },
-      checkout: { level: 80, unlocked: true },
-      togoWindow: { level: 80, unlocked: true },
+      matchaStation: { level: 120, unlocked: true },
+      register: { level: 80, unlocked: true },
+      coffeeMachine: { level: 80, unlocked: true },
     },
   });
   return {
@@ -151,11 +152,11 @@ describe('Franchise-Reset (GAME_DESIGN § 11.1)', () => {
     expect(l.level).toBe(1);
     expect(l.quality).toBe(0);
     expect(l.ambience).toEqual({});
-    expect(l.staff).toEqual({});
+    expect(l.staff).toEqual(foundingStaff());
     expect(l.marketing).toEqual({ level: 0 });
     expect(l.autoBuy).toBe(false);
-    expect(l.stations['matchaBar']?.level).toBe(1);
-    expect(l.stations['checkout']?.level).toBe(0);
+    expect(l.stations['matchaStation']?.level).toBe(1);
+    expect(l.stations['register']?.level).toBe(0);
     // … nur Prestige-Zähler und Bestwert bleiben.
     expect(l.prestigeCount).toBe(1);
     expect(l.bestLevel).toBe(12);
@@ -186,25 +187,25 @@ describe('Franchise-Reset (GAME_DESIGN § 11.1)', () => {
   it('Schnellstart: die ersten N Stationen starten auf Level 10', () => {
     const s = withMeta(grown(), { fastStart: 2 });
     const l = loc(franchiseReset(s, L));
-    expect(l.stations['matchaBar']).toEqual({ level: 10, unlocked: true });
-    expect(l.stations['checkout']).toEqual({ level: 10, unlocked: true });
-    expect(l.stations['togoWindow']?.level).toBe(0);
+    expect(l.stations['matchaStation']).toEqual({ level: 10, unlocked: true });
+    expect(l.stations['register']).toEqual({ level: 10, unlocked: true });
+    expect(l.stations['coffeeMachine']?.level).toBe(0);
     expect(l.level).toBe(1);
     const four = loc(franchiseReset(withMeta(grown(), { fastStart: 4 }), L));
-    expect(four.stations['icedBar']).toEqual({ level: 10, unlocked: true });
+    expect(four.stations['iceBox']).toEqual({ level: 10, unlocked: true });
     expect(four.level).toBe(2);
-    expect(four.stations['togoWindow']).toEqual({ level: 10, unlocked: true });
-    expect(four.stations['bakery']).toEqual({ level: 0, unlocked: false });
+    expect(four.stations['coffeeMachine']).toEqual({ level: 10, unlocked: true });
+    expect(four.stations['oven']).toEqual({ level: 0, unlocked: false });
   });
   it('Blätter für Café-Level gibt es nach dem Reset nur über dem Bestwert', () => {
     // Reset bei Café-Level 12 → die Level 2..12 bringen beim Wiederaufstieg keine Blätter mehr.
     let s = franchiseReset(grown(), L);
     s = patch(s, {
       coins: D(1e15),
-      stations: { ...loc(s).stations, matchaBar: { level: 24, unlocked: true } },
+      stations: { ...loc(s).stations, matchaStation: { level: 24, unlocked: true } },
     });
     const leaves = s.meta.goldenLeaves.toNumber();
-    s = buyStation(s, L, 'matchaBar', 1);
+    s = buyStation(s, L, 'matchaStation', 1);
     expect(loc(s).level).toBe(2);
     expect(s.meta.goldenLeaves.toNumber()).toBe(leaves);
     // Münz-Belohnung gibt es weiterhin (Neustart-Hilfe).
@@ -266,7 +267,7 @@ describe('Meta-Upgrades (GAME_DESIGN § 11.3)', () => {
     const up = withMeta(s, { discount: 5 });
     expect(getMetaEffects(up).discount).toBeCloseTo(0.1);
     const ratio = (f: (x: GameState) => number): number => f(up) / f(s);
-    expect(ratio((x) => getBulkCost(x, L, 'matchaBar', 10).toNumber())).toBeCloseTo(0.9);
+    expect(ratio((x) => getBulkCost(x, L, 'matchaStation', 10).toNumber())).toBeCloseTo(0.9);
     expect(ratio((x) => getNextAmbienceCost(x, L, 'decor').toNumber())).toBeCloseTo(0.9);
     expect(ratio((x) => getNextStaffCost(x, L, 'barista').toNumber())).toBeCloseTo(0.9);
     expect(ratio((x) => getMarketingLevelCost(x, L).toNumber())).toBeCloseTo(0.9);
@@ -358,8 +359,8 @@ describe('Standorte: Freischalt-Kette (GAME_DESIGN § 3)', () => {
   });
   it('Stationen am neuen Standort kosten und verdienen skaliert', () => {
     const s = unlockLocation(withZen(patch(fresh(), { bestLevel: 15 }), 10), 'kyoto');
-    expect(getBulkCost(s, 'kyoto', 'matchaBar', 1).toNumber()).toBeCloseTo(
-      getBulkCost(s, L, 'matchaBar', 1).toNumber() * 25,
+    expect(getBulkCost(s, 'kyoto', 'matchaStation', 1).toNumber()).toBeCloseTo(
+      getBulkCost(s, L, 'matchaStation', 1).toNumber() * 25,
     );
   });
 });

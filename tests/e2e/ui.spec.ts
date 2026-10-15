@@ -68,7 +68,7 @@ async function atNoon(page: Page): Promise<void> {
 /** Wartet, bis der erste Kauf bezahlbar ist (Startmünzen + Einkommen, ~10 s), und kauft ×1. */
 async function buyFirstUpgrade(page: Page): Promise<void> {
   await page.getByTestId('nav-shop').click();
-  await page.getByTestId('shop-station-matchaBar').click();
+  await page.getByTestId('shop-station-matchaStation').click();
   await expect(page.getByTestId('station-level')).toHaveText(/1$/);
   const buy = page.getByTestId('buy-1');
   await expect(buy).toBeEnabled({ timeout: 20_000 });
@@ -83,8 +83,8 @@ test('Spielschleife ohne Debug-Tasten: kaufen, speichern, neu laden', async ({ p
   await buyFirstUpgrade(page);
   await page.reload();
   await page.getByTestId('nav-shop').click();
-  await expect(page.getByTestId('shop-station-matchaBar')).toBeVisible();
-  await page.getByTestId('shop-station-matchaBar').click();
+  await expect(page.getByTestId('shop-station-matchaStation')).toBeVisible();
+  await page.getByTestId('shop-station-matchaStation').click();
   await expect(page.getByTestId('station-level')).toHaveText('Level 2');
   expect(errors).toEqual([]);
 });
@@ -155,7 +155,7 @@ test('Export, Import und Löschen mit doppelter Bestätigung', async ({ page }) 
   await page.getByTestId('dialog-confirm').click();
   await expect(page.getByTestId('toasts')).toContainText('gelöscht');
   await page.getByTestId('nav-shop').click();
-  await page.getByTestId('shop-station-matchaBar').click();
+  await page.getByTestId('shop-station-matchaStation').click();
   await expect(page.getByTestId('station-level')).toHaveText('Level 1');
 
   // Export wieder einspielen: Level 2 ist zurück.
@@ -163,7 +163,7 @@ test('Export, Import und Löschen mit doppelter Bestätigung', async ({ page }) 
   await page.getByTestId('settings-import-file').setInputFiles(path);
   await expect(page.getByTestId('toasts')).toContainText('importiert');
   await page.getByTestId('nav-shop').click();
-  await page.getByTestId('shop-station-matchaBar').click();
+  await page.getByTestId('shop-station-matchaStation').click();
   await expect(page.getByTestId('station-level')).toHaveText('Level 2');
 });
 
@@ -196,7 +196,7 @@ test('Barrierefreiheit: keine axe-Verstöße (WCAG 2 A/AA) in HUD und Panels', a
   await expect(page.getByTestId('panel-satisfaction')).toBeVisible();
   await scan();
   await page.getByTestId('nav-shop').click();
-  await page.getByTestId('shop-station-matchaBar').click();
+  await page.getByTestId('shop-station-matchaStation').click();
   await scan();
   await page.getByTestId('tile-ambience-seats').click();
   await scan();
@@ -205,16 +205,20 @@ test('Barrierefreiheit: keine axe-Verstöße (WCAG 2 A/AA) in HUD und Panels', a
   await scan();
 });
 
-test('Personal einstellen: Stufe steigt, Effekt wird erklärt', async ({ page }) => {
+test('Personal einstellen: Anzahl steigt, Pipeline und Effekt werden erklärt', async ({ page }) => {
   await page.goto('?lang=en&tutorial=0');
   await reloadWithSave(page, { coins: '100000', level: 4 });
   await page.getByTestId('nav-staff').click();
+  // Pipeline-Karte (Phase 2): vier Stufen, Engpass benannt.
+  await expect(page.getByTestId('pipeline-bottleneck')).toContainText('Bottleneck:');
+  await expect(page.getByTestId('pipeline-order')).toContainText('/s');
   const row = page.getByTestId('staff-row-barista');
-  await expect(row).toContainText('Tier 0/20');
-  await expect(row).toContainText('Next tier:');
+  // Gründungsteam: ein Barista ist schon da.
+  await expect(row).toContainText('1/20 hired');
+  await expect(row).toContainText('Next hire:');
   await page.getByTestId('staff-hire-barista').click();
-  await expect(row).toContainText('Tier 1/20');
-  await expect(row).toContainText('bar speed +15%');
+  await expect(row).toContainText('2/20 hired');
+  await expect(row).toContainText('Now: 2 at the counter');
   // Filialleiter schaltet den Auto-Kauf frei.
   await expect(page.getByTestId('staff-autobuy')).toBeDisabled();
   await page.getByTestId('staff-hire-manager').click();
@@ -257,7 +261,7 @@ test('Qualität kaufen: Preis-Stufe steigt, Produktname wechselt', async ({ page
   // Stufe 2 braucht Café-Level 6.
   await expect(page.getByTestId('quality-buy')).toBeDisabled();
   await page.getByTestId('shop-tab-stations').click();
-  await page.getByTestId('shop-station-matchaBar').click();
+  await page.getByTestId('shop-station-matchaStation').click();
   await expect(page.getByTestId('station-product')).toHaveText('On the menu: Café matcha latte');
 });
 
@@ -337,7 +341,7 @@ test('Standort eröffnen, wechseln und nach Neuladen dort bleiben', async ({ pag
   await expect(page.getByTestId('location-action-berlin')).toHaveText('Switch here');
   // Shop zeigt die Kyoto-Stationen.
   await page.getByTestId('nav-shop').click();
-  await expect(page.getByTestId('panel-shop')).toContainText('Usucha Counter');
+  await expect(page.getByTestId('panel-shop')).toContainText('Usucha station');
   await page.reload();
   await expect(page.getByTestId('hud-location')).toContainText('Kyoto Teahouse');
   expect(errors).toEqual([]);

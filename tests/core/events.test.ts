@@ -36,12 +36,19 @@ import { FREE_BOOST } from '@data/monetization';
 
 const LOC = 'berlin';
 
-/** Café mit laufenden Stationen (inkl. Iced-Bar und Bäckerei), damit Event-Wirkungen messbar sind. */
+/** Café mit laufender Ausstattung (inkl. Eisfach und Ofen) und Personal, damit Event-Wirkungen messbar sind. */
 const make = (patch: Partial<LocationState> = {}): GameState => {
   const s = createInitialState(0);
   const base = getLocation(s, LOC);
   const stations = { ...base.stations };
-  for (const id of ['matchaBar', 'checkout', 'togoWindow', 'icedBar', 'bakery', 'ceremonyCorner']) {
+  for (const id of [
+    'matchaStation',
+    'register',
+    'coffeeMachine',
+    'iceBox',
+    'oven',
+    'ceremonySet',
+  ]) {
     stations[id] = { level: 10, unlocked: true };
   }
   return withLocation(s, LOC, {
@@ -49,6 +56,7 @@ const make = (patch: Partial<LocationState> = {}): GameState => {
     coins: D(1e12),
     level: 10,
     stations,
+    staff: { cashier: 6, barista: 12, waiter: 8 },
     ambience: { seats: 20 },
     satisfaction: 70,
     ...patch,
@@ -184,22 +192,22 @@ describe('Event-Abschluss und Belohnung', () => {
     expect(resolveEvent(heat, 0)).toBe(heat);
   });
 
-  it('Hitzewelle verdreifacht die Iced-Bar, Food-Blogger die Bäckerei', () => {
+  it('Hitzewelle verdreifacht das Eisfach, Food-Blogger den Ofen', () => {
     const base = make();
-    const icedBefore = computeLocationRates(base, LOC).perStationIncome['icedBar'];
+    const icedBefore = computeLocationRates(base, LOC).perStationIncome['iceBox'];
     const heat = withEvent(base, { id: 'heatwave' });
     const r = computeLocationRates(heat, LOC);
     // Spawn ×1.3 ändert auch die Kundenzahl; das Verhältnis Iced-Bar ÷ Matcha-Bar zeigt den Preis-Faktor.
     const ratio = (x: GameState): number => {
       const p = computeLocationRates(x, LOC).perStationIncome;
-      return (p['icedBar']?.toNumber() ?? 0) / (p['matchaBar']?.toNumber() ?? 1);
+      return (p['iceBox']?.toNumber() ?? 0) / (p['matchaStation']?.toNumber() ?? 1);
     };
     expect(ratio(heat) / ratio(base)).toBeCloseTo(3);
-    expect(r.perStationIncome['icedBar']?.gt(icedBefore ?? 0)).toBe(true);
+    expect(r.perStationIncome['iceBox']?.gt(icedBefore ?? 0)).toBe(true);
     const blog = withEvent(base, { id: 'foodBlogger' });
     const bRatio = (x: GameState): number => {
       const p = computeLocationRates(x, LOC).perStationIncome;
-      return (p['bakery']?.toNumber() ?? 0) / (p['matchaBar']?.toNumber() ?? 1);
+      return (p['oven']?.toNumber() ?? 0) / (p['matchaStation']?.toNumber() ?? 1);
     };
     expect(bRatio(blog) / bRatio(base)).toBeCloseTo(3);
   });
@@ -291,7 +299,7 @@ describe('Kalender-Events (GAME_DESIGN § 12.2)', () => {
     expect(hanami.calendarEvents).toEqual(['hanami']);
     const target = (x: GameState): number => computeLocationRates(x, LOC).satisfaction.target;
     expect(target(hanami) - target(s)).toBeCloseTo(10);
-    expect(collectModifiers(hanami).stationPriceMult['ceremonyCorner']).toBe(2);
+    expect(collectModifiers(hanami).stationPriceMult['ceremonySet']).toBe(2);
     expect(getEventOverlay(hanami, LOC)?.particles).toBe('petals');
   });
 });

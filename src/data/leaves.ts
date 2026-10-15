@@ -50,8 +50,8 @@ export interface SkinDef {
 }
 
 export const SKINS: readonly SkinDef[] = [
-  { id: 'sakuraBar', stationId: 'matchaBar', tint: 0xffa8cc, cost: 30 },
-  { id: 'neonCheckout', stationId: 'checkout', tint: 0x6ff3ff, cost: 30 },
+  { id: 'sakuraBar', stationId: 'matchaStation', tint: 0xffa8cc, cost: 30 },
+  { id: 'neonCheckout', stationId: 'register', tint: 0x6ff3ff, cost: 30 },
 ];
 
 export function getSkinDef(id: string): SkinDef | undefined {

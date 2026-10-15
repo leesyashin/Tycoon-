@@ -4,7 +4,7 @@
 > Dieser Plan ist die Arbeitsgrundlage für mehrere aufeinanderfolgende Opus-Sessions. Jede Session liest zuerst
 > `CLAUDE.md`, dann `docs/STATUS.md`, dann den eigenen Abschnitt in diesem Plan.
 
-Stand: 2026-10-14 · Auftraggeber: Vincent · Repo: `leesyashin/tycoon-`
+Stand: 2026-10-15 (Phase 2 ergänzt) · Auftraggeber: Vincent · Repo: `leesyashin/tycoon-`
 
 ---
 
@@ -33,9 +33,10 @@ Idle Hotel Empire Tycoon: Man leitet ein Hotel, baut Zimmer und Einrichtungen, s
 |---|---|
 | Hotel | Matcha-Café (Standort) |
 | Städte / neue Hotels | Standorte: Berlin → Kyoto → Tokio → Seoul → New York → Bali |
-| Zimmer-Typen | Verkaufsstationen: Matcha-Bar, Iced-Bar, Bäckerei, Zeremonie-Ecke, Merch-Regal, Workshop-Raum, To-go-Fenster |
+| Zimmer-Typen / Möbel mit Level | Phase 1: Verkaufsstationen. Phase 2: **Ausstattung** der Theken – Kasse, Matcha-Station, Kaffeemaschine, Kühl-/Eisfach, Ofen, Kuchenvitrine, Steinmühle, Zeremonie-Set, Ausgabe-Station (GAME_DESIGN § 4) |
 | Einrichtungen (Pool, Spa …) | Ambiente: Sitzbereich, Terrasse, Deko, Musik, WLAN |
-| Personal (Rezeption, Reinigung, Koch) | Barista, Kassierer, Bäcker, Tee-Meister, Reinigungskraft, Social-Media-Manager, Filialleiter |
+| Personal (Rezeption, Reinigung, Koch) | Phase 2: Verkäufer (Bestelltheke), Baristas (Barista-Theke), Bedienungen (Ausgabe/Tischservice), Putzkräfte – als Anzahl; dazu Social-Media-Manager, Filialleiter |
+| Rezeption → Zimmer → Housekeeping (Service-Kette) | Phase 2: Bestelltheke → Barista-Theke → Ausgabe/Tisch → Putzen (Service-Pipeline, GAME_DESIGN § 7.2) |
 | Gäste + Zufriedenheit | Kunden-Typen (Student, Tourist, Influencer, Stammgast) + Zufriedenheit 0–100 |
 | Marketing | Social-Media-Kampagnen |
 | Sterne-Rating des Hotels | Matcha-Qualitätsgrad (Culinary → Premium → Ceremonial → Meister) |
@@ -171,8 +172,11 @@ interface LocationState {
 | S7 | Events, Boosts, Premium | Zeit-Events, Boost-System, Goldene Blätter, MonetizationProvider (No-op), Zeitsprung-Shop | 1 Session |
 | S8 | Grafik + Audio | UI-Skin nach `docs/UI_STYLE.md`, Flat-Shaded-Iso-Assets, Animationen, Partikel, SFX/Musik, Juice | 1–2 Sessions |
 | S9 | Balancing, Tutorial, Release | Balance-Sim, Onboarding, PWA, Performance, Bugfixing, v1.0 | 1–2 Sessions |
+| S10 | Service-Pipeline (Phase 2) | Bedientes Café: Bestellung → Zubereitung → Ausgabe, Ausstattung statt Stationen, Personal als Anzahl, Save v9 | 1 Session |
+| S11 | Szene und Figuren (Phase 2) | Neuer Grundriss, Theken-/Ausstattungs-/Tisch-Sprites, bessere Figuren, Bedienungen und Putzkräfte | 1–2 Sessions |
+| S12 | Balancing und Feinschliff (Phase 2) | Richtwerte, Tutorial zur Pipeline, Screenshots | 1 Session |
 
-Gesamt: ca. 11–14 Sessions. Reihenfolge ist verbindlich, S2 und S3 können bei Bedarf parallel in zwei Branches laufen (Schnittstelle: `GameState` aus S1).
+Gesamt: ca. 11–14 Sessions für Phase 1, dazu 3–4 für Phase 2 (siehe unten). Reihenfolge ist verbindlich, S2 und S3 können bei Bedarf parallel in zwei Branches laufen (Schnittstelle: `GameState` aus S1).
 
 ### Regeln für jede Session
 
@@ -456,6 +460,123 @@ Setze S9 „Balancing, Tutorial, Release“ um und bereite v1.0.0 vor. Branch: s
 ```
 
 ---
+
+## Phase 2 – Service-Café (S10–S12)
+
+> Vorgabe Vincent (2026-10-15): Das Café-Prinzip war falsch. Kein Selbstbedienungs-Café mit acht
+> Verkaufsstationen, sondern ein **bedientes Café** wie im Vorbild: Die Gäste bestellen an einer
+> **Bestelltheke** (Personal nimmt Bestellungen entgegen), **Baristas** bereiten an der **Barista-Theke**
+> Matcha in allen Varianten, Kaffee, Kuchen und Kekse zu, **Bedienungen** geben die Bestellung an der
+> **Ausgabe** aus oder bringen sie an den Tisch, **Putzkräfte** machen alles wieder sauber. Gelevelt wird,
+> indem man die Kasse verbessert oder mehr Verkäufer einstellt; schneller zubereitet wird, indem man die
+> Bar-Utensilien (Kaffeemaschine, Ofen, Kühl-/Eisfach …) verbessert; mehr Tische lassen mehr Gäste kommen.
+> Außerdem sollen alle Gegenstände im Café (Tische, Plätze, Theken, Kasse, Matcha-Geräte, Kaffeemaschine,
+> Ofen, Kühlschrank, Eisfach …) und die Figuren deutlich besser aussehen – Hotel-Empire-Look.
+> Das HUD bleibt, wie es ist.
+
+### Was sich gegenüber Phase 1 ändert (Kurzfassung)
+
+| Phase 1 (S1–S9) | Phase 2 (ab S10) |
+|---|---|
+| 8 Verkaufsstationen, jede mit eigenem Durchsatz; Kunden gehen zur Station und kaufen selbst | **Eine Service-Pipeline** mit vier Stufen: Nachfrage → Bestellung → Zubereitung → Ausgabe. Der kleinste Durchsatz ist der Engpass |
+| Kasse = Engpass-Multiplikator | **Kasse** (`register`) = Ausstattung der Bestelltheke: schnellere Bestellannahme je Verkäufer |
+| Personal = Stufen mit %-Boni | **Personal = Anzahl** (Köpfe): Verkäufer, Baristas, Bedienungen, Putzkräfte arbeiten parallel; Filialleiter und Social-Media-Manager bleiben Stufen-Rollen |
+| Bäcker, Tee-Meister | entfallen; Baristas bereiten alles zu (Vorgabe: „ein Barista, der die Produkte zubereitet“) |
+| Station = Produkt mit eigenen Kunden | **Ausstattung der Barista-Theke = Produktlinie**: jedes Gerät bringt ein Produkt auf die Karte, das ein Anteil der Gäste zusätzlich bestellt (Warenkorb-Modell, kein „Kunden-Klau“ zwischen Linien) |
+| Sitzbereich = Kapazitäts-Deckel | **Tische** (bleiben technisch das Ambiente-Element `seats`): jede Stufe ein Tisch mit zwei Plätzen, sichtbar bis 12 Tische; Kapazitäts-Deckel wie bisher |
+| Reinigungskraft dämpft den Verfall | **Putzkräfte** putzen gegen den Schmutz an, der mit der Gästezahl wächst; Gleichgewicht steigt mit jeder Putzkraft |
+| Kunden laufen zu Stationen | Kunden stellen sich an der Bestelltheke an, setzen sich oder warten an der Ausgabe; Bedienungen laufen mit Tablett; Putzkräfte wischen dreckige Tische |
+
+Die Formeln stehen in GAME_DESIGN § 4, § 6, § 7.2, § 7.3 und § 14 (dort in Phase 2 überarbeitet).
+Alles andere (Café-Level, Qualität, Marketing, Zufriedenheit, Events, Blätter, Prestige, Standorte,
+Save, PWA) bleibt, wie es ist. Save-Schema v9 migriert alte Spielstände (Stations-IDs, Personal → Anzahl).
+
+### Übersicht Phase 2
+
+| # | Session | Ergebnis am Ende | Aufwand |
+|---|---|---|---|
+| S10 | Service-Pipeline (Kern, Daten, UI) | Rate-Modell mit vier Stufen und Engpass, Ausstattung statt Stationen, Personal als Anzahl, Putz-Modell, Save v9, Panels zeigen Stufen und Engpass, Sim läuft | 1 Session |
+| S11 | Szene und Figuren | Neuer Grundriss (Theken, Bestellschlange, Ausgabe, 12 Tische), neue Flat-Shaded-Sprites für Theken, Ausstattung, Tische, bessere Blockfiguren mit Rollen-Outfits, Bedienungen mit Tablett, Putzkräfte, dreckige Tische | 1–2 Sessions |
+| S12 | Balancing, Tutorial, Feinschliff | Sim trifft die Richtwerte aus GAME_DESIGN § 15 wieder, Tutorial erklärt die Pipeline, Screenshots, Lighthouse/Gerätetest | 1 Session |
+
+S10 und S11 wurden in der Session vom 2026-10-15 gemeinsam auf `session/s10-service` gebaut (siehe STATUS.md).
+
+---
+
+### S10 – Service-Pipeline (Kern, Daten, UI)
+
+**Ziel:** Das Café rechnet als bedientes Café. Jede Stufe hat Personal und Ausstattung, der Engpass ist sichtbar.
+
+**Aufgaben**
+- `data/stations.ts`: neun **Ausstattungen** mit `area` (`order` | `bar` | `service`), zuständiger Rolle, `workTime`
+  (Sekunden je Vorgang) und für Produktlinien `basePrice` + `attachRate` (Anteil der Gäste, die das Produkt bestellen):
+  Kasse (`register`), Matcha-Station, Kaffeemaschine, Kühl-/Eisfach, Ofen, Kuchenvitrine, Steinmühle, Zeremonie-Set,
+  Ausgabe-Station (`servingStation`). Kosten/Wachstum/Freischaltung bleiben auf der Leiter von Phase 1.
+- `data/staff.ts`: Rollen Verkäufer (`cashier`), Barista, Bedienung (`waiter`), Putzkraft (`cleaner`) als **Anzahl**
+  mit `founding` (Gründungsteam: je 1 Verkäufer, Barista, Bedienung), dazu Filialleiter und Social-Media-Manager wie bisher.
+- `data/balance.ts`: `order` (Bestellzeit, Handkasse), `service` (Übergabe-/Tischservice-Zeit, Anteil Sitzgäste),
+  `equipment.speedPerLevel`, Sauberkeit mit `dirtPerCustomer`, `cleanPerCleanerPerMin`.
+- `core/customers/rates.ts`: `computeLocationRates` liefert `stages` (demand, order, production, service) mit
+  Kapazität, `bottleneck`, `loadPerCustomer`, `avgTicket`; `perStation` = Bestellungen/s je Produktlinie.
+- `core/economy/stations.ts`: `getStationSpeed(def, level)`, `getStationWorkSeconds`, Preise wie bisher (× Level × Meilenstein).
+- `core/staff/effects.ts`: `cleanlinessRatePerMin(loc, servedPerSec)` mit Schmutz aus Verkehr und Putzkräften,
+  `cleanlinessEquilibrium`, `advanceCleanliness`.
+- Save-Schema v9 (`core/save/migrations.ts`): Stations-IDs umbenennen, Personal-Stufen in Köpfe übersetzen
+  (Bäcker/Tee-Meister → Baristas), Gründungsteam sicherstellen, Tutorial-Schritt zurücksetzen.
+- UI: Stations-Panel (Bereich, Produkt, Arbeitszeit, Auslastung der Stufe), Personal-Panel mit **Pipeline-Karte**
+  (vier Balken, Engpass markiert) und Köpfen „3/20“, Statistik mit Stufen-Auslastung, Shop nach Bereichen,
+  HUD-Chip „Engpass: …“ bei Wartedruck, Tutorial-Schritte (Kasse kaufen, zweite Kraft einstellen).
+- i18n: Ausstattung × 6 Standorte, Produkte, Rollen, Stufen, Engpass-Hinweise.
+- Sim: Personal als Köpfe, Sauberkeit mit Verkehr, Zeilen „Kasse“, „Eisfach (Café-Level 3)“, „Ofen (Café-Level 5)“.
+
+**Abnahmekriterien**
+- Ohne Bedienung bleibt die Ausgabe der Engpass, mit jeder weiteren steigt das Einkommen messbar; dasselbe für Verkäufer
+  (Bestellung) und Baristas (Zubereitung). Jede Stufe ist im Personal-Panel als Balken mit Engpass-Markierung sichtbar.
+- Ein neues Gerät senkt das Einkommen nie (Warenkorb-Modell); Tests belegen das.
+- Alte Spielstände (v8) laden mit gleichem Café-Level, Personal als Köpfe, Gründungsteam; Test für die Migration.
+- `pnpm check` grün, Coverage core ≥ 90 %, `pnpm sim --hours 2` läuft.
+
+---
+
+### S11 – Szene und Figuren
+
+**Ziel:** Das Café sieht aus wie ein bedientes Café im Hotel-Empire-Look: Theken mit Geräten, Tische mit Stühlen,
+Figuren mit Rollen-Outfits, Bedienungen mit Tablett, Putzkräfte zwischen den Tischen.
+
+**Aufgaben**
+- `data/layouts.ts`: neuer Grundriss 12×12 – Ausstattung an der Rückwand (y = 0), Personal-Gang (y = 1), Theke (y = 2),
+  Bestellschlange vor der Kasse (y = 3, nach rechts), Abholung am Thekenende, 12 Tische im Gastraum (x ∈ {1, 4, 7, 10},
+  y ∈ {5, 7, 9}), Mittelgang x = 6, Eingang (6, 11); Terrasse wie bisher.
+- `scripts/art/sprites.ts`: Theken-Module (Korpus, Platte, Paneel), neun Ausstattungen × 3 Ausbaustufen (Level 1/25/100),
+  Tische (2 Stühle, ab Stufe 2 Tischdecke/4 Stühle), Schmutz-Marker, Tablett, überarbeitete Blockfiguren (Schuhe, Hände,
+  Haarvolumen, Rollen-Outfit: Verkäufer mit Schirmmütze, Barista mit Beanie und Schürze, Bedienung mit Schleife und Tablett,
+  Putzkraft mit Handschuhen und Wischmopp), Sitzpose. `pnpm art` neu rendern, `tests/art.test.ts` prüft die Frames.
+- `scenes/agents/crowd.ts`: Kunden-Phasen Reinkommen → Schlange → Bestellen → Tisch oder Abholung → Warten auf Bedienung →
+  Konsum (Sitzgäste) → Gehen; Bedienungen als eigene Agenten (holen an der Ausgabe ab, bringen an den Tisch, zurück);
+  Schmutz-Marker an Tischen aus der Sauberkeit; Putzkräfte wischen. Alles kosmetisch, nur Raten aus `core`.
+- `CafeScene.ts`: Theken, Ausstattung mit Ausbaustufen, Tische nach `seats`-Stufe, Personal-Figuren nach Anzahl (Verkäufer
+  hinter der Kasse, Baristas an den Geräten mit Fortschrittsring, Bedienungen, Putzkräfte), Warteschlangen-Tafel über der Kasse.
+
+**Abnahmekriterien**
+- Alle neun Ausstattungen, Tische und Figuren kommen aus dem Atlas; keine Platzhalter.
+- Kunden gehen über die Bestelltheke, kein Kunde „bedient sich“ an einem Gerät.
+- 60 fps bei 40 Figuren im Desktop-Chrome; `tests/crowd.test.ts` grün; e2e `art.spec` grün.
+
+---
+
+### S12 – Balancing, Tutorial, Feinschliff
+
+**Ziel:** Phase 2 spielt sich so rund wie v1.0.
+
+**Aufgaben**
+- Balancing-Pass mit `pnpm sim --hours 4` gegen GAME_DESIGN § 15; Stellschrauben `order.orderTime`, `service.*`,
+  `attachRate`, `workTime`, `equipment.speedPerLevel`, Personal-Kosten.
+- Tutorial: Schritte erklären die Pipeline (Bestellen, Zubereiten, Ausgeben, Putzen) am Personal-Panel.
+- Screenshots DE/EN, README/CHANGELOG, Lighthouse auf echtem Gerät (siehe STATUS S9).
+
+**Abnahmekriterien**
+- Sim trifft die Richtwerte ±20 %; Tutorial-Testlauf durch Vincent.
+
 
 ## 4. Übergabe-Protokoll zwischen Sessions
 

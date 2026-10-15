@@ -35,23 +35,25 @@ describe('Tutorial (PLAN S9)', () => {
     expect(checkTutorial(s)).toBe(s);
     expect(currentTutorialStep(advanceTutorial(s))?.id).toBe(TUTORIAL_STEPS[1]?.id);
   });
-  it('Aufgaben-Schritte erkennen Matcha-Bar-Upgrade, Kasse und Personal', () => {
+  it('Aufgaben-Schritte erkennen Matcha-Station-Upgrade, Kasse und eine weitere Kraft', () => {
     let s = at(rich(), 'upgrade');
     const def = currentTutorialStep(s);
     if (!def) throw new Error('kein Schritt');
     expect(isTutorialStepComplete(s, def)).toBe(false);
-    s = checkTutorial(buyStation(s, L, 'matchaBar', 10));
+    s = checkTutorial(buyStation(s, L, 'matchaStation', 10));
     expect(currentTutorialStep(s)?.id).toBe('station');
-    s = checkTutorial(buyStation(s, L, 'checkout', 1));
+    s = checkTutorial(buyStation(s, L, 'register', 1));
     expect(currentTutorialStep(s)?.id).toBe('staff');
+    // Das Gründungsteam (3 Köpfe) reicht nicht – eine weitere Kraft muss eingestellt werden.
+    expect(isTutorialStepComplete(s, currentTutorialStep(s) ?? def)).toBe(false);
     s = checkTutorial(hireStaff(s, L, 'barista'));
     expect(currentTutorialStep(s)?.id).toBe('satisfaction');
   });
   it('schon erledigte Aufgaben werden übersprungen, bis ein manueller Schritt kommt', () => {
     let s = rich();
-    s = buyStation(s, L, 'matchaBar', 10);
-    s = buyStation(s, L, 'checkout', 1);
-    s = hireStaff(s, L, 'barista');
+    s = buyStation(s, L, 'matchaStation', 10);
+    s = buyStation(s, L, 'register', 1);
+    s = hireStaff(s, L, 'waiter');
     s = checkTutorial(advanceTutorial(s));
     expect(currentTutorialStep(s)?.id).toBe('satisfaction');
   });
@@ -66,7 +68,7 @@ describe('Tutorial (PLAN S9)', () => {
     expect(skipTutorial(skipped)).toBe(skipped);
   });
   it('progressionStep prüft das Tutorial mit', () => {
-    const s = buyStation(at(rich(), 'upgrade'), L, 'matchaBar', 10);
+    const s = buyStation(at(rich(), 'upgrade'), L, 'matchaStation', 10);
     expect(currentTutorialStep(progressionStep(s, 0, 0))?.id).toBe('station');
   });
 });

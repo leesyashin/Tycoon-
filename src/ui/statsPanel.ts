@@ -10,6 +10,7 @@ import { fmt } from './format';
 import { icon } from './icons';
 import type { PanelContent } from './panel';
 import { stationName } from './labels';
+import { createPipelineCard } from './pipeline';
 
 interface Bar {
   el: HTMLElement;
@@ -43,6 +44,7 @@ function bar(label: string, cls: string, testId: string): Bar {
 export function createStatsPanel(store: Store): PanelContent {
   const locId = store.getState().activeLocationId;
   const sellers = STATIONS.filter((d) => d.basePrice > 0);
+  const pipeline = createPipelineCard(locId, 'stats-pipeline');
   const bars = sellers.map((d) => ({
     id: d.id,
     bar: bar(stationName(locId, d.id), '', `stat-bar-${d.id}`),
@@ -63,6 +65,8 @@ export function createStatsPanel(store: Store): PanelContent {
     h('div', { class: 'stat-bars' }, ...bars.map((b) => b.bar.el), tips.el),
     h('h3', { class: 'section-title', text: t('stats.capacityTitle') }),
     h('div', { class: 'stat-bars' }, util.el),
+    h('h3', { class: 'section-title', text: t('stats.pipelineTitle') }),
+    pipeline.el,
     balance,
   );
   const view: View = {
@@ -85,6 +89,7 @@ export function createStatsPanel(store: Store): PanelContent {
       const pct = r.totalThroughput > 0 ? (r.served / r.totalThroughput) * 100 : 0;
       util.set(D(pct), D(100), `${pct.toFixed(0)} %`);
       setText(balanceValue, `+${fmt(s, r.incomePerSec.mul(day))}`);
+      pipeline.update(s);
     },
   };
   return { title: t('stats.title'), view };

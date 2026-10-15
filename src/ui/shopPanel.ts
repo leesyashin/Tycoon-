@@ -18,12 +18,12 @@ import {
 import { BALANCE } from '@data/balance';
 import { QUALITY_PRICE_MULT_PER_TIER, getNextQualityTier } from '@data/quality';
 import { AMBIENCE } from '@data/ambience';
-import { STATIONS } from '@data/stations';
+import { STATIONS, STATION_AREAS } from '@data/stations';
 import { h, on, setDisabled, setText, type View } from './dom';
 import { fmt, fmtSmall } from './format';
 import type { PanelContent } from './panel';
 import { createTabs } from './tabs';
-import { lockedReason, productName, stationName } from './labels';
+import { areaName, lockedReason, productName, stationName } from './labels';
 
 type Tab = 'stations' | 'ambience' | 'quality';
 const TABS: Tab[] = ['stations', 'ambience', 'quality'];
@@ -213,10 +213,21 @@ export function createShopPanel(
     ambience: { el: h('ul', { class: 'shop-list' }), rows: [] },
     quality: { el: h('div'), rows: [] },
   };
-  lists.stations.rows = STATIONS.map((d) => stationRow(locId, d.id, openStation));
+  // Ausstattung nach Theken-Bereich (GAME_DESIGN § 4): Bestelltheke, Barista-Theke, Ausgabe.
+  for (const area of STATION_AREAS) {
+    const rows = STATIONS.filter((d) => d.area === area).map((d) =>
+      stationRow(locId, d.id, openStation),
+    );
+    lists.stations.rows.push(...rows);
+    lists.stations.el.append(
+      h('li', { class: 'shop-area', 'data-testid': `shop-area-${area}` }, areaName(area)),
+      ...rows.map((r) => r.el),
+    );
+  }
   lists.ambience.rows = AMBIENCE.map((a) => ambienceRow(store, locId, a.id));
   lists.quality.rows = [qualityView(store, locId)];
-  for (const tab of TABS) lists[tab].el.append(...lists[tab].rows.map((r) => r.el));
+  for (const tab of ['ambience', 'quality'] as const)
+    lists[tab].el.append(...lists[tab].rows.map((r) => r.el));
 
   let view: View | null = null;
   const tabs = createTabs(

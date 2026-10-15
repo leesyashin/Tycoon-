@@ -11,8 +11,10 @@ export interface SpriteDef {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Stationen: Kachel-Sprite 64×104, untere Spitze der Kachel = Unterkante (Ursprung 0.5 / 1).
-// Variante „a“: Theke zeigt nach +v (links unten), „b“: nach +u (rechts unten).
+// Ausstattung (Phase 2, GAME_DESIGN § 4): Kachel-Sprite 64×104, untere Spitze der Kachel = Unterkante
+// (Ursprung 0.5 / 1). Variante „a“: Front zeigt nach +v (Kundenseite der Theke), „b“: nach +u.
+// Geräte an der Rückwand (Barista-Theke) bringen ihre Arbeitsplatte mit; Kasse und Ausgabe-Station
+// sitzen auf einem Thekenmodul und ersetzen es in der Thekenreihe.
 // ---------------------------------------------------------------------------------------------
 export const STATION_CANVAS = { w: 64, h: 104, ox: 32, oy: 72 } as const;
 
@@ -30,10 +32,19 @@ class FacingCanvas extends IsoCanvas {
     super(w, h, ox, oy);
   }
   /** Box in „Theken-Koordinaten“: x quer zur Theke, y = Tiefe (0 hinten, 1 Kundenseite). */
-  fbox(x: number, y: number, z: number, w: number, d: number, h: number, color: string): this {
+  fbox(
+    x: number,
+    y: number,
+    z: number,
+    w: number,
+    d: number,
+    h: number,
+    color: string,
+    o: { top?: string } = {},
+  ): this {
     return this.facing === 'a'
-      ? this.box(x, y, z, w, d, h, color)
-      : this.box(y, x, z, d, w, h, color);
+      ? this.box(x, y, z, w, d, h, color, o)
+      : this.box(y, x, z, d, w, h, color, o);
   }
   fcyl(x: number, y: number, z: number, r: number, h: number, color: string, top?: string): this {
     return this.facing === 'a'
@@ -43,7 +54,12 @@ class FacingCanvas extends IsoCanvas {
   fdisc(x: number, y: number, z: number, r: number, color: string): this {
     return this.facing === 'a' ? this.disc(x, y, z, r, color) : this.disc(y, x, z, r, color);
   }
-  /** Senkrechte Front-Fläche an der Kundenseite (Schild, Glas, Paneel). */
+  fflat(x: number, y: number, z: number, w: number, d: number, color: string, opacity = 1): this {
+    return this.facing === 'a'
+      ? this.flat(x, y, z, w, d, color, opacity)
+      : this.flat(y, x, z, d, w, color, opacity);
+  }
+  /** Senkrechte Fläche an der Kundenseite (Schild, Glas, Paneel) in der Tiefe y. */
   front(x: number, y: number, z: number, w: number, h: number, color: string): this {
     return this.facing === 'a'
       ? this.wallV(x, y, z, w, h, color)
@@ -51,12 +67,29 @@ class FacingCanvas extends IsoCanvas {
   }
 }
 
-/** Theke: Korpus + Platte + Front-Paneel. */
-function counter(c: FacingCanvas, body: string, topColor: string, h = 22, y0 = 0.2, d = 0.72) {
-  c.fbox(0.06, y0, 0, 0.88, d, h - 3, body);
-  c.fbox(0.03, y0 - 0.03, h - 3, 0.94, d + 0.06, 3, topColor);
-  // Abgesetztes Paneel vorn (eine Lokalfarbe, eine Stufe dunkler)
-  c.front(0.16, y0 + d + 0.001, 4, 0.68, h - 10, shade(body, 0.78));
+/** Thekenmodul über die volle Kachelbreite, damit Nachbarmodule nahtlos anschließen. */
+function counterModule(c: FacingCanvas, body: string = C.woodDark, top: string = C.cream) {
+  c.fbox(0, 0.22, 0, 1, 0.56, 20, body);
+  c.fbox(0, 0.2, 20, 1, 0.62, 3, top, { top: tint(top, 0.15) });
+  // Abgesetztes Frontpaneel (eine Lokalfarbe, eine Stufe dunkler), Sockelleiste.
+  c.front(0.08, 0.781, 4, 0.84, 12, shade(body, 0.78));
+  c.front(0, 0.782, 0, 1, 3, shade(body, 0.6));
+}
+
+/** Arbeitsplatte mit Unterschrank an der Rückwand (Barista-Theke). */
+function backCounter(c: FacingCanvas, body: string = C.woodDark, top: string = C.cream) {
+  c.fbox(0.02, 0.12, 0, 0.96, 0.76, 24, body);
+  c.fbox(0, 0.1, 24, 1, 0.8, 3, top, { top: tint(top, 0.15) });
+  c.front(0.1, 0.881, 4, 0.8, 14, shade(body, 0.8));
+}
+
+/** Wandregal mit Dosen/Flaschen über der Arbeitsplatte. */
+function wallShelf(c: FacingCanvas, z: number, items: string[], board: string = C.wood) {
+  c.fbox(0.04, 0.02, z, 0.92, 0.18, 2.5, board);
+  items.forEach((col, i) => {
+    const x = 0.12 + i * (0.76 / Math.max(1, items.length - 1));
+    c.fcyl(x, 0.1, z + 2.5, 0.045, 8, col, tint(col, 0.3));
+  });
 }
 
 function matchaBowl(c: FacingCanvas, x: number, y: number, z: number, r = 0.08) {
@@ -91,137 +124,203 @@ function lampShade(c: FacingCanvas, x: number, y: number, z: number) {
   c.fcyl(x, y, z, 0.1, 10, C.gold, tint(C.gold, 0.4));
 }
 
-function backShelf(c: FacingCanvas, color: string, items: string[]) {
-  c.fbox(0.06, 0.02, 0, 0.88, 0.16, 50, color);
-  items.forEach((col, i) => {
-    const x = 0.14 + i * (0.72 / Math.max(1, items.length - 1));
-    c.fbox(x - 0.04, 0.04, 34, 0.08, 0.1, 9, col);
-    c.fbox(x - 0.035, 0.04, 22, 0.07, 0.1, 8, shade(col, 0.9));
-  });
+/** Goldene Zierleiste an der Front (Ausbaustufe 3). */
+function goldTrim(c: FacingCanvas, y: number, z: number) {
+  c.front(0.04, y, z, 0.92, 2, C.gold);
+}
+
+/** Kasse auf dem Thekenmodul: Korpus, schräges Display, ab Stufe 2 Kartenleser und Trinkgeldglas. */
+function register(c: FacingCanvas, tier: number) {
+  counterModule(c, tier >= 3 ? C.ink : C.woodDark, tier >= 3 ? C.white : C.cream);
+  const body = tier >= 3 ? C.white : C.ink;
+  c.fbox(0.3, 0.32, 23, 0.34, 0.28, 8, body);
+  c.fbox(0.33, 0.34, 31, 0.28, 0.08, 9, tier >= 3 ? C.ink : C.steel);
+  c.front(0.35, 0.421, 33, 0.24, 6, C.glass);
+  c.fbox(0.36, 0.44, 31, 0.22, 0.14, 1.5, shade(body, 0.85));
+  if (tier >= 2) {
+    c.fbox(0.74, 0.36, 23, 0.12, 0.16, 5, C.ink);
+    c.front(0.76, 0.521, 25, 0.08, 2, C.glass);
+    c.fcyl(0.14, 0.5, 23, 0.06, 8, C.glass, C.ice);
+    c.fdisc(0.14, 0.5, 27, 0.035, C.gold);
+  }
+  if (tier >= 3) {
+    goldTrim(c, 0.783, 16);
+    plant(c, 0.88, 0.7, 23, 0.55);
+  }
+}
+
+/** Ausgabe-Station: Tabletts mit Bechern, Glocke, ab Stufe 2 Wärmelampe, ab Stufe 3 Durchreiche-Bord. */
+function servingStation(c: FacingCanvas, tier: number) {
+  counterModule(c, tier >= 3 ? C.ink : C.woodDark, tier >= 3 ? C.white : C.cream);
+  const tray = (x: number, y: number) => {
+    c.fbox(x, y, 23, 0.3, 0.2, 1.5, C.steel);
+    c.fcyl(x + 0.08, y + 0.1, 24.5, 0.045, 5, C.cup, C.matchaFoam);
+    c.fcyl(x + 0.22, y + 0.1, 24.5, 0.045, 5, C.cup, C.matchaFoam);
+  };
+  tray(0.12, 0.3);
+  if (tier >= 2) tray(0.52, 0.3);
+  c.fcyl(0.84, 0.6, 23, 0.045, 4, C.gold, tint(C.gold, 0.4));
+  c.fdisc(0.84, 0.6, 27, 0.015, C.ink);
+  if (tier >= 2) lampShade(c, 0.3, 0.6, 23);
+  if (tier >= 3) {
+    c.fbox(0.08, 0.14, 23, 0.04, 0.04, 20, C.ink);
+    c.fbox(0.88, 0.14, 23, 0.04, 0.04, 20, C.ink);
+    c.fbox(0.02, 0.1, 43, 0.96, 0.18, 2.5, C.wood);
+    cupStack(c, 0.3, 0.19, 45.5, 2);
+    goldTrim(c, 0.783, 16);
+  }
 }
 
 type StationDraw = (c: FacingCanvas, tier: number) => void;
 
 const STATIONS: Record<string, StationDraw> = {
-  matchaBar(c, tier) {
-    if (tier >= 2) backShelf(c, C.woodDark, [C.matcha, C.cream, C.matchaDeep, C.cream]);
-    counter(c, tier >= 3 ? C.matchaDeep : C.matcha, C.wood);
-    matchaBowl(c, 0.3, 0.5, 22);
-    chasen(c, 0.52, 0.45, 22);
-    c.fcyl(0.74, 0.48, 22, 0.07, 9, C.matchaDeep, C.matcha);
-    if (tier >= 2) matchaBowl(c, 0.62, 0.75, 22, 0.06);
-    if (tier >= 3) {
-      lampShade(c, 0.3, 0.45, 50);
-      plant(c, 0.86, 0.85, 22, 0.6);
-      c.front(0.16, 0.921, 16, 0.68, 2, C.gold);
-    }
-  },
-  checkout(c, tier) {
-    counter(c, tier >= 3 ? C.ink : C.terracotta, C.wood);
-    // Kasse mit schrägem Display
-    c.fbox(0.28, 0.35, 22, 0.32, 0.3, 8, C.ink);
-    c.fbox(0.32, 0.38, 30, 0.24, 0.06, 9, C.steel);
-    c.front(0.34, 0.441, 32, 0.2, 6, C.glass);
+  register,
+  servingStation,
+  matchaStation(c, tier) {
+    wallShelf(
+      c,
+      44,
+      tier >= 2
+        ? [C.matcha, C.matchaDeep, C.cream, C.matcha, C.sakura]
+        : [C.matcha, C.cream, C.matchaDeep],
+    );
+    backCounter(c, tier >= 3 ? C.matchaDeep : C.woodDark);
+    // Kessel, Schale, Chasen und Sieb
+    c.fcyl(0.22, 0.45, 27, 0.09, 11, C.ink, C.steel);
+    c.fbox(0.3, 0.42, 34, 0.08, 0.03, 2, C.ink);
+    matchaBowl(c, 0.55, 0.6, 27);
+    chasen(c, 0.74, 0.42, 27);
     if (tier >= 2) {
-      c.fcyl(0.76, 0.6, 22, 0.06, 8, C.glass, C.ice);
-      c.fdisc(0.76, 0.6, 26, 0.035, C.gold);
+      matchaBowl(c, 0.82, 0.68, 27, 0.06);
+      c.fcyl(0.42, 0.72, 27, 0.05, 2, C.steel, C.cream);
     }
     if (tier >= 3) {
-      c.fbox(0.08, 0.06, 30, 0.84, 0.04, 14, C.ink);
-      c.front(0.14, 0.101, 33, 0.72, 8, C.gold);
+      lampShade(c, 0.12, 0.72, 27);
+      goldTrim(c, 0.883, 18);
     }
   },
-  togoWindow(c, tier) {
-    // Kiosk: Wand mit Durchreiche, Markise
-    c.fbox(0.06, 0.08, 0, 0.88, 0.2, 46, C.cream);
-    c.fbox(0.06, 0.28, 0, 0.88, 0.5, 18, C.teal);
-    c.fbox(0.04, 0.26, 18, 0.92, 0.56, 3, C.wood);
-    c.front(0.16, 0.781, 4, 0.68, 9, shade(C.teal, 0.78));
-    c.fbox(0.04, 0.28, 46, 0.92, 0.5, 4, tier >= 3 ? C.sakura : C.red);
-    cupStack(c, 0.25, 0.5, 21, 3);
-    cupStack(c, 0.4, 0.55, 21, 2, C.matchaFoam);
+  coffeeMachine(c, tier) {
+    wallShelf(
+      c,
+      46,
+      tier >= 2 ? [C.woodDeep, C.cream, C.woodDeep, C.cream] : [C.woodDeep, C.cream],
+    );
+    backCounter(c, tier >= 3 ? C.ink : C.woodDark);
+    const metal = tier >= 3 ? C.gold : C.steel;
+    // Siebträgermaschine mit zwei Brühgruppen und Tassen obendrauf
+    c.fbox(0.14, 0.24, 27, 0.5, 0.42, 16, metal);
+    c.fbox(0.16, 0.26, 43, 0.46, 0.38, 3, C.ink);
+    c.front(0.2, 0.661, 30, 0.1, 3, C.ink);
+    c.front(0.46, 0.661, 30, 0.1, 3, C.ink);
+    c.front(0.18, 0.662, 36, 0.42, 4, shade(metal, 0.7));
+    cupStack(c, 0.26, 0.42, 46, 2);
+    cupStack(c, 0.5, 0.42, 46, tier >= 2 ? 3 : 1);
+    // Mühle mit Bohnenbehälter
+    c.fcyl(0.82, 0.52, 27, 0.06, 13, C.ink, C.steel);
+    c.fcyl(0.82, 0.52, 40, 0.055, 6, C.glass, tint(C.glass, 0.4));
+    if (tier >= 2) c.fcyl(0.74, 0.76, 27, 0.045, 7, C.steel, C.white);
+    if (tier >= 3) goldTrim(c, 0.883, 18);
+  },
+  iceBox(c, tier) {
+    // Kühlschrank mit Glastür, daneben Eisfach mit Deckel
+    const body = tier >= 3 ? C.ink : C.steel;
+    c.fbox(0.08, 0.16, 0, 0.56, 0.7, 52, body);
+    c.front(0.13, 0.861, 6, 0.46, 40, C.glass);
+    for (let i = 0; i < 3; i++) c.front(0.14, 0.862, 12 + i * 12, 0.44, 1.5, C.white);
+    c.front(0.2, 0.863, 16, 0.08, 4, C.matchaFoam);
+    c.front(0.36, 0.863, 28, 0.08, 4, C.sakura);
+    c.front(0.3, 0.863, 40, 0.1, 4, C.matcha);
+    c.fbox(0.7, 0.3, 0, 0.26, 0.56, 24, C.ice);
+    c.fbox(0.68, 0.28, 24, 0.3, 0.6, 3, C.white, { top: tint(C.white, 0.3) });
+    c.front(0.72, 0.861, 10, 0.22, 6, C.glass);
     if (tier >= 2) {
-      c.fcyl(0.72, 0.5, 21, 0.07, 8, C.cup, C.matchaFoam);
-      c.front(0.3, 0.281, 30, 0.4, 10, C.ink);
+      // Eiswaffeln auf dem Eisfach
+      c.fcyl(0.77, 0.46, 27, 0.035, 6, C.wood, C.matchaFoam);
+      c.fcyl(0.88, 0.5, 27, 0.035, 6, C.wood, C.sakura);
     }
-    if (tier >= 3) c.front(0.34, 0.282, 33, 0.32, 4, C.gold);
-  },
-  icedBar(c, tier) {
-    counter(c, C.blue, C.ice);
-    // Glasvitrine mit Eis
-    c.fbox(0.12, 0.3, 22, 0.42, 0.36, 12, C.glass);
-    c.fbox(0.16, 0.34, 34, 0.34, 0.28, 2, C.ice);
-    c.fcyl(0.72, 0.5, 22, 0.07, 11, C.glass, C.matchaFoam);
-    if (tier >= 2) c.fcyl(0.84, 0.72, 22, 0.05, 9, C.glass, C.sakura);
     if (tier >= 3) {
-      c.fbox(0.1, 0.06, 0, 0.3, 0.18, 44, C.white);
-      c.front(0.13, 0.241, 30, 0.24, 8, C.glass);
+      c.front(0.1, 0.864, 48, 0.52, 3, C.gold);
+      c.fbox(0.06, 0.14, 52, 0.6, 0.74, 3, C.white);
     }
   },
-  bakery(c, tier) {
-    counter(c, C.woodDark, C.cream);
-    // Vitrine mit Gebäck
-    c.fbox(0.1, 0.3, 22, 0.8, 0.4, 10, C.glass);
-    const pastry = [C.terracotta, C.wood, C.sakura, C.matcha];
-    for (let i = 0; i < (tier >= 2 ? 4 : 3); i++) {
-      c.fcyl(0.22 + i * 0.18, 0.5, 32, 0.05, 3, pastry[i] ?? C.wood);
-    }
+  oven(c, tier) {
+    const body = tier >= 3 ? C.terracotta : C.steel;
+    c.fbox(0.08, 0.18, 0, 0.84, 0.66, 40, body);
+    c.fbox(0.06, 0.16, 40, 0.88, 0.7, 3, tier >= 3 ? C.woodDeep : C.ink);
+    // Ofenfenster mit warmem Innenlicht, Knöpfe
+    c.front(0.18, 0.841, 12, 0.64, 18, C.ink);
+    c.front(0.22, 0.842, 14, 0.56, 14, C.orange);
+    c.front(0.26, 0.843, 16, 0.14, 4, C.wood);
+    c.front(0.46, 0.843, 16, 0.14, 4, C.wood);
+    c.front(0.2, 0.841, 33, 0.08, 3, C.cream);
+    c.front(0.34, 0.841, 33, 0.08, 3, C.cream);
+    c.front(0.48, 0.841, 33, 0.08, 3, C.cream);
+    // Blech mit Croissants und Keksen
+    c.fbox(0.14, 0.3, 43, 0.72, 0.4, 1.5, C.steel);
+    const n = tier >= 2 ? 4 : 3;
+    for (let i = 0; i < n; i++)
+      c.fcyl(0.24 + i * (0.52 / (n - 1)), 0.5, 44.5, 0.05, 3, C.wood, tint(C.wood, 0.2));
+    if (tier >= 2) c.fcyl(0.5, 0.36, 44.5, 0.04, 2, C.matcha, C.matchaFoam);
+    if (tier >= 3) goldTrim(c, 0.844, 37);
+  },
+  displayCase(c, tier) {
+    backCounter(c, tier >= 3 ? C.ink : C.woodDark, C.white);
+    // Glasvitrine mit Rahmen; Torten und Kekse auf Etagen
+    c.fbox(0.06, 0.2, 27, 0.88, 0.6, 22, C.glass);
+    c.fbox(0.04, 0.18, 49, 0.92, 0.64, 2, tier >= 3 ? C.gold : C.white);
+    const cakes = [C.sakura, C.cream, C.matcha, C.terracotta];
+    cakes
+      .slice(0, tier >= 2 ? 4 : 3)
+      .forEach((col, i) => c.fcyl(0.2 + i * 0.2, 0.52, 28, 0.065, 5, col, tint(col, 0.3)));
     if (tier >= 2) {
-      // Ofen hinten
-      c.fbox(0.56, 0.02, 0, 0.38, 0.2, 40, C.steel);
-      c.front(0.62, 0.221, 14, 0.26, 14, C.ink);
-    }
-    if (tier >= 3) c.fbox(0.08, 0.04, 0, 0.4, 0.16, 34, C.wood);
-  },
-  merchShelf(c, tier) {
-    c.fbox(0.08, 0.3, 0, 0.84, 0.44, 52, C.wood);
-    const goods = [C.matcha, C.sakura, C.cream, C.matchaDeep, C.terracotta, C.teal];
-    for (let row = 0; row < 3; row++) {
-      c.front(0.12, 0.741, 8 + row * 15, 0.76, 2, C.woodDark);
-      const count = tier >= 2 ? 4 : 3;
-      for (let i = 0; i < count; i++) {
-        const col = goods[(i + row * 2) % goods.length] ?? C.matcha;
-        c.front(0.14 + i * (0.68 / count), 0.742, 10 + row * 15, 0.12, 10, col);
-      }
+      c.fflat(0.1, 0.24, 39, 0.8, 0.52, C.white);
+      c.fcyl(0.3, 0.5, 39, 0.05, 3, C.matchaFoam, C.matcha);
+      c.fcyl(0.62, 0.5, 39, 0.05, 3, C.cream, C.sakura);
     }
     if (tier >= 3) {
-      c.fbox(0.06, 0.28, 52, 0.88, 0.48, 3, C.gold);
-      plant(c, 0.5, 0.5, 55, 0.6);
+      lampShade(c, 0.5, 0.1, 51);
+      goldTrim(c, 0.883, 18);
     }
   },
-  ceremonyCorner(c, tier) {
-    // Tatami-Podest, niedriger Tisch, Kessel
-    c.fbox(0.04, 0.04, 0, 0.92, 0.92, 5, C.matchaFoam);
-    c.fbox(0.3, 0.3, 5, 0.4, 0.4, 8, C.woodDark);
-    c.fcyl(0.42, 0.45, 13, 0.08, 7, C.ink, C.steel);
-    matchaBowl(c as FacingCanvas, 0.6, 0.58, 13, 0.06);
+  grinder(c, tier) {
+    // Steinmühle auf Holzpodest, Matcha-Schale darunter
+    c.fbox(0.22, 0.22, 0, 0.56, 0.56, 18, C.woodDark);
+    const stone = '#c2b8a3';
+    c.fcyl(0.5, 0.5, 18, 0.2, 9, stone, tint(stone, 0.2));
+    c.fcyl(0.5, 0.5, 27, 0.18, 6, shade(stone, 0.92), tint(stone, 0.3));
+    c.fbox(0.49, 0.49, 33, 0.02, 0.02, 10, C.woodDeep);
+    c.fbox(0.49, 0.5, 42, 0.02, 0.22, 2, C.woodDeep);
+    c.fdisc(0.5, 0.5, 18.2, 0.24, C.matcha);
+    c.fdisc(0.5, 0.5, 33.1, 0.07, C.matcha);
     if (tier >= 2) {
-      // Faltschirm hinten
-      for (let i = 0; i < 3; i++)
-        c.fbox(0.12 + i * 0.26, 0.06, 5, 0.25, 0.04, 34, i % 2 ? C.cream : C.white);
+      c.fcyl(0.86, 0.3, 0, 0.07, 12, C.woodDark, C.matcha);
+      matchaBowl(c, 0.14, 0.78, 0, 0.07);
     }
     if (tier >= 3) {
-      // Bonsai + Laterne
-      plant(c, 0.86, 0.2, 5, 0.7);
-      c.fcyl(0.14, 0.82, 5, 0.06, 12, C.lamp, C.white);
+      c.fcyl(0.5, 0.5, 26.5, 0.205, 1.5, C.gold, C.gold);
+      wallShelf(c, 40, [C.matcha, C.cream, C.matchaDeep]);
     }
   },
-  workshopRoom(c, tier) {
-    // Langer Tisch mit Schalen
-    c.fbox(0.08, 0.25, 14, 0.84, 0.55, 4, C.wood);
-    c.fbox(0.12, 0.3, 0, 0.06, 0.06, 14, C.woodDark);
-    c.fbox(0.82, 0.3, 0, 0.06, 0.06, 14, C.woodDark);
-    c.fbox(0.12, 0.7, 0, 0.06, 0.06, 14, C.woodDark);
-    c.fbox(0.82, 0.7, 0, 0.06, 0.06, 14, C.woodDark);
-    for (let i = 0; i < 3; i++) matchaBowl(c, 0.25 + i * 0.25, 0.52, 18, 0.06);
+  ceremonySet(c, tier) {
+    // Tatami-Nische: Matte, niedriger Tisch, Kessel, Schale, Rollbild an der Rückwand
+    c.fflat(0.04, 0.04, 0, 0.92, 0.92, C.matchaFoam);
+    c.fflat(0.04, 0.5, 0.1, 0.92, 0.02, shade(C.matchaFoam, 0.85));
+    c.front(0.32, 0.031, 18, 0.36, 30, C.cream);
+    c.front(0.36, 0.032, 24, 0.28, 16, tint(C.cream, 0.5));
+    c.raw(
+      `<circle cx="${String(c.p([0.5, 0.03, 32])[0])}" cy="${String(c.p([0.5, 0.03, 32])[1])}" r="3" fill="${C.red}"/>`,
+    );
+    c.fbox(0.28, 0.32, 0, 0.44, 0.4, 8, C.woodDark);
+    c.fcyl(0.4, 0.46, 8, 0.08, 7, C.ink, C.steel);
+    matchaBowl(c, 0.6, 0.56, 8, 0.06);
+    chasen(c, 0.62, 0.4, 8);
     if (tier >= 2) {
-      // Tafel hinten
-      c.fbox(0.14, 0.04, 0, 0.72, 0.05, 46, C.woodDark);
-      c.front(0.18, 0.091, 18, 0.64, 24, C.matchaDeep);
+      for (let i = 0; i < 2; i++)
+        c.fbox(0.08 + i * 0.7, 0.08, 0, 0.14, 0.04, 30, i ? C.white : C.cream);
     }
     if (tier >= 3) {
-      chasen(c, 0.5, 0.7, 18);
-      c.front(0.22, 0.092, 34, 0.3, 2, C.white);
+      plant(c, 0.86, 0.84, 0, 0.7);
+      c.fcyl(0.14, 0.84, 0, 0.06, 12, C.lamp, C.white);
     }
   },
 };
@@ -236,6 +335,13 @@ export function stationSprites(): SpriteDef[] {
         out.push({ name: `station-${id}-${String(tier)}-${facing}`, svg: c.svg() });
       }
     }
+  }
+  // Thekenmodul ohne Gerät (Thekenreihe zwischen Kasse und Ausgabe).
+  for (const facing of ['a', 'b'] as const) {
+    const c = new FacingCanvas(facing);
+    counterModule(c);
+    cupStack(c, 0.3, 0.4, 23, facing === 'a' ? 2 : 1);
+    out.push({ name: `counter-${facing}`, svg: c.svg() });
   }
   // Leerer Bauplatz: gestrichelter Rahmen auf dem Boden (UI-Markierung, kein Objekt).
   const g = new IsoCanvas(STATION_CANVAS.w, STATION_CANVAS.h, STATION_CANVAS.ox, STATION_CANVAS.oy);
@@ -256,23 +362,39 @@ export function stationSprites(): SpriteDef[] {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Ambiente: ebenfalls Kachel-Sprites 64×104.
+// Ambiente: ebenfalls Kachel-Sprites 64×104. `seats` ist ein runder Tisch mit zwei Stühlen (Phase 2).
 // ---------------------------------------------------------------------------------------------
-function chair(c: IsoCanvas, u: number, v: number, color: string) {
-  c.box(u, v, 8, 0.16, 0.16, 2, color);
+function chair(c: IsoCanvas, u: number, v: number, color: string, back: 'left' | 'right') {
   c.box(u, v, 0, 0.03, 0.03, 8, shade(color, 0.8));
   c.box(u + 0.13, v + 0.13, 0, 0.03, 0.03, 8, shade(color, 0.8));
-  c.box(u, v, 10, 0.03, 0.16, 10, color);
+  c.box(u, v, 8, 0.16, 0.16, 2.5, color);
+  if (back === 'left') c.box(u, v, 10.5, 0.03, 0.16, 10, color);
+  else c.box(u + 0.13, v, 10.5, 0.03, 0.16, 10, color);
+}
+
+/** Runder Tisch mit Säulenfuß, zwei Stühle links und rechts (Sitzplätze bei u = 0.5 ± 0.5). */
+function table(c: IsoCanvas, cloth = false) {
+  chair(c, 0.02, 0.42, C.terracotta, 'left');
+  c.cylinder(0.5, 0.5, 0, 0.05, 13, C.ink, C.ink);
+  c.cylinder(0.5, 0.5, 2, 0.14, 1.5, C.ink);
+  c.cylinder(
+    0.5,
+    0.5,
+    13,
+    0.27,
+    2.5,
+    cloth ? C.cream : C.wood,
+    tint(cloth ? C.cream : C.wood, 0.2),
+  );
+  if (cloth) c.disc(0.5, 0.5, 15.6, 0.18, C.matchaFoam);
+  c.cylinder(0.44, 0.52, 15.5, 0.04, 4, C.cup, C.matchaFoam);
+  if (cloth) c.cylinder(0.58, 0.44, 15.5, 0.035, 3, C.sakura, C.cream);
+  chair(c, 0.82, 0.42, C.terracotta, 'right');
 }
 
 const AMBIENCE: Record<string, (c: IsoCanvas) => void> = {
   seats(c) {
-    chair(c, 0.12, 0.38, C.terracotta);
-    chair(c, 0.38, 0.12, C.terracotta);
-    c.cylinder(0.5, 0.5, 0, 0.04, 13, C.ink);
-    c.cylinder(0.5, 0.5, 13, 0.2, 2, C.wood, tint(C.wood, 0.2));
-    c.cylinder(0.46, 0.5, 15, 0.04, 4, C.cup, C.matchaFoam);
-    chair(c, 0.72, 0.5, C.terracotta);
+    table(c);
   },
   decor(c) {
     plant(c, 0.5, 0.5, 0, 1.6);
@@ -293,8 +415,8 @@ const AMBIENCE: Record<string, (c: IsoCanvas) => void> = {
   terrace(c) {
     c.cylinder(0.5, 0.5, 0, 0.03, 34, C.white);
     c.cylinder(0.5, 0.5, 11, 0.2, 2, C.white, tint(C.wood, 0.4));
-    chair(c, 0.15, 0.45, C.teal);
-    chair(c, 0.6, 0.15, C.teal);
+    chair(c, 0.15, 0.45, C.teal, 'left');
+    chair(c, 0.6, 0.15, C.teal, 'right');
     // Sonnenschirm (Achteck, zwei Farbflächen statt Streifen-Textur)
     const [cx, cy] = c.p([0.5, 0.5, 34]);
     const r = 26;
@@ -318,7 +440,7 @@ const AMBIENCE: Record<string, (c: IsoCanvas) => void> = {
 };
 
 export function ambienceSprites(): SpriteDef[] {
-  return Object.entries(AMBIENCE).map(([id, draw]) => {
+  const out = Object.entries(AMBIENCE).map(([id, draw]) => {
     const c = new IsoCanvas(
       STATION_CANVAS.w,
       STATION_CANVAS.h,
@@ -328,6 +450,19 @@ export function ambienceSprites(): SpriteDef[] {
     draw(c);
     return { name: `ambience-${id}`, svg: c.svg() };
   });
+  // Tisch der Ausbaustufe 2 (Tischdecke, Gebäck) ab vielen Tischen.
+  const c = new IsoCanvas(STATION_CANVAS.w, STATION_CANVAS.h, STATION_CANVAS.ox, STATION_CANVAS.oy);
+  table(c, true);
+  out.push({ name: 'ambience-seats-2', svg: c.svg() });
+  // Schmutz-Marker für dreckige Tische (liegt auf der Tischplatte).
+  const d = new IsoCanvas(STATION_CANVAS.w, STATION_CANVAS.h, STATION_CANVAS.ox, STATION_CANVAS.oy);
+  d.disc(0.4, 0.56, 16, 0.05, shade(C.wood, 0.7));
+  d.disc(0.62, 0.5, 16, 0.035, shade(C.wood, 0.7));
+  d.disc(0.5, 0.4, 16, 0.025, C.matchaDeep);
+  d.cylinder(0.56, 0.62, 16, 0.035, 2, C.cup, C.cup);
+  d.disc(0.66, 0.64, 16, 0.045, C.matchaFoam);
+  out.push({ name: 'fx-dirt', svg: d.svg() });
+  return out;
 }
 
 // ---------------------------------------------------------------------------------------------

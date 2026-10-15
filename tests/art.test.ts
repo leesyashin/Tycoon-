@@ -39,20 +39,23 @@ describe('Atlas (pnpm art)', () => {
   it('enthält Ambiente', () => {
     for (const a of AMBIENCE) expect(common.frames[`ambience-${a.id}`]).toBeDefined();
   });
-  it('enthält jede Kunden-Variante mit 2 Richtungen × (Stehen + 2 Lauf-Frames)', () => {
+  it('enthält jede Kunden-Variante mit 2 Richtungen × (Stehen + 2 Lauf-Frames) und Sitzpose', () => {
     const frames = [CHAR_FRAMES.stand, ...CHAR_FRAMES.walk];
     for (const c of CUSTOMER_TYPES) {
       const looks = CUSTOMER_LOOKS[c.id];
       expect(looks.length).toBeGreaterThanOrEqual(2);
       for (const look of looks)
-        for (const dir of ['front', 'back'])
+        for (const dir of ['front', 'back']) {
           for (const f of frames)
             expect(common.frames[`customer-${c.id}-${look}-${dir}-${String(f)}`]).toBeDefined();
+          expect(common.frames[`customer-${c.id}-${look}-sit-${dir}`]).toBeDefined();
+        }
     }
   });
   it('enthält jeden Personal-Look; Lauf-Frames nur für Rollen, die laufen', () => {
     for (const r of STAFF_ROLES) {
       const walks = STAFF_WALKERS.includes(r.id);
+      expect(STAFF_LOOKS[r.id].length).toBeGreaterThan(0);
       for (const look of STAFF_LOOKS[r.id])
         for (const dir of ['front', 'back']) {
           const name = (f: number) => `staff-${r.id}-${look}-${dir}-${String(f)}`;
@@ -62,13 +65,23 @@ describe('Atlas (pnpm art)', () => {
         }
     }
   });
+  it('Bedienungen und Putzkräfte laufen durchs Café, Verkäufer und Baristas stehen', () => {
+    expect(STAFF_WALKERS).toContain('waiter');
+    expect(STAFF_WALKERS).toContain('cleaner');
+    expect(STAFF_WALKERS).not.toContain('cashier');
+    expect(STAFF_WALKERS).not.toContain('barista');
+  });
   it('Lauf-Zyklus nutzt nur gerenderte Frames', () => {
     for (const f of CHAR_WALK.cycle) expect([CHAR_FRAMES.stand, ...CHAR_FRAMES.walk]).toContain(f);
+  });
+  it('enthält Thekenmodul, Tisch mit Tischdecke und Schmutz-Marker (Phase 2)', () => {
+    for (const f of ['counter-a', 'counter-b', 'ambience-seats-2', 'fx-dirt', 'station-ghost'])
+      expect(common.frames[f]).toBeDefined();
   });
 });
 
 describe('Personal-Looks', () => {
-  it('verteilen sich zyklisch auf Stationen derselben Rolle', () => {
+  it('verteilen sich zyklisch auf Figuren derselben Rolle', () => {
     const baristas = STAFF_LOOKS.barista;
     expect(new Set(baristas).size).toBe(baristas.length);
     expect(staffLookFor('barista', 0)).toBe(baristas[0]);
@@ -88,6 +101,12 @@ describe('Figuren (scripts/art/figures.ts)', () => {
   it('Lauf-Frames unterscheiden sich vom Stehen', () => {
     for (const s of sprites.filter((x) => /-(front|back)-[12]$/.test(x.name)))
       expect(s.svg).not.toBe(svg.get(s.name.replace(/-[12]$/, '-0')));
+  });
+  it('Sitzpose unterscheidet sich vom Stehen', () => {
+    const seated = sprites.filter((x) => /-sit-(front|back)$/.test(x.name));
+    expect(seated.length).toBeGreaterThan(0);
+    for (const s of seated)
+      expect(s.svg).not.toBe(svg.get(s.name.replace(/-sit-(front|back)$/, '-$1-0')));
   });
   it('Atlas ist aktuell (nach Änderungen an Figuren `pnpm art`)', () => {
     const inAtlas = Object.keys(common.frames).filter((k) => /^(customer|staff)-/.test(k));

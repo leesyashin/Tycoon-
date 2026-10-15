@@ -1,4 +1,4 @@
-/** Kundentypen nach GAME_DESIGN § 7.5. Aussehen: Sprites aus `scripts/art/sprites.ts`; Effekte als Erwartungswert im Rate-Modell. */
+/** Kundentypen nach GAME_DESIGN § 7.5. Aussehen: Figuren aus `scripts/art/figures.ts` (Varianten in `data/art.ts`); Effekte als Erwartungswert im Rate-Modell. */
 export type CustomerTypeId = 'student' | 'tourist' | 'regular' | 'influencer' | 'critic';
 
 export interface CustomerTypeDef {
@@ -31,9 +31,9 @@ export const CUSTOMER_SHARE_SHIFT: Readonly<
  * Anteile am Standort; die Figuren in der Szene bleiben kosmetisch.
  */
 export const CUSTOMER_EFFECTS = {
-  /** Merch-Station bekommt bei Touristen +50 % Gewicht in der Verteilung der Kunden. */
-  merchStationId: 'merchShelf',
-  touristMerchBonus: 0.5,
+  /** Touristen bestellen die Kuchenvitrine eher: Anteil der Gäste × (1 + Bonus × Touristen-Anteil). */
+  touristStationId: 'displayCase',
+  touristAttachBonus: 0.5,
   /** Stammgäste geben +10 % Trinkgeld. */
   regularTipBonus: 0.1,
   /** Kritiker: Abweichung der Zufriedenheit vom neutralen Wert zählt beim Trinkgeld doppelt. */

@@ -47,15 +47,14 @@ export const CUSTOMER_LOOKS: Readonly<Record<CustomerTypeId, readonly string[]>>
   critic: ['beret', 'sommelier'],
 };
 
-/** Personal-Looks je Rolle; Stationen mit derselben Rolle zeigen sie der Reihe nach. */
+/** Personal-Looks je Rolle (Phase 2); mehrere Figuren derselben Rolle zeigen sie der Reihe nach. */
 export const STAFF_LOOKS: Readonly<Record<StaffRoleId, readonly string[]>> = {
+  cashier: ['clawclip', 'buzz', 'curls'],
   barista: ['capBack', 'spaceBuns', 'curly'],
-  cashier: ['clawclip', 'buzz'],
-  cleaner: ['bucket'],
+  waiter: ['bow', 'sidePart', 'topknot'],
+  cleaner: ['bucket', 'bun'],
   manager: ['blazer'],
-  baker: ['toque'],
   socialMedia: ['ringlight'],
-  teaMaster: ['sensei', 'apprentice'],
 };
 
 /**
@@ -70,10 +69,13 @@ export const CHAR_FRAMES = { stand: 0, walk: [1, 2] } as const;
 /** Lauf-Zyklus aus diesen Frames (Schritt, Mitte, Schritt, Mitte) und Dauer eines Schritts. */
 export const CHAR_WALK = { cycle: [1, 0, 2, 0], stepSec: 0.12 } as const;
 
-/** Nur diese Rollen laufen durchs Café; alle anderen stehen an ihrer Station (Atlas nur mit Steh-Frames). */
-export const STAFF_WALKERS: readonly StaffRoleId[] = ['cleaner'];
+/**
+ * Nur diese Rollen laufen durchs Café (Bedienungen zu den Tischen, Putzkräfte zu schmutzigen Tischen); alle
+ * anderen stehen an ihrer Theke (Atlas nur mit Steh-Frames).
+ */
+export const STAFF_WALKERS: readonly StaffRoleId[] = ['waiter', 'cleaner'];
 
-/** Look-Name für die n-te Station einer Rolle (zyklisch). */
+/** Look-Name für die n-te Figur einer Rolle (zyklisch). */
 export function staffLookFor(role: StaffRoleId, index: number): string {
   const looks = STAFF_LOOKS[role];
   return looks[Math.abs(Math.trunc(index)) % looks.length] ?? looks[0] ?? role;

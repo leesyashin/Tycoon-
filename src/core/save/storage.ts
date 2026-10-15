@@ -14,6 +14,7 @@ export interface StorageLike {
 export const SAVE_KEY = `mce.save.v${String(SCHEMA_VERSION)}`;
 /** Frühere Schlüssel, aus denen noch gelesen (und migriert) wird. */
 const LEGACY_KEYS = [
+  'mce.save.v8',
   'mce.save.v7',
   'mce.save.v6',
   'mce.save.v5',

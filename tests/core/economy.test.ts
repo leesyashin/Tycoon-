@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BALANCE } from '@data/balance';
-import { STATIONS, getStationDef } from '@data/stations';
+import { getStationDef } from '@data/stations';
 import { createInitialState, getLocation, withLocation } from '@core/GameState';
 import { D } from '@core/math';
 import {
@@ -10,12 +10,11 @@ import {
   cafeLevelProgress,
   cafeLevelThreshold,
   getBulkCost,
-  getCheckoutThroughput,
   getMaxAffordable,
   getStationCost,
   getStationPrice,
-  getStationRevenuePerSec,
-  getStationThroughput,
+  getStationSpeed,
+  getStationWorkSeconds,
   isStationUnlocked,
   milestoneLevels,
   milestonePriceMult,
@@ -24,7 +23,7 @@ import {
   resolveAmount,
 } from '@core/economy';
 
-const bar = getStationDef('matchaBar');
+const bar = getStationDef('matchaStation');
 const fresh = () => createInitialState(0);
 const withCoins = (coins: number | string) => {
   const s = fresh();
@@ -32,11 +31,11 @@ const withCoins = (coins: number | string) => {
 };
 
 describe('Kosten', () => {
-  it('Level 1→2 der Matcha-Bar = 10 × g', () => {
+  it('Level 1→2 der Matcha-Station = 10 × g', () => {
     expect(getStationCost(bar, 1, 1, 'berlin').toNumber()).toBeCloseTo(10 * bar.growth, 6);
   });
   it('Startlevel 0 kostet Basiskosten', () => {
-    expect(getStationCost(getStationDef('checkout'), 0, 1, 'berlin').toNumber()).toBeCloseTo(60, 6);
+    expect(getStationCost(getStationDef('register'), 0, 1, 'berlin').toNumber()).toBeCloseTo(60, 6);
   });
   it('Bulk = Summe der Einzelkäufe (geometrische Reihe)', () => {
     let sum = 0;
@@ -93,34 +92,39 @@ describe('Meilensteine', () => {
   });
 });
 
-describe('Preis und Durchsatz', () => {
-  it('Preis = base × level × scale × Meilenstein', () => {
+describe('Preis und Tempo', () => {
+  it('Preis = base × level × scale × Meilenstein; Kasse und Ausgabe ohne Preis', () => {
     expect(getStationPrice(bar, 4, 'berlin').toNumber()).toBe(12);
     expect(getStationPrice(bar, 4, 'kyoto').toNumber()).toBe(300);
     expect(getStationPrice(bar, 100, 'berlin').toNumber()).toBe(3 * 100 * 2);
     expect(getStationPrice(bar, 0, 'berlin').toNumber()).toBe(0);
+    expect(getStationPrice(getStationDef('register'), 5, 'berlin').toNumber()).toBe(0);
+    expect(getStationPrice(getStationDef('servingStation'), 5, 'berlin').toNumber()).toBe(0);
   });
-  it('Durchsatz = parallel × Tempo / Servicezeit', () => {
-    expect(getStationThroughput(bar, 1)).toBeCloseTo(0.25, 9);
-    expect(getStationThroughput(bar, 10)).toBeCloseTo(0.5, 9);
-    expect(getStationThroughput(bar, 1, 2, 1.5)).toBeCloseTo(0.75, 9);
-    expect(getStationThroughput(bar, 0)).toBe(0);
+  it('Tempo = (1 + (level − 1) × 2 %) × Tempo-Meilensteine', () => {
+    const per = BALANCE.equipment.speedPerLevel;
+    expect(getStationSpeed(bar, 1)).toBe(1);
+    expect(getStationSpeed(bar, 5)).toBeCloseTo(1 + 4 * per, 9);
+    expect(getStationSpeed(bar, 10)).toBeCloseTo((1 + 9 * per) * 2, 9);
+    expect(getStationSpeed(bar, 100)).toBeCloseTo((1 + 99 * per) * 8, 9);
+    expect(getStationSpeed(bar, 0)).toBe(0);
   });
-  it('Umsatz pro Sekunde = Preis × Kunden/s', () => {
-    expect(getStationRevenuePerSec(bar, 2, 'berlin', 0.5).toNumber()).toBeCloseTo(3, 9);
-  });
-  it('Kasse: Baseline ohne Level, 0.5 × level^0.8 sonst', () => {
-    expect(getCheckoutThroughput(0)).toBeCloseTo(0.3, 9);
-    expect(getCheckoutThroughput(1)).toBeCloseTo(0.5, 9);
-    expect(getCheckoutThroughput(10)).toBeCloseTo(0.5 * 10 ** 0.8, 9);
-    expect(getCheckoutThroughput(1, 5)).toBeCloseTo(1, 9);
+  it('ohne Level: Handkasse, Ausgabe mit Tempo 1, Produktlinie aus', () => {
+    expect(getStationSpeed(getStationDef('register'), 0)).toBe(BALANCE.order.handRegisterSpeed);
+    expect(getStationSpeed(getStationDef('servingStation'), 0)).toBe(1);
+    expect(getStationWorkSeconds(bar, 0)).toBe(Infinity);
+    expect(getStationWorkSeconds(bar, 1)).toBe(4);
+    expect(getStationWorkSeconds(bar, 10)).toBeCloseTo(4 / getStationSpeed(bar, 10), 9);
   });
 });
 
 describe('Café-Level und Käufe', () => {
   it('Café-Level aus Σ Stations-Level über die Stufen-Tabelle, max 50', () => {
     const loc = getLocation(fresh(), 'berlin');
-    const at = (level: number) => ({ ...loc, stations: { matchaBar: { level, unlocked: true } } });
+    const at = (level: number) => ({
+      ...loc,
+      stations: { matchaStation: { level, unlocked: true } },
+    });
     const { steps, stepAfter } = BALANCE.cafeLevel;
     expect(computeCafeLevel(loc)).toBe(1);
     expect(cafeLevelThreshold(1)).toBe(0);
@@ -136,7 +140,10 @@ describe('Café-Level und Käufe', () => {
   });
   it('Fortschritt zum nächsten Café-Level', () => {
     const loc = getLocation(fresh(), 'berlin');
-    const at = (level: number) => ({ ...loc, stations: { matchaBar: { level, unlocked: true } } });
+    const at = (level: number) => ({
+      ...loc,
+      stations: { matchaStation: { level, unlocked: true } },
+    });
     const t3 = cafeLevelThreshold(3);
     expect(cafeLevelProgress(at(t3 + 4))).toEqual({
       done: 4,
@@ -146,52 +153,52 @@ describe('Café-Level und Käufe', () => {
     expect(max.done).toBe(max.need);
   });
   it('Kauf zieht Münzen ab und erhöht das Level', () => {
-    const s = buyStation(withCoins(100), 'berlin', 'matchaBar', 1);
+    const s = buyStation(withCoins(100), 'berlin', 'matchaStation', 1);
     const loc = getLocation(s, 'berlin');
-    expect(loc.stations['matchaBar']?.level).toBe(2);
+    expect(loc.stations['matchaStation']?.level).toBe(2);
     expect(loc.coins.toNumber()).toBeCloseTo(100 - 10 * bar.growth, 6);
   });
   it('Kauf ohne Geld oder gesperrt ändert nichts', () => {
     const poor = fresh();
-    expect(buyStation(poor, 'berlin', 'matchaBar', 1)).toBe(poor);
+    expect(buyStation(poor, 'berlin', 'matchaStation', 1)).toBe(poor);
     const rich = withCoins(1e9);
-    expect(isStationUnlocked(rich, 'berlin', 'bakery')).toBe(false);
-    expect(buyStation(rich, 'berlin', 'bakery', 1)).toBe(rich);
+    expect(isStationUnlocked(rich, 'berlin', 'oven')).toBe(false);
+    expect(buyStation(rich, 'berlin', 'oven', 1)).toBe(rich);
   });
   it('Bulk x10 und x100 und max', () => {
     const s = withCoins('1e12');
-    const x10 = buyStation(s, 'berlin', 'matchaBar', 10);
-    expect(getLocation(x10, 'berlin').stations['matchaBar']?.level).toBe(11);
-    const x100 = buyStation(s, 'berlin', 'matchaBar', 100);
-    expect(getLocation(x100, 'berlin').stations['matchaBar']?.level).toBe(101);
-    const max = buyStation(s, 'berlin', 'matchaBar', 'max');
-    const n = resolveAmount(s, 'berlin', 'matchaBar', 'max');
-    expect(getLocation(max, 'berlin').stations['matchaBar']?.level).toBe(1 + n);
-    expect(getBulkCost(s, 'berlin', 'matchaBar', 'max').lte(1e12)).toBe(true);
+    const x10 = buyStation(s, 'berlin', 'matchaStation', 10);
+    expect(getLocation(x10, 'berlin').stations['matchaStation']?.level).toBe(11);
+    const x100 = buyStation(s, 'berlin', 'matchaStation', 100);
+    expect(getLocation(x100, 'berlin').stations['matchaStation']?.level).toBe(101);
+    const max = buyStation(s, 'berlin', 'matchaStation', 'max');
+    const n = resolveAmount(s, 'berlin', 'matchaStation', 'max');
+    expect(getLocation(max, 'berlin').stations['matchaStation']?.level).toBe(1 + n);
+    expect(getBulkCost(s, 'berlin', 'matchaStation', 'max').lte(1e12)).toBe(true);
   });
   it('x10 ohne genug Geld kauft nichts', () => {
     const s = withCoins(20);
-    expect(buyStation(s, 'berlin', 'matchaBar', 10)).toBe(s);
+    expect(buyStation(s, 'berlin', 'matchaStation', 10)).toBe(s);
   });
   it('max mit zu wenig Geld kauft nichts', () => {
     const s = withCoins(1);
-    expect(buyStation(s, 'berlin', 'matchaBar', 'max')).toBe(s);
+    expect(buyStation(s, 'berlin', 'matchaStation', 'max')).toBe(s);
   });
   it('Café-Level-Aufstieg schaltet Stationen frei', () => {
     let s = withCoins('1e30');
-    // Matcha-Bar startet auf Level 1; ein Kauf fehlt noch bis Café-Level 5.
+    // Matcha-Station startet auf Level 1; ein Kauf fehlt noch bis Café-Level 5.
     const base = getLocation(s, 'berlin');
     const level = cafeLevelThreshold(5) - 1;
     s = withLocation(s, 'berlin', {
       ...base,
-      stations: { ...base.stations, matchaBar: { level, unlocked: true } },
+      stations: { ...base.stations, matchaStation: { level, unlocked: true } },
     });
-    s = buyStation(s, 'berlin', 'matchaBar', 1);
+    s = buyStation(s, 'berlin', 'matchaStation', 1);
     const loc = getLocation(s, 'berlin');
     expect(loc.level).toBe(5);
-    expect(loc.stations['bakery']?.unlocked).toBe(true);
-    expect(loc.stations['togoWindow']?.unlocked).toBe(true);
-    expect(isStationUnlocked(s, 'berlin', 'togoWindow')).toBe(true);
+    expect(loc.stations['oven']?.unlocked).toBe(true);
+    expect(loc.stations['coffeeMachine']?.unlocked).toBe(true);
+    expect(isStationUnlocked(s, 'berlin', 'coffeeMachine')).toBe(true);
   });
 });
 
@@ -205,7 +212,6 @@ describe('Modifiers', () => {
       prestigeMult: 1,
       discount: 0,
       satisfactionBonus: 0,
-      staffSpeedMult: Object.fromEntries(STATIONS.map((d) => [d.id, 1])),
       stationPriceMult: {},
       tipMult: 1,
       eventSatisfaction: 0,
@@ -217,7 +223,7 @@ describe('Modifiers', () => {
       ...fresh(),
       playtimeSec: 10,
       activeEvents: [
-        // Hitzewelle: Spawn ×1.3, Iced-Bar ×3
+        // Hitzewelle: Spawn ×1.3, Eisfach ×3
         { id: 'heatwave', locationId: 'berlin', startedAt: 0, until: 20 },
         { id: 'influencerVisit', locationId: 'berlin', startedAt: 0, until: 5 },
       ],
@@ -227,6 +233,6 @@ describe('Modifiers', () => {
     expect(m.spawnMult).toBeCloseTo(1.3 * 1.5, 9);
     expect(m.incomeMult).toBeCloseTo(2, 9);
     expect(m.speedMult).toBe(3);
-    expect(m.stationPriceMult['icedBar']).toBe(3);
+    expect(m.stationPriceMult['iceBox']).toBe(3);
   });
 });

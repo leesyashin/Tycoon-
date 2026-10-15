@@ -37,18 +37,18 @@ test('Tutorial: Schritte, Highlight, Aufgabe erkennt Kauf, überspringen bleibt 
   expect(r.violations.map((v) => v.id)).toEqual([]);
 
   await page.getByTestId('tutorial-next').click();
-  await expect(tut).toContainText('Matcha-Bar verbessern');
+  await expect(tut).toContainText('Matcha-Station verbessern');
   // Aufgaben-Schritt: kein „Weiter“, nur Überspringen.
   await expect(page.getByTestId('tutorial-next')).toBeHidden();
 
   await editSaveAndReload(page, '1000000');
-  await expect(tut).toContainText('Matcha-Bar verbessern');
+  await expect(tut).toContainText('Matcha-Station verbessern');
   await page.getByTestId('nav-shop').click();
-  await page.getByTestId('shop-station-matchaBar').click();
+  await page.getByTestId('shop-station-matchaStation').click();
   await page.getByTestId('buy-10').click();
   await page.getByTestId('panel-close').click();
   // Aufgabe erledigt → nächster Schritt (Prüfung läuft 1×/s).
-  await expect(tut).toContainText('Eine neue Station', { timeout: 5000 });
+  await expect(tut).toContainText('Die Kasse', { timeout: 5000 });
 
   await page.getByTestId('tutorial-skip').click();
   await expect(tut).toBeHidden();
@@ -80,9 +80,10 @@ test('Tutorial läuft bis zum Ende durch (manuelle Schritte, Englisch)', async (
     };
     const berlin = save.locations['berlin'];
     if (!berlin) throw new Error('no berlin');
-    berlin.stations['matchaBar'] = { ...berlin.stations['matchaBar'], level: 5 };
-    berlin.stations['checkout'] = { ...berlin.stations['checkout'], level: 1 };
-    berlin.staff = { barista: 1 };
+    berlin.stations['matchaStation'] = { ...berlin.stations['matchaStation'], level: 5 };
+    berlin.stations['register'] = { ...berlin.stations['register'], level: 1 };
+    // Gründungsteam (3) plus eine weitere Kraft erfüllt den Personal-Schritt.
+    berlin.staff = { cashier: 1, barista: 2, waiter: 1 };
     localStorage.setItem(key, JSON.stringify(save));
     Storage.prototype.setItem = () => undefined;
   });

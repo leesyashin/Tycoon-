@@ -6,7 +6,8 @@
 export type TutorialCheck =
   | { kind: 'manual' }
   | { kind: 'stationLevel'; stationId: string; level: number }
-  | { kind: 'anyStaff' };
+  /** Mindestens so viele Köpfe/Stufen insgesamt (das Gründungsteam zählt mit). */
+  | { kind: 'staffTotal'; count: number };
 
 export interface TutorialStepDef {
   id: string;
@@ -19,14 +20,15 @@ export const TUTORIAL_STEPS: readonly TutorialStepDef[] = [
   {
     id: 'upgrade',
     target: 'nav-shop',
-    check: { kind: 'stationLevel', stationId: 'matchaBar', level: 3 },
+    check: { kind: 'stationLevel', stationId: 'matchaStation', level: 3 },
   },
   {
     id: 'station',
     target: 'nav-shop',
-    check: { kind: 'stationLevel', stationId: 'checkout', level: 1 },
+    check: { kind: 'stationLevel', stationId: 'register', level: 1 },
   },
-  { id: 'staff', target: 'nav-staff', check: { kind: 'anyStaff' } },
+  // Gründungsteam = 3 Köpfe; die Aufgabe ist eine weitere Kraft (Verkäufer, Barista oder Bedienung).
+  { id: 'staff', target: 'nav-staff', check: { kind: 'staffTotal', count: 4 } },
   { id: 'satisfaction', target: 'hud-satisfaction', check: { kind: 'manual' } },
   { id: 'bar', target: 'actionbar', check: { kind: 'manual' } },
   { id: 'offline', target: null, check: { kind: 'manual' } },

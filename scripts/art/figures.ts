@@ -2,7 +2,8 @@
  * Figuren im Hotel-Empire-Look (UI_STYLE § 4): Blockfiguren mit großem Würfelkopf, kurzem Körper, Flat-Shading
  * (oben 100 %, links 85 %, rechts 70 %), keine Outlines und keine Gesichter außer Haaren – Sonnenbrille, Brille,
  * Schnurrbart und Bart zählen als Accessoire. Kunden tragen Gen-Z-Matcha-Klischees, je Typ mehrere Varianten
- * (`CUSTOMER_LOOKS`); Personal trägt Schürze (`STAFF_LOOKS`). Selbst gezeichnet, CC0 (docs/ASSETS.md).
+ * (`CUSTOMER_LOOKS`) und eine Sitzpose für den Tisch; Personal trägt Schürze (`STAFF_LOOKS`: Verkäufer, Barista,
+ * Bedienung mit Tablett, Putzkraft mit Mopp, Filialleiterin, Social Media). Selbst gezeichnet, CC0 (docs/ASSETS.md).
  *
  * Koordinaten einer Figur: x quer (+x = Flanke, die in beiden Ansichten zur Kamera zeigt), y Blickrichtung,
  * z Höhe in Pixeln; Ursprung = Mitte zwischen den Füßen. Die Rückansicht spiegelt nur y, deshalb hält die
@@ -186,6 +187,7 @@ type PropKind =
   | 'chawan'
   | 'chasen'
   | 'mop'
+  | 'tray'
   | 'pretzel'
   | 'earbuds'
   | 'wiredEarphones'
@@ -542,6 +544,62 @@ const STAFF_LOOK_DEFS: Record<string, Look> = {
     apron: C.apron,
     props: [p('tattoos'), p('earbuds')],
   },
+  // Dritte Kasse: Locken, Kreolen, Tablet – der Gründungs-Verkäufer.
+  'cashier-curls': {
+    skin: K.skin5,
+    hair: K.black,
+    hairStyle: 'curly',
+    top: K.offwhite,
+    topStyle: 'tee',
+    bottom: K.denimDark,
+    bottomStyle: 'jeans',
+    shoes: K.white,
+    shoeStyle: 'sneaker',
+    apron: C.apron,
+    props: [p('hoops'), p('tablet')],
+  },
+  // Bedienungen tragen das Tablett mit Becher und Kuchen auf der flachen Hand (Phase 2, UI_STYLE § 4).
+  'waiter-bow': {
+    skin: K.skin1,
+    hair: K.bleach,
+    hairStyle: 'long',
+    hat: K.red,
+    hatStyle: 'bow',
+    top: K.white,
+    topStyle: 'longsleeve',
+    bottom: K.coal,
+    bottomStyle: 'jeans',
+    shoes: K.coal,
+    shoeStyle: 'loafer',
+    apron: C.apron,
+    props: [p('tray'), p('hoops')],
+  },
+  'waiter-sidePart': {
+    skin: K.skin3,
+    hair: K.dark,
+    hairStyle: 'sidePart',
+    top: K.offwhite,
+    topStyle: 'tee',
+    bottom: K.coal,
+    bottomStyle: 'baggy',
+    shoes: K.white,
+    shoeStyle: 'sneaker',
+    apron: C.apron,
+    props: [p('tray'), p('earbuds')],
+  },
+  'waiter-topknot': {
+    skin: K.skin5,
+    hair: K.black,
+    hairStyle: 'topknot',
+    top: K.sage,
+    topStyle: 'longsleeve',
+    bottom: K.coal,
+    bottomStyle: 'jeans',
+    shoes: K.white,
+    shoeStyle: 'chunky',
+    apron: C.apron,
+    props: [p('tray'), p('chain')],
+  },
   'cleaner-bucket': {
     skin: K.skin5,
     hair: K.black,
@@ -557,6 +615,20 @@ const STAFF_LOOK_DEFS: Record<string, Look> = {
     apron: C.apron,
     props: [p('headphones', K.white), p('mop')],
   },
+  // Zweite Putzkraft: Dutt, In-Ears, Mopp.
+  'cleaner-bun': {
+    skin: K.skin2,
+    hair: K.ginger,
+    hairStyle: 'highBun',
+    top: K.babyBlue,
+    topStyle: 'tee',
+    bottom: K.coal,
+    bottomStyle: 'cargo',
+    shoes: K.white,
+    shoeStyle: 'chunky',
+    apron: C.apron,
+    props: [p('earbuds'), p('mop')],
+  },
   // Filialleiterin: Blazer über Hoodie, Slick Bun, Tablet. Auch Portrait im HUD.
   'manager-blazer': {
     skin: K.skin4,
@@ -570,22 +642,6 @@ const STAFF_LOOK_DEFS: Record<string, Look> = {
     shoes: K.white,
     shoeStyle: 'chunky',
     props: [p('hoops'), p('tablet')],
-  },
-  'baker-toque': {
-    skin: K.skin1,
-    hair: K.ginger,
-    hairStyle: 'short',
-    hat: K.white,
-    hatStyle: 'toque',
-    top: K.white,
-    topStyle: 'longsleeve',
-    bottom: K.coal,
-    bottomStyle: 'jeans',
-    shoes: K.coal,
-    shoeStyle: 'clogs',
-    face: ['beard'],
-    apron: C.apron,
-    props: [p('pretzel')],
   },
   'socialMedia-ringlight': {
     skin: K.skin3,
@@ -601,38 +657,6 @@ const STAFF_LOOK_DEFS: Record<string, Look> = {
     shoeStyle: 'platform',
     apron: C.apron,
     props: [p('ringLight')],
-  },
-  'teaMaster-sensei': {
-    skin: K.skin2,
-    hair: K.grey,
-    hairStyle: 'topknot',
-    top: K.forest,
-    topStyle: 'samue',
-    topAccent: K.offwhite,
-    bottom: K.forest,
-    bottomStyle: 'baggy',
-    shoes: K.leather,
-    shoeStyle: 'sandals',
-    socks: K.white,
-    face: ['beard'],
-    apron: C.apron,
-    props: [p('chasen')],
-  },
-  'teaMaster-apprentice': {
-    skin: K.skin1,
-    hair: K.dark,
-    hairStyle: 'bob',
-    top: K.indigo,
-    topStyle: 'samue',
-    topAccent: K.offwhite,
-    bottom: K.indigo,
-    bottomStyle: 'baggy',
-    shoes: K.leather,
-    shoeStyle: 'sandals',
-    socks: K.white,
-    face: ['glasses'],
-    apron: C.apron,
-    props: [p('chawan')],
   },
 };
 
@@ -775,6 +799,22 @@ function leg(f: Fig, look: Look, side: -1 | 1, dy: number, lift: number) {
     case 'skirt':
       break;
   }
+}
+
+/**
+ * Sitzend (Gäste am Tisch): Oberschenkel waagerecht nach vorn (+y), Unterschenkel senkrecht davor, Füße am
+ * Boden. Die Sitzhöhe entspricht dem Hüftansatz der stehenden Figur, der Rumpf bleibt unverändert.
+ */
+function seatedLeg(f: Fig, look: Look, side: -1 | 1) {
+  const x0 = side < 0 ? -LEG.x1 : LEG.x0;
+  const x1 = side < 0 ? -LEG.x0 : LEG.x1;
+  const bare =
+    look.bottomStyle === 'shorts' || look.bottomStyle === 'skirt' || look.topStyle === 'dress';
+  const shin = bare ? (look.socks ?? look.skin) : look.bottom;
+  const wide = look.bottomStyle === 'baggy' || look.bottomStyle === 'cargo' ? 0.012 : 0;
+  f.cube(x0 - 0.004, x1 + 0.004, 0.11, 0.23, 0, 2.2, look.shoes);
+  f.cube(x0 + 0.008, x1 - 0.008, 0.13, 0.19, 0.8, 4.6, shin);
+  f.cube(x0 - wide, x1 + wide, -0.02, 0.16, 4.6, LEG.z1, look.bottom);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1404,6 +1444,16 @@ function sideProps(f: Fig, look: Look, dy: number) {
         f.cube(0.15, 0.29, -0.075, 0.075, 0, 2.6, '#c9d6e6');
         f.cube(0.214, 0.23, -0.009, 0.009, 2.6, 31, C.woodDark);
         break;
+      case 'tray': {
+        // Tablett auf der flachen Hand: Platte mit hellem Rand, darauf Iced Matcha und ein Stück Matcha-Kuchen.
+        const c = q.color ?? K.silver;
+        f.cube(0.16, 0.31, -0.1 + dy, 0.1 + dy, 11.2, 12, shade(c, 0.9));
+        f.cube(0.17, 0.3, -0.09 + dy, 0.09 + dy, 12, 12.6, tint(c, 0.4));
+        f.tube(0.205, 0.045 + dy, 12.6, 0.03, 4.4, K.milk, K.matchaDrink);
+        f.cube(0.235, 0.28, -0.085 + dy, -0.03 + dy, 12.6, 15, K.beige);
+        f.cube(0.235, 0.28, -0.085 + dy, -0.03 + dy, 15, 15.7, K.matchaDrink);
+        break;
+      }
       case 'chasen':
         f.tube(0.205, dy, 5.2, 0.034, 4.4, '#e2c27e', tint('#e2c27e', 0.3));
         f.tube(0.205, dy, 9.6, 0.017, 3.4, C.woodDark);
@@ -1472,7 +1522,7 @@ function fluffy(f: Fig, cx: number, cy: number, rx: number, ry: number, color: s
 // ---------------------------------------------------------------------------------------------
 // Zusammensetzen
 // ---------------------------------------------------------------------------------------------
-function figure(look: Look, dir: Dir, frame: number, shadow = true): string {
+function figure(look: Look, dir: Dir, frame: number, shadow = true, seated = false): string {
   const f = new Fig(dir);
   const pose = POSES[frame] ?? POSES[0];
   if (!pose) throw new Error('no pose');
@@ -1487,6 +1537,7 @@ function figure(look: Look, dir: Dir, frame: number, shadow = true): string {
         'digicam',
         'notebook',
         'mop',
+        'tray',
         'chasen',
         'pretzel',
         'ringLight',
@@ -1515,8 +1566,13 @@ function figure(look: Look, dir: Dir, frame: number, shadow = true): string {
   }
   leftHandProps(f, look, armL);
   arm(f, look, -1, armL);
-  leg(f, look, -1, pose.legL, pose.liftL);
-  leg(f, look, 1, pose.legR, pose.liftR);
+  if (seated) {
+    seatedLeg(f, look, -1);
+    seatedLeg(f, look, 1);
+  } else {
+    leg(f, look, -1, pose.legL, pose.liftL);
+    leg(f, look, 1, pose.legR, pose.liftR);
+  }
   skirt(f, look);
   torso(f, look);
   torsoDetails(f, look);
@@ -1537,18 +1593,25 @@ function figure(look: Look, dir: Dir, frame: number, shadow = true): string {
   return f.svg();
 }
 
-function lookFrames(prefix: string, look: Look, walks: boolean): SpriteDef[] {
+function lookFrames(prefix: string, look: Look, walks: boolean, sits = false): SpriteDef[] {
   const out: SpriteDef[] = [];
   const frames = walks ? [CHAR_FRAMES.stand, ...CHAR_FRAMES.walk] : [CHAR_FRAMES.stand];
-  for (const dir of ['front', 'back'] as const)
+  for (const dir of ['front', 'back'] as const) {
     for (const frame of frames)
       out.push({ name: `${prefix}-${dir}-${String(frame)}`, svg: figure(look, dir, frame) });
+    if (sits)
+      out.push({
+        name: `${prefix}-sit-${dir}`,
+        svg: figure(look, dir, CHAR_FRAMES.stand, true, true),
+      });
+  }
   return out;
 }
 
 /**
- * Alle Figuren-Frames: `customer-<typ>-<look>-<dir>-<frame>` und `staff-<rolle>-<look>-<dir>-<frame>`.
- * Personal, das nur an der Station steht, bekommt keine Lauf-Frames (spart Atlas-Fläche).
+ * Alle Figuren-Frames: `customer-<typ>-<look>-<dir>-<frame>` plus Sitzpose `customer-<typ>-<look>-sit-<dir>`
+ * (Gäste am Tisch) und `staff-<rolle>-<look>-<dir>-<frame>`. Personal, das nur an der Theke steht, bekommt
+ * keine Lauf-Frames (spart Atlas-Fläche); Bedienungen und Putzkräfte laufen (`STAFF_WALKERS`).
  */
 export function characterSprites(): SpriteDef[] {
   const out: SpriteDef[] = [];
@@ -1556,7 +1619,7 @@ export function characterSprites(): SpriteDef[] {
     for (const id of looks) {
       const look = CUSTOMER_LOOK_DEFS[id];
       if (!look) throw new Error(`No customer look: ${id}`);
-      out.push(...lookFrames(`customer-${type}-${id}`, look, true));
+      out.push(...lookFrames(`customer-${type}-${id}`, look, true, true));
     }
   for (const [role, looks] of Object.entries(STAFF_LOOKS))
     for (const id of looks) {
