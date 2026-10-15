@@ -56,6 +56,8 @@ export interface Pigeon {
   /** Nächster Wechsel Kopf hoch/runter beim Picken. */
   peckIn: number;
   pecking: boolean;
+  /** Sichtbarkeit 0..1: blendet am Ende des Wegflugs aus und beim Landen ein (nie Auftauchen aus dem Nichts). */
+  alpha: number;
 }
 
 /** Grüne Achse der Ampel: `u` = Fahrbahn entlang x, `v` = entlang y, `none` = alles Rot. */
@@ -106,6 +108,7 @@ export class StreetLife {
       timer: 0,
       peckIn: 0.3 + (i % 5) * 0.2,
       pecking: false,
+      alpha: 1,
     }));
     this.boats = city.boats.map((r, i) => ({
       route: i,
@@ -174,7 +177,15 @@ export class StreetLife {
   }
 
   private updatePigeons(dt: number): void {
-    const { pigeonScare, pigeonFlySec, pigeonAwayMin, pigeonAwayMax, pigeonLandSec } = STREET_LIFE;
+    const {
+      pigeonScare,
+      pigeonFlySec,
+      pigeonAwayMin,
+      pigeonAwayMax,
+      pigeonLandSec,
+      pigeonFadeSec,
+    } = STREET_LIFE;
+    const fade = (t: number) => Math.max(0, Math.min(1, t / pigeonFadeSec));
     for (const p of this.pigeons) {
       switch (p.state) {
         case 'peck': {
@@ -202,8 +213,10 @@ export class StreetLife {
           p.x += p.dx * 2.2 * dt;
           p.y += p.dy * 2.2 * dt;
           p.z += 34 * dt;
+          p.alpha = fade(p.timer);
           if (p.timer <= 0) {
             p.state = 'away';
+            p.alpha = 0;
             p.timer = pigeonAwayMin + this.rng() * (pigeonAwayMax - pigeonAwayMin);
           }
           break;
@@ -222,8 +235,10 @@ export class StreetLife {
           p.x = p.home.x + p.dx * 2.5 * t;
           p.y = p.home.y - 1.2 * t;
           p.z = 40 * t;
+          p.alpha = fade(pigeonLandSec - p.timer);
           if (p.timer <= 0) {
             p.state = 'peck';
+            p.alpha = 1;
             p.x = p.home.x;
             p.y = p.home.y;
             p.z = 0;

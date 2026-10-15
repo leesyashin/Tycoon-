@@ -1053,6 +1053,8 @@ export const STREET_LIFE = {
   pigeonAwayMin: 5,
   pigeonAwayMax: 12,
   pigeonLandSec: 1.4,
+  /** Am Ende des Wegflugs aus-, beim Landen einblenden (Sekunden). */
+  pigeonFadeSec: 0.6,
 } as const;
 
 export interface CityPalette {

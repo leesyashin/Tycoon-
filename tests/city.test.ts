@@ -558,6 +558,28 @@ describe('Stadtviertel: Verkehr und Passanten', () => {
     expect({ clash, onZebra }).toEqual({ clash: 0, onZebra: 0 });
   });
 
+  it('Tauben blenden beim Wegfliegen aus und beim Landen ein (verschwinden nicht mitten in der Luft)', () => {
+    const life = new StreetLife(CITY, seeded(4));
+    const dt = 0.05;
+    const step = dt / STREET_LIFE.pigeonFadeSec + 1e-6;
+    let last = life.pigeons.map((p) => p.alpha);
+    let flown = 0;
+    for (let i = 0; i < 6000; i++) {
+      life.update(dt);
+      life.pigeons.forEach((p, k) => {
+        const before = last[k] ?? 1;
+        expect(Math.abs(p.alpha - before), `Taube ${String(k)} ${p.state}`).toBeLessThanOrEqual(
+          step,
+        );
+        if (p.state === 'away') expect(p.alpha).toBe(0);
+        if (p.state === 'peck') expect(p.alpha).toBe(1);
+        if (p.state === 'fly') flown++;
+      });
+      last = life.pigeons.map((p) => p.alpha);
+    }
+    expect(flown).toBeGreaterThan(0);
+  });
+
   it('Ampel wechselt zwischen den Achsen mit Räumzeit', () => {
     const life = new StreetLife(CITY, seeded(2));
     const seen = new Set<string>();

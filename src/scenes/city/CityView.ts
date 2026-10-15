@@ -826,9 +826,10 @@ export class CityView {
     life.pigeons.forEach((pg, i) => {
       const s = this.pigeonSprites[i];
       if (!s) return;
-      const show = pg.state !== 'away';
+      const show = pg.alpha > 0;
       s.setVisible(show);
       if (!show) return;
+      s.setAlpha(pg.alpha);
       const flying = pg.state === 'fly' || pg.state === 'land';
       const pose = flying
         ? Math.floor(this.clock * 9 + i) % 2
