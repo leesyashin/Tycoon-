@@ -320,3 +320,33 @@ export function extrudeU(
     o.side ?? lit(color, facetLight([0, 1, 0])),
   );
 }
+
+/**
+ * Fläche auf einem Zylindermantel (Plakat, Band, Öffnung) zwischen den Winkeln a0 und a1 (Bogenmaß, 0 = +u,
+ * π/2 = +v; sichtbar ist −π/4 … 3π/4) und den Höhen z0/z1, in Streifen nach ihrer Normale schattiert.
+ */
+export function cylPatch(
+  c: IsoCanvas,
+  uc: number,
+  vc: number,
+  r: number,
+  a0: number,
+  a1: number,
+  z0: number,
+  z1: number,
+  color: string,
+  n = 5,
+  opacity = 1,
+): void {
+  for (let i = 0; i < n; i++) {
+    const t0 = a0 + ((a1 - a0) * i) / n;
+    const t1 = a0 + ((a1 - a0) * (i + 1)) / n;
+    const tm = (t0 + t1) / 2;
+    const P = (t: number, z: number): Vec3 => [uc + Math.cos(t) * r, vc + Math.sin(t) * r, z];
+    c.poly(
+      [P(t0, z0), P(t1, z0), P(t1, z1), P(t0, z1)],
+      lit(color, facetLight([Math.cos(tm), Math.sin(tm), 0])),
+      opacity,
+    );
+  }
+}
