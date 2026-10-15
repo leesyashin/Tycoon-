@@ -2735,20 +2735,48 @@ function goal(): string {
   return c.svg();
 }
 
-/** Bushaltestelle: Glasdach, Rückwand mit Werbung, Bank und Haltestellenschild (gelbes H-Feld ohne Schrift). */
-function busstop(): string {
+/**
+ * Bushaltestelle (Wartehäuschen): Glas-Rückwand, Werbevitrine an der Stirnseite, Bank, Glasdach und Haltestellenschild
+ * (gelbes H-Feld ohne Schrift) an der offenen Seite. `open` = Seite mit Bank und Schild quer zur Achse u, also zur
+ * Fahrbahn: +1 nach +v (zur Kamera), −1 nach −v (dann steht die Glas-Rückwand vorn, die Bank sieht man durchs Glas).
+ */
+function busstop(open: 1 | -1): string {
   const c = wide();
-  c.shadow(-0.75, -0.2, 0, 1.5, 0.5, 0.22);
-  c.box(-0.72, -0.15, 0, 0.03, 0.03, 32, C.stainlessDark);
-  c.box(0.69, -0.15, 0, 0.03, 0.03, 32, C.stainlessDark);
-  c.group(0.45, () => c.wallV(-0.7, -0.13, 2, 1.4, 28, C.glass));
-  c.wallV(0.1, -0.12, 6, 0.5, 22, C.cobalt);
-  c.wallV(0.14, -0.119, 10, 0.42, 14, C.sakura);
-  c.box(-0.6, -0.1, 8, 0.6, 0.18, 1.6, C.oakLight);
-  c.box(-0.75, -0.2, 32, 1.5, 0.5, 1.6, C.stainless, { top: tint(C.glass, 0.4) });
-  c.cylinder(-0.95, 0.15, 0, 0.02, 38, C.stainlessDark);
-  c.cylinder(-0.95, 0.15, 36, 0.09, 6, C.gold, C.gold);
-  c.disc(-0.95, 0.15, 42, 0.06, C.matchaDeep);
+  const back = -0.2 * open;
+  const v0 = Math.min(back, 0.28 * open);
+  const sign = () => {
+    c.cylinder(-0.95, 0.22 * open, 0, 0.02, 38, C.stainlessDark);
+    c.cylinder(-0.95, 0.22 * open, 36, 0.09, 6, C.gold, C.gold);
+    c.disc(-0.95, 0.22 * open, 42, 0.06, C.matchaDeep);
+  };
+  const posts = () => {
+    c.box(-0.72, back - 0.015, 0, 0.03, 0.03, 30, C.stainlessDark);
+    c.box(0.69, back - 0.015, 0, 0.03, 0.03, 30, C.stainlessDark);
+  };
+  const wall = () => c.group(0.45, () => c.wallV(-0.7, back, 2, 1.4, 27, C.glass));
+  const bench = () => {
+    c.box(-0.55, back + (open > 0 ? 0.03 : -0.21), 7, 0.9, 0.18, 1.6, C.oakLight);
+    for (const u of [-0.5, 0.25])
+      c.box(u, back + (open > 0 ? 0.05 : -0.08), 0, 0.03, 0.03, 7, IRON);
+  };
+  c.shadow(-0.78, v0, 0, 1.56, 0.48, 0.22);
+  // Painter: was weiter von der Kamera (−u/−v) weg ist, zuerst.
+  if (open > 0) {
+    posts();
+    wall();
+    bench();
+  } else {
+    sign();
+    bench();
+    posts();
+    wall();
+  }
+  // Werbevitrine an der Stirnseite (+u), Plakat zeigt nach +u
+  const vit = Math.min(back, 0.02 * open);
+  c.box(0.64, vit, 3, 0.06, 0.2, 25, C.cobalt);
+  c.wallU(0.701, vit + 0.02, 6, 0.16, 19, C.sakura);
+  c.box(-0.78, v0, 30, 1.56, 0.48, 1.6, C.stainless, { top: tint(C.glass, 0.4) });
+  if (open > 0) sign();
   return c.svg();
 }
 
@@ -2890,7 +2918,8 @@ export function citySprites(): SpriteDef[] {
     { name: 'fountain', svg: fountain() },
     { name: 'icecart', svg: icecart() },
     { name: 'goal', svg: goal() },
-    { name: 'busstop', svg: busstop() },
+    { name: 'busstop-f', svg: busstop(1) },
+    { name: 'busstop-b', svg: busstop(-1) },
     { name: 'mailbox', svg: mailbox() },
     { name: 'scooters', svg: scooters() },
     { name: 'bistro-0', svg: bistro(0) },
@@ -2900,13 +2929,12 @@ export function citySprites(): SpriteDef[] {
     out.push({ name: `car-${String(i)}-f`, svg: car(s, 'f') });
     out.push({ name: `car-${String(i)}-b`, svg: car(s, 'b') });
   });
-  // Weitere Lacke nur für parkende Autos (stehen immer mit der Front nach +u, quer gespiegelt)
+  // Weitere Lacke nur für parkende Autos (Front oder Heck vorn wie der Fahrstreifen daneben, quer gespiegelt)
   CAR_PAINTS.forEach((list, t) =>
-    list
-      .slice(0, PARKED_CAR_PAINTS)
-      .forEach((s, k) =>
-        out.push({ name: `car-${String(t)}-p${String(k + 1)}-f`, svg: car(s, 'f') }),
-      ),
+    list.slice(0, PARKED_CAR_PAINTS).forEach((s, k) => {
+      out.push({ name: `car-${String(t)}-p${String(k + 1)}-f`, svg: car(s, 'f') });
+      out.push({ name: `car-${String(t)}-p${String(k + 1)}-b`, svg: car(s, 'b') });
+    }),
   );
   // Radfahrer: Typen nach den Autos (`STREET_LIFE.bikeTypes`)
   BIKES.forEach((s, i) => {

@@ -94,6 +94,10 @@ export interface PropDef {
   variant?: number;
   /** Achse, an der das Objekt ausgerichtet ist (Autos, Bänke, Geländer): `u` = entlang x. */
   axis?: 'u' | 'v';
+  /** Haltestelle: offene Seite mit Bank quer zur Achse, +1 nach +y bzw. +x (zur Kamera), −1 nach −y bzw. −x. */
+  front?: 1 | -1;
+  /** Parker: Front entlang der Achse, +1 nach +x bzw. +y, −1 nach −x bzw. −y (wie der Fahrstreifen daneben). */
+  heading?: 1 | -1;
 }
 
 /** Fahrstreifen: Autos fahren entlang `axis` auf der Linie `at`, Richtung `dir`. */
@@ -256,9 +260,14 @@ export interface CityDef {
   walks: WalkPath[];
   /** Zebrastreifen: Rechteck und Achse der Fahrbahn, die er quert. */
   crossings: { rect: GridRect; axis: 'u' | 'v' }[];
+  /** Brücken (Kanal, Spree): Fläche und die Fahrbahn darauf (Achse, Anfang). Boote fahren darunter durch. */
+  bridges: { rect: GridRect; axis: 'u' | 'v'; at: number }[];
   /** Fahrbahnen (Anfang `at`, Breite `CITY_GRID.road`), für Mittellinien und Bordsteine. */
   roads: { axis: 'u' | 'v'; at: number }[];
-  /** Ausflugsdampfer: Kanal (entlang v) und Spree (entlang u). */
+  /**
+   * Ausflugsdampfer: Kanal (entlang v) und Spree (entlang u). Sie wenden außerhalb des Bilds oder verdeckt unter einer
+   * Brücke, ihre Strecken kreuzen sich nicht.
+   */
   boats: { axis: 'u' | 'v'; at: number; from: number; to: number }[];
   /** Hier picken Tauben (Gehweg am Café, gegenüber, am Brunnen); sie fliegen auf, wenn jemand vorbeikommt. */
   pigeons: { x: number; y: number }[];
@@ -270,6 +279,16 @@ export interface CityDef {
  */
 const CITY_VIEW = { left: -1150, top: -1150, right: 1150, bottom: 1500 } as const;
 
+/** Liegt der Grid-Punkt im erlaubten Kamera-Ausschnitt (mit Rand in Pixeln)? Welt-Pixel wie `toScreen` (64×32). */
+function nearView(x: number, y: number, margin = 64): boolean {
+  const sx = (x - y) * 32;
+  const sy = (x + y) * 16;
+  const v = CITY_VIEW;
+  return (
+    sx > v.left - margin && sx < v.right + margin && sy > v.top - margin && sy < v.bottom + margin
+  );
+}
+
 /** Liegt v auf einer Kreuzung (mit Rand) oder über dem Kanal? Dort keine Bäume und keine Parker. */
 function blockedAt(v: number, margin: number): boolean {
   return (
@@ -278,8 +297,269 @@ function blockedAt(v: number, margin: number): boolean {
   );
 }
 
+// ---------------------------------------------------------------------------------------------
+// Boden und Ausrichtung der Objekte (geteilt von Szene und Tests)
+// ---------------------------------------------------------------------------------------------
+
+/** Oberste Bodenart am Grid-Punkt: spätere Flächen liegen über früheren (Gehweg-Grundton zuerst). */
+export function groundAt(
+  x: number,
+  y: number,
+  ground: readonly GroundArea[] = CITY.ground,
+): GroundKind | null {
+  let kind: GroundKind | null = null;
+  for (const g of ground)
+    if (x >= g.rect.x0 && x < g.rect.x1 && y >= g.rect.y0 && y < g.rect.y1) kind = g.kind;
+  return kind;
+}
+
+/**
+ * Wohin die Vorderseite eines gerichteten Objekts zeigt (Grid-Einheitsvektor), wie es gezeichnet wird; `null` für
+ * runde/ungerichtete Objekte. Quer gestellt (`axis: 'v'`) tauschen x und y (Spiegelung bzw. eigener Frame).
+ */
+export function propFacing(p: PropDef): readonly [number, number] | null {
+  const along = (d: number): [number, number] => (p.axis === 'v' ? [0, d] : [d, 0]);
+  const across = (d: number): [number, number] => (p.axis === 'v' ? [d, 0] : [0, d]);
+  switch (p.kind) {
+    case 'busstop':
+      return across(p.front ?? 1);
+    case 'bench':
+    case 'kiosk':
+    case 'stall':
+    case 'foodtruck':
+      return across(1);
+    case 'pedLight':
+    case 'mailbox':
+      // nach +v gezeichnet; quer gestellt nur, wenn gespiegelt
+      return FLIP_ON_V.includes(p.kind) ? across(1) : [0, 1];
+    case 'trafficLight':
+      return along(1);
+    case 'parked':
+      return along(p.heading ?? 1);
+    default:
+      return null;
+  }
+}
+
+/** Grundfläche je Objekt-Art in Zeichnungs-Koordinaten `[u0, u1, v0, v1]` (u entlang der Achse, v quer dazu). */
+const FOOTPRINT: Readonly<Record<PropKind, readonly [number, number, number, number]>> = {
+  linden: [-0.22, 0.22, -0.22, 0.22],
+  lindenSmall: [-0.18, 0.18, -0.18, 0.18],
+  lamp: [-0.1, 0.1, -0.1, 0.1],
+  bench: [-0.45, 0.45, -0.13, 0.12],
+  bikes: [-0.32, 0.32, -0.36, 0.36],
+  litfass: [-0.28, 0.28, -0.28, 0.28],
+  bin: [-0.12, 0.12, -0.12, 0.12],
+  planter: [-0.25, 0.25, -0.18, 0.18],
+  bollard: [-0.06, 0.06, -0.06, 0.06],
+  cafeSign: [-0.07, 0.07, -0.07, 0.07],
+  pedLight: [-0.08, 0.08, -0.08, 0.08],
+  trafficLight: [-0.08, 0.08, -0.08, 0.08],
+  parked: [-0.65, 0.65, -0.3, 0.3],
+  railing: [-0.75, 0.75, -0.05, 0.05],
+  kiosk: [-0.6, 0.6, -0.5, 0.55],
+  stall: [-0.66, 0.66, -0.36, 0.46],
+  foodtruck: [-0.95, 0.95, -0.38, 0.62],
+  playground: [-0.9, 0.75, -0.35, 0.6],
+  fountain: [-0.72, 0.72, -0.72, 0.72],
+  icecart: [-0.3, 0.3, -0.18, 0.18],
+  goal: [-0.8, 0.8, -0.35, 0.05],
+  // offen nach +v; mit `front: -1` gespiegelt (Schild an der offenen Seite bei u = −0,95)
+  busstop: [-1.0, 0.78, -0.22, 0.3],
+  mailbox: [-0.1, 0.1, -0.1, 0.1],
+  scooters: [-0.25, 0.22, -0.17, 0.17],
+  bistro: [-0.32, 0.34, -0.16, 0.16],
+};
+
+/** Grundfläche eines Objekts im Grid (Achse und offene Seite eingerechnet). */
+export function propFootprint(p: PropDef): GridRect {
+  const [u0, u1, a, b] = FOOTPRINT[p.kind];
+  const [v0, v1] = p.front === -1 ? [-b, -a] : [a, b];
+  return p.axis === 'v'
+    ? { x0: p.x + v0, x1: p.x + v1, y0: p.y + u0, y1: p.y + u1 }
+    : { x0: p.x + u0, x1: p.x + u1, y0: p.y + v0, y1: p.y + v1 };
+}
+
+/** Darf ein Objekt dieser Art auf dieser Bodenart stehen? (Parker auf der Fahrbahn, Geländer am Ufer.) */
+export function groundAllows(kind: PropKind, ground: GroundKind | null): boolean {
+  if (ground === null) return false;
+  if (kind === 'parked') return ground === 'road';
+  if (kind === 'railing') return ground === 'quay' || ground === 'bridge' || ground === 'sidewalk';
+  return ground !== 'road' && ground !== 'bridge' && ground !== 'water' && ground !== 'quay';
+}
+
+/** Haltestelle: Bucht zwischen offener Seite und Bordstein und je eine Kachel links und rechts bleiben frei. */
+export function busStopClearance(p: PropDef): GridRect {
+  const f = propFootprint(p);
+  const [along, across] =
+    p.axis === 'v'
+      ? [
+          { a: 'y', d: 1 },
+          { a: 'x', d: 0.6 },
+        ]
+      : [
+          { a: 'x', d: 1 },
+          { a: 'y', d: 0.6 },
+        ];
+  const g = (axis: string, d: number) => (axis === 'x' ? { dx: d, dy: 0 } : { dx: 0, dy: d });
+  const a = g(along.a, along.d);
+  const c = g(across.a, across.d);
+  return {
+    x0: f.x0 - a.dx - c.dx,
+    x1: f.x1 + a.dx + c.dx,
+    y0: f.y0 - a.dy - c.dy,
+    y1: f.y1 + a.dy + c.dy,
+  };
+}
+
+/** Liegt vor der Kachel (x, y) Gehweg (keine Blockfläche, kein Haus)? Dann zeigt die Fassade Läden und Türen. */
+export function isStreetTile(
+  x: number,
+  y: number,
+  ground: readonly GroundArea[] = CITY.ground,
+  buildings: readonly BuildingDef[] = CITY.buildings,
+): boolean {
+  const cx = x + 0.5;
+  const cy = y + 0.5;
+  const inside = (r: GridRect) => cx >= r.x0 && cx < r.x1 && cy >= r.y0 && cy < r.y1;
+  const open = ['sidewalk', 'road', 'bridge'];
+  return (
+    !ground.some((g) => !open.includes(g.kind) && inside(g.rect)) &&
+    !buildings.some((b) => inside(b.rect))
+  );
+}
+
+/**
+ * Flächen vor Haustüren und Läden (Tür und Auslage) an der Straße, eine Kachel tief: Dort steht kein Straßenmöbel.
+ * Seite a = Fassade entlang x bei y1, Seite b = entlang y bei x1 (wie `CityView.drawCells`).
+ */
+export function doorFronts(
+  buildings: readonly BuildingDef[] = CITY.buildings,
+  ground: readonly GroundArea[] = CITY.ground,
+): GridRect[] {
+  const out: GridRect[] = [];
+  for (const b of buildings) {
+    const { x0, y0, x1, y1 } = b.rect;
+    const cells = [
+      ...Array.from({ length: x1 - x0 }, (_, i) => ({ i, ax: x0 + i, ay: y1, face: 'a' as const })),
+      ...Array.from({ length: y1 - y0 }, (_, i) => ({ i, ax: x1, ay: y0 + i, face: 'b' as const })),
+    ];
+    for (const { i, ax, ay, face } of cells) {
+      if (!isStreetTile(ax, ay, ground, buildings)) continue;
+      const cell = groundCellFor(b, i, true);
+      // [entlang0, entlang1, Tiefe]: Haustür mittig; Laden mit Auslage vorn und Tür rechts
+      const parts: [number, number, number][] =
+        cell === 'door'
+          ? [[0.15, 0.85, 1]]
+          : cell === 'base'
+            ? []
+            : [
+                [0.05, 0.95, 0.65],
+                [0.7, 0.95, 1],
+              ];
+      for (const [s0, s1, d] of parts)
+        out.push(
+          face === 'a'
+            ? { x0: ax + s0, x1: ax + s1, y0: ay, y1: ay + d }
+            : { x0: ax, x1: ax + d, y0: ay + s0, y1: ay + s1 },
+        );
+    }
+  }
+  return out;
+}
+
+/** Gehweg vor den Überwegen (eine Kachel tief auf beiden Seiten): dort warten und gehen die Passanten. */
+export function crossingApproaches(
+  crossings: readonly { rect: GridRect; axis: 'u' | 'v' }[] = CITY.crossings,
+): GridRect[] {
+  return crossings.flatMap(({ rect: r, axis }) =>
+    axis === 'u'
+      ? [
+          { ...r, y0: r.y0 - 1, y1: r.y0 },
+          { ...r, y0: r.y1, y1: r.y1 + 1 },
+        ]
+      : [
+          { ...r, x0: r.x0 - 1, x1: r.x0 },
+          { ...r, x0: r.x1, x1: r.x1 + 1 },
+        ],
+  );
+}
+
+/** Liegt die Kachel s einer Fahrbahn auf einer Kreuzung mit einer Querstraße? */
+function onCrossRoad(
+  road: { axis: 'u' | 'v'; at: number },
+  s: number,
+  roads: readonly { axis: 'u' | 'v'; at: number }[],
+): boolean {
+  return roads.some(
+    (r) => r.axis !== road.axis && s + 0.5 > r.at - 0.01 && s + 0.5 < r.at + ROAD + 0.01,
+  );
+}
+
+/**
+ * Kacheln entlang einer Fahrbahn, auf denen Bordsteine und Mittellinie liegen: nur, wo wirklich Fahrbahn oder Brücke
+ * ist (nicht über Kai und Wasser hinaus) und nicht auf Kreuzungen.
+ */
+export function roadMarkTiles(
+  road: { axis: 'u' | 'v'; at: number },
+  from: number,
+  to: number,
+  ground: readonly GroundArea[] = CITY.ground,
+  roads: readonly { axis: 'u' | 'v'; at: number }[] = CITY.roads,
+): number[] {
+  const out: number[] = [];
+  for (let s = from; s < to; s++) {
+    if (onCrossRoad(road, s, roads)) continue;
+    const mid = road.at + ROAD / 2;
+    const g = road.axis === 'u' ? groundAt(s + 0.5, mid, ground) : groundAt(mid, s + 0.5, ground);
+    if (g === 'road' || g === 'bridge') out.push(s);
+  }
+  return out;
+}
+
+/**
+ * Plattenfugen der Gehwege an den Straßen nah am Café als Linien im Grid `[x0, y0, x1, y1]`: Querfugen je Kachel,
+ * Längsfugen innen im 3 Kacheln breiten Streifen, zusammengefasst zu Läufen. Nur auf echtem Gehweg (nicht über
+ * Fahrbahn, Kreuzung, Kai oder Wasser).
+ */
+export function sidewalkJointLines(
+  ground: readonly GroundArea[] = CITY.ground,
+  roads: readonly { axis: 'u' | 'v'; at: number }[] = CITY.roads,
+): [number, number, number, number][] {
+  const out: [number, number, number, number][] = [];
+  const S = CITY_GRID.sidewalk;
+  for (const r of roads) {
+    if (Math.abs(r.at - O) > PITCH * 1.2) continue;
+    // (s, a) → Grid-Punkt; s entlang der Straße, a quer dazu
+    const pt = (s: number, a: number): [number, number] => (r.axis === 'u' ? [s, a] : [a, s]);
+    const line = (s0: number, a0: number, s1: number, a1: number) => {
+      out.push([...pt(s0, a0), ...pt(s1, a1)]);
+    };
+    for (const a0 of [r.at - S, r.at + ROAD]) {
+      const walk = (s: number, a: number) => {
+        const [x, y] = pt(s + 0.5, a + 0.5);
+        return groundAt(x, y, ground) === 'sidewalk';
+      };
+      for (let a = a0; a < a0 + S; a++) {
+        let run: number | null = null;
+        for (let s = -60; s <= 50; s++) {
+          const ok = s < 50 && walk(s, a);
+          if (ok) line(s, a, s, a + 1);
+          if (a === a0) continue;
+          if (ok && run === null) run = s;
+          if (!ok && run !== null) {
+            line(run, a, s, a);
+            run = null;
+          }
+        }
+      }
+    }
+  }
+  return out;
+}
+
 /** Straßenmöbel an den beiden Hauptstraßen vor dem Café (beide Gehwegseiten) und den Uferstraßen. */
-function streetProps(): PropDef[] {
+function streetProps(ground: readonly GroundArea[], buildings: readonly BuildingDef[]): PropDef[] {
   const out: PropDef[] = [];
   const near = O - 0.55;
   const far = O + ROAD + 0.55;
@@ -289,8 +569,8 @@ function streetProps(): PropDef[] {
     const frontOfCafe = s > -1 && s < 15;
     // Linden auf beiden Seiten, nicht direkt vor dem Café (Blick frei)
     if (s % 5 === 0 && !frontOfCafe) {
-      out.push({ kind: 'linden', x: s, y: near + 0.1 });
-      out.push({ kind: 'linden', x: near + 0.1, y: s });
+      out.push({ kind: 'linden', x: s, y: near + 0.2 });
+      out.push({ kind: 'linden', x: near + 0.2, y: s });
     }
     if ((s + 60) % 5 === 2) {
       out.push({ kind: 'linden', x: s, y: far - 0.1 });
@@ -303,28 +583,32 @@ function streetProps(): PropDef[] {
     if ((s + 60) % 7 === 3) {
       out.push({ kind: 'lamp', x: s, y: near + 0.3 });
       out.push({ kind: 'lamp', x: near + 0.3, y: s });
-      out.push({ kind: 'lamp', x: s + 2, y: far - 0.3 });
-      out.push({ kind: 'lamp', x: far - 0.3, y: s + 2 });
+      // gegenüber versetzt: der versetzte Platz darf nicht auf die Querstraße fallen
+      if (!blockedAt(s + 2, 1.5)) {
+        out.push({ kind: 'lamp', x: s + 2, y: far - 0.3 });
+        out.push({ kind: 'lamp', x: far - 0.3, y: s + 2 });
+      }
     }
     // Leben vor den Läden: Fahrräder, Roller, Briefkasten, Imbiss-Tische, Litfaßsäulen
     if ((s + 60) % 11 === 5 && !frontOfCafe) {
-      out.push({ kind: 'bikes', x: s, y: near, axis: 'u' });
-      out.push({ kind: 'bikes', x: near, y: s, axis: 'v' });
+      // Räder quer zum Bordstein, Bügel entlang der Bordsteinkante (die Laufzeile bleibt frei)
+      out.push({ kind: 'bikes', x: s, y: near + 0.21, axis: 'v' });
+      out.push({ kind: 'bikes', x: near + 0.21, y: s, axis: 'u' });
     }
     if ((s + 60) % 13 === 7 && !frontOfCafe) {
-      out.push({ kind: 'bistro', x: s + 0.5, y: O - 2.2, variant: (s + 60) % 2 });
-      out.push({ kind: 'bistro', x: O - 2.2, y: s + 0.5, variant: (s + 61) % 2 });
+      out.push({ kind: 'bistro', x: s + 0.35, y: O - 2, variant: (s + 60) % 2 });
+      out.push({ kind: 'bistro', x: O - 2, y: s + 0.35, variant: (s + 61) % 2 });
     }
     if ((s + 60) % 17 === 9) {
-      out.push({ kind: 'scooters', x: s, y: far - 0.4, axis: 'u' });
-      out.push({ kind: 'mailbox', x: far - 0.4, y: s - 1.5 });
+      out.push({ kind: 'scooters', x: s, y: far - 0.3, axis: 'u' });
+      out.push({ kind: 'mailbox', x: far - 0.4, y: s - 1.5, axis: 'v' });
     }
     if ((s + 60) % 23 === 11) {
-      out.push({ kind: 'litfass', x: s, y: far - 0.9 });
-      out.push({ kind: 'litfass', x: near - 0.4, y: s });
+      out.push({ kind: 'litfass', x: s, y: far - 0.15 });
+      out.push({ kind: 'litfass', x: near + 0.17, y: s });
     }
   }
-  out.push(
+  const fixed: PropDef[] = [
     // Ecke am Café
     { kind: 'litfass', x: -1.6, y: 14.2 },
     { kind: 'bin', x: -4.6, y: 14.6 },
@@ -337,31 +621,102 @@ function streetProps(): PropDef[] {
     { kind: 'planter', x: 12.25, y: CAFE_DOOR.y + 1.8 },
     { kind: 'pedLight', x: 12.4, y: 14.8, axis: 'u' },
     { kind: 'pedLight', x: 14.8, y: 12.4, axis: 'v' },
-    // Autoampeln an allen vier Ecken der Kreuzung (Lichter zeigen zur Kamera: entlang x nach +x, entlang y nach +y)
-    { kind: 'trafficLight', x: O + ROAD + 0.6, y: O - 0.6, axis: 'u' },
-    { kind: 'trafficLight', x: O + ROAD + 0.6, y: O + ROAD + 0.6, axis: 'v' },
-    { kind: 'trafficLight', x: O - 0.6, y: O + ROAD + 0.6, axis: 'u' },
-    { kind: 'trafficLight', x: O - 0.6, y: O - 0.6, axis: 'v' },
-    { kind: 'busstop', x: 4, y: far + 0.7, axis: 'u' },
-    { kind: 'busstop', x: far + 0.7, y: -3, axis: 'v' },
+    // Autoampeln an den Bordsteinecken der Kreuzung (Lichter zeigen zur Kamera: entlang x nach +x, entlang y nach +y)
+    { kind: 'trafficLight', x: O + ROAD + 0.3, y: O - 0.3, axis: 'u' },
+    { kind: 'trafficLight', x: O + ROAD + 0.3, y: O + ROAD + 0.3, axis: 'v' },
+    { kind: 'trafficLight', x: O - 0.3, y: O + ROAD + 0.3, axis: 'u' },
+    { kind: 'trafficLight', x: O - 0.3, y: O - 0.3, axis: 'v' },
+    // Haltestellen am Bordstein gegenüber, offen zur Fahrbahn (die liegt bei kleinerem y bzw. x)
+    { kind: 'busstop', x: 4, y: far, axis: 'u', front: -1 },
+    { kind: 'busstop', x: far, y: -3, axis: 'v', front: -1 },
     { kind: 'mailbox', x: 11, y: far - 0.4 },
-  );
-  // Parkende Autos am Bordstein (nicht vor dem Café, nicht auf Kreuzungen)
+  ];
+  // Parkende Autos am Bordstein (nicht vor dem Café, nicht auf Kreuzungen), in Fahrtrichtung des Streifens daneben
   for (let s = -58; s < 44; s += 3.4) {
     const v = Math.floor(hash01(s * 10, 3) * 4);
     if (blockedAt(s, 2.5)) continue;
     const notCafe = s < -2 || s > 15;
     if (hash01(s, 1) < 0.55 && notCafe)
-      out.push({ kind: 'parked', x: s, y: O + 0.5, axis: 'u', variant: v });
+      out.push({ kind: 'parked', x: s, y: O + 0.5, axis: 'u', variant: v, heading: -1 });
     if (hash01(s, 2) < 0.5)
       out.push({ kind: 'parked', x: s + 1.2, y: O + ROAD - 0.5, axis: 'u', variant: (v + 1) % 4 });
     if (hash01(s, 5) < 0.5 && notCafe)
       out.push({ kind: 'parked', x: O + 0.5, y: s, axis: 'v', variant: (v + 2) % 4 });
     if (hash01(s, 6) < 0.5)
-      out.push({ kind: 'parked', x: O + ROAD - 0.5, y: s + 1.2, axis: 'v', variant: (v + 3) % 4 });
+      out.push({
+        kind: 'parked',
+        x: O + ROAD - 0.5,
+        y: s + 1.2,
+        axis: 'v',
+        variant: (v + 3) % 4,
+        heading: -1,
+      });
   }
-  return out;
+  return [...fixed, ...placeFree(out, fixed, ground, buildings)];
 }
+
+/** Rangfolge der Raster-Möbel, wenn sich zwei ins Gehege kommen (Laternen zuerst, Bäume füllen auf). */
+const PLACE_ORDER: readonly PropKind[] = [
+  'lamp',
+  'litfass',
+  'mailbox',
+  'bikes',
+  'scooters',
+  'bistro',
+  'linden',
+  'lindenSmall',
+  'parked',
+];
+/** Mindestabstand zwischen zwei Grundflächen (Kacheln). */
+const PROP_GAP = 0.05;
+
+const rectsOverlap = (a: GridRect, b: GridRect): boolean =>
+  a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+
+/**
+ * Raster-Möbel (Linden, Laternen, Räder …) aus dem Modulo-Muster nur dort, wo Platz ist: auf passendem Boden, nicht
+ * auf einem schon gesetzten Objekt und nicht vor Haltestellen, Türen oder Überwegen. Die festen Objekte gehen vor.
+ */
+function placeFree(
+  cands: readonly PropDef[],
+  fixed: readonly PropDef[],
+  ground: readonly GroundArea[],
+  buildings: readonly BuildingDef[],
+): PropDef[] {
+  const zones = [
+    ...fixed.filter((p) => p.kind === 'busstop').map(busStopClearance),
+    ...doorFronts(buildings, ground),
+    ...crossingApproaches(CROSSINGS),
+  ];
+  const placed = fixed.map(propFootprint);
+  const rank = (p: PropDef) => {
+    const i = PLACE_ORDER.indexOf(p.kind);
+    return i < 0 ? PLACE_ORDER.length : i;
+  };
+  const keep = new Set<PropDef>();
+  for (const p of [...cands].sort((a, b) => rank(a) - rank(b))) {
+    const f = propFootprint(p);
+    const xs = [f.x0 + 0.01, (f.x0 + f.x1) / 2, f.x1 - 0.01];
+    const ys = [f.y0 + 0.01, (f.y0 + f.y1) / 2, f.y1 - 0.01];
+    if (!xs.every((x) => ys.every((y) => groundAllows(p.kind, groundAt(x, y, ground))))) continue;
+    const pad = {
+      x0: f.x0 - PROP_GAP,
+      y0: f.y0 - PROP_GAP,
+      x1: f.x1 + PROP_GAP,
+      y1: f.y1 + PROP_GAP,
+    };
+    if (zones.some((z) => rectsOverlap(f, z)) || placed.some((q) => rectsOverlap(pad, q))) continue;
+    placed.push(f);
+    keep.add(p);
+  }
+  return cands.filter((p) => keep.has(p));
+}
+
+/** Zebrastreifen an der Kreuzung am Café: Rechteck und Achse der Fahrbahn, die er quert. */
+const CROSSINGS: { rect: GridRect; axis: 'u' | 'v' }[] = [
+  { rect: { x0: 12.6, y0: O, x1: 14.6, y1: O + ROAD }, axis: 'u' },
+  { rect: { x0: O, y0: 12.6, x1: O + ROAD, y1: 14.6 }, axis: 'v' },
+];
 
 const LANES: LaneDef[] = [
   // Fahrbahn vorn (entlang x): Haltelinien vor den Überwegen an der Kreuzung beim Café
@@ -372,64 +727,79 @@ const LANES: LaneDef[] = [
   { axis: 'v', at: O + 2.5, dir: -1, stopAt: O + ROAD + 0.4 },
 ];
 
-const SIDE_NEAR = 14.3;
+/** Laufzeilen der Passanten: zwischen Terrasse/Auslagen und den Möbeln am Bordstein (diesseits bzw. gegenüber). */
+const SIDE_NEAR = 14.2;
 const SIDE_FAR = 20.3;
 const FAR_END = -62;
+/** Querung über den Zebrastreifen: über die Fahrbahn entlang x zwischen den Pollern, über die entlang y. */
+const CROSS_U = 13.95;
+const CROSS_V = 13.6;
+type P = { x: number; y: number; cross?: 'u' | 'v' };
+/** Um die Litfaßsäule an der Ecke am Café (−1,6 | 14,2) zur Hauswand hin ausweichen. */
+const LITFASS_DETOUR: P[] = [
+  { x: -2.8, y: SIDE_NEAR },
+  { x: -1.6, y: 13.55 },
+  { x: -0.4, y: SIDE_NEAR },
+];
+const NEAR_TO_CORNER: P[] = [{ x: FAR_END, y: SIDE_NEAR }, ...LITFASS_DETOUR];
+const CORNER_TO_NEAR: P[] = [...NEAR_TO_CORNER].reverse();
 const WALKS: WalkPath[] = [
   // Ums Café herum (vorn → Ecke → rechts) und zurück
   {
+    points: [...NEAR_TO_CORNER, { x: SIDE_NEAR, y: SIDE_NEAR }, { x: SIDE_NEAR, y: FAR_END }],
+  },
+  {
+    points: [{ x: SIDE_NEAR, y: FAR_END }, { x: SIDE_NEAR, y: SIDE_NEAR }, ...CORNER_TO_NEAR],
+  },
+  // Gegenüber am Park entlang, über den Zebrastreifen zum Café und rechts weiter
+  {
     points: [
-      { x: FAR_END, y: SIDE_NEAR },
+      { x: FAR_END, y: SIDE_FAR },
+      { x: CROSS_U, y: SIDE_FAR },
+      { x: CROSS_U, y: SIDE_NEAR, cross: 'u' },
       { x: SIDE_NEAR, y: SIDE_NEAR },
       { x: SIDE_NEAR, y: FAR_END },
     ],
   },
+  // Gegenüber am Kanal entlang, über den Zebrastreifen zum Café und vorn weiter
   {
     points: [
-      { x: SIDE_NEAR, y: FAR_END },
+      { x: SIDE_FAR, y: FAR_END },
+      { x: SIDE_FAR, y: CROSS_V },
+      { x: SIDE_NEAR, y: CROSS_V, cross: 'v' },
       { x: SIDE_NEAR, y: SIDE_NEAR },
-      { x: FAR_END, y: SIDE_NEAR },
+      ...CORNER_TO_NEAR,
     ],
   },
-  // Gegenüber am Park bzw. am Kanal entlang
+  // Über den Zebrastreifen (Ampel), dann in den Park, links am Brunnen vorbei
   {
     points: [
-      { x: FAR_END, y: SIDE_FAR },
-      { x: SIDE_FAR, y: SIDE_FAR },
-      { x: SIDE_FAR, y: FAR_END },
-    ],
-  },
-  {
-    points: [
-      { x: SIDE_FAR, y: FAR_END },
-      { x: SIDE_FAR, y: SIDE_FAR },
-      { x: FAR_END, y: SIDE_FAR },
-    ],
-  },
-  // Über die Überwege (Ampel), dann in den Park
-  {
-    points: [
-      { x: FAR_END, y: SIDE_NEAR },
-      { x: 13.6, y: SIDE_NEAR },
-      { x: 13.6, y: SIDE_FAR, cross: 'u' },
+      ...NEAR_TO_CORNER,
+      { x: CROSS_U, y: SIDE_NEAR },
+      { x: CROSS_U, y: SIDE_FAR, cross: 'u' },
       { x: 5.5, y: SIDE_FAR },
-      { x: 5.5, y: 28.75 },
+      { x: 5.5, y: 27.4 },
+      { x: 4.58, y: 27.82 },
+      { x: 4.58, y: 28.75 },
       { x: -10, y: 28.75 },
     ],
   },
   {
     points: [
       { x: SIDE_FAR, y: FAR_END },
-      { x: SIDE_FAR, y: 13.6 },
-      { x: SIDE_NEAR, y: 13.6, cross: 'v' },
+      { x: SIDE_FAR, y: CROSS_V },
+      { x: SIDE_NEAR, y: CROSS_V, cross: 'v' },
       { x: SIDE_NEAR, y: FAR_END },
     ],
   },
-  // Durch den Park
+  // Durch den Park, rechts am Brunnen vorbei
   {
     points: [
-      { x: 5.5, y: 42 },
-      { x: 5.5, y: 28.75 },
+      { x: 5.5, y: 43 },
+      { x: 5.5, y: 30.3 },
+      { x: 6.42, y: 29.65 },
+      { x: 6.42, y: 27.85 },
+      { x: 5.5, y: 27.2 },
       { x: 5.5, y: SIDE_FAR },
       { x: -40, y: SIDE_FAR },
     ],
@@ -583,22 +953,43 @@ function buildCity(): CityDef {
     kind: 'quay',
     rect: { x0: CANAL.x1, y0: extent.y0, x1: CANAL.quay1, y1: RIVER_FROM },
   });
+  const bridges: CityDef['bridges'] = [];
   for (let k: number = blocks.from; k <= blocks.to; k++) {
     const a = roadAt(k);
-    ground.push({
-      kind: 'bridge',
+    bridges.push({
       rect: { x0: CANAL.quay0, y0: a - 0.4, x1: CANAL.quay1, y1: a + ROAD + 0.4 },
+      axis: 'u',
+      at: a,
     });
     if (k >= -1)
       for (const x of [21.5, 23, 24.5, 26])
         for (const y of [a - 0.2, a + ROAD + 0.2]) props.push({ kind: 'railing', x, y, axis: 'u' });
   }
-  // Ufergeländer an der Spree
-  for (let x = -40; x < RIVER_FROM; x += 1.5)
-    if (!(x > CANAL.quay0 - 1 && x < CANAL.quay1))
-      props.push({ kind: 'railing', x, y: RIVER_FROM - 0.3, axis: 'u' });
+  // Die Hauptstraßen am Café führen über die Spree aus dem Bild (dort fahren die Autos hinaus und herein).
+  const main = roadAt(0);
+  const spree = [
+    { x0: main - 0.4, y0: RIVER_FROM - q, x1: main + ROAD + 0.4, y1: extent.y1 },
+    { x0: RIVER_FROM - q, y0: main - 0.4, x1: extent.x1, y1: main + ROAD + 0.4 },
+  ];
+  bridges.push({ rect: spree[0] ?? extent, axis: 'v', at: main });
+  bridges.push({ rect: spree[1] ?? extent, axis: 'u', at: main });
+  for (const b of bridges) ground.push({ kind: 'bridge', rect: b.rect });
+  const onBridge = (t: number) => t + 0.75 > main - 0.4 && t - 0.75 < main + ROAD + 0.4;
+  // Geländer an den Spreebrücken, an beiden Spreeufern (vorn und rechts) – nur so weit, wie man sie sieht
+  for (let t = RIVER_FROM + 0.75; t < extent.y1; t += 1.5)
+    for (const e of [main - 0.2, main + ROAD + 0.2]) {
+      if (nearView(e, t)) props.push({ kind: 'railing', x: e, y: t, axis: 'v' });
+      if (nearView(t, e)) props.push({ kind: 'railing', x: t, y: e, axis: 'u' });
+    }
+  for (let t = -40; t < RIVER_FROM; t += 1.5) {
+    const bank = RIVER_FROM - 0.3;
+    if (!(t > CANAL.quay0 - 1 && t < CANAL.quay1) && !onBridge(t) && nearView(t, bank))
+      props.push({ kind: 'railing', x: t, y: bank, axis: 'u' });
+    if (!onBridge(t) && nearView(bank, t))
+      props.push({ kind: 'railing', x: bank, y: t, axis: 'v' });
+  }
 
-  props.push(...streetProps());
+  props.push(...streetProps(ground, buildings));
   return {
     extent: { ...extent },
     view: CITY_VIEW,
@@ -606,15 +997,14 @@ function buildCity(): CityDef {
     buildings,
     props,
     backProps,
+    bridges,
     lanes: LANES,
     walks: WALKS,
-    crossings: [
-      { rect: { x0: 12.6, y0: O, x1: 14.6, y1: O + ROAD }, axis: 'u' },
-      { rect: { x0: O, y0: 12.6, x1: O + ROAD, y1: 14.6 }, axis: 'v' },
-    ],
+    crossings: CROSSINGS,
     roads,
     boats: [
-      { axis: 'v', at: (CANAL.x0 + CANAL.x1) / 2, from: -60, to: RIVER_FROM + 4 },
+      // Kanal: wendet verdeckt unter der letzten Brücke vor der Spree (dort fährt der zweite Dampfer)
+      { axis: 'v', at: (CANAL.x0 + CANAL.x1) / 2, from: -60, to: roadAt(1) + ROAD / 2 },
       { axis: 'u', at: RIVER_FROM + 5, from: -70, to: 80 },
     ],
     pigeons: [
@@ -632,8 +1022,6 @@ function buildCity(): CityDef {
     ],
   };
 }
-
-export const CITY: CityDef = buildCity();
 
 /** Verkehr und Passanten (kosmetisch). */
 export const STREET_LIFE = {
@@ -676,6 +1064,8 @@ export const STREET_LIFE = {
   pigeonAwayMin: 5,
   pigeonAwayMax: 12,
   pigeonLandSec: 1.4,
+  /** Am Ende des Wegflugs aus-, beim Landen einblenden (Sekunden). */
+  pigeonFadeSec: 0.6,
 } as const;
 
 export interface CityPalette {
@@ -880,11 +1270,15 @@ export function propCanvas(kind: PropKind): { w: number; h: number; ox: number; 
 /** Zusätzliche Lacke je Autotyp für parkende Autos (`car-<typ>-p<k>-f`), der Verkehr fährt die Grundlacke. */
 export const PARKED_CAR_PAINTS = 1;
 
-/** Parkendes Auto: Typ aus `variant`, Lack aus der Position (Grundlack oder eine der Zusatzfarben). */
+/**
+ * Parkendes Auto: Typ aus `variant`, Lack aus der Position (Grundlack oder eine der Zusatzfarben), Front oder Heck
+ * vorn nach `heading` (wie der Fahrstreifen daneben).
+ */
 export function parkedCarFrame(p: PropDef): string {
   const type = String(p.variant ?? 0);
   const k = Math.floor(hash01(p.x, p.y, 23) * (PARKED_CAR_PAINTS + 1));
-  return k === 0 ? `car-${type}-f` : `car-${type}-p${String(k)}-f`;
+  const end = p.heading === -1 ? 'b' : 'f';
+  return k === 0 ? `car-${type}-${end}` : `car-${type}-p${String(k)}-${end}`;
 }
 
 /** Frame-Name eines Objekts im `city`-Atlas (Varianten und Ausrichtung im Namen). */
@@ -904,6 +1298,8 @@ export function propFrame(p: PropDef): string {
       return `foodtruck-${String((p.variant ?? 0) % 2)}`;
     case 'bistro':
       return `bistro-${String((p.variant ?? 0) % 2)}`;
+    case 'busstop':
+      return `busstop-${p.front === -1 ? 'b' : 'f'}`;
     default:
       return p.kind;
   }
@@ -911,6 +1307,10 @@ export function propFrame(p: PropDef): string {
 
 /** Objekte, die quer gestellt (entlang v) gespiegelt gezeichnet werden. */
 export const FLIP_ON_V: readonly PropKind[] = [
+  // Fußgängerampel: Lichter nach +v; an der Fahrbahn entlang y müssen sie nach +x über die Straße zeigen
+  'pedLight',
+  'mailbox',
+  'railing',
   'parked',
   'bikes',
   'scooters',
@@ -918,3 +1318,6 @@ export const FLIP_ON_V: readonly PropKind[] = [
   'busstop',
   'foodtruck',
 ];
+
+/** Das Viertel, einmal beim Laden gebaut (am Dateiende: braucht alle Tabellen oben). */
+export const CITY: CityDef = buildCity();

@@ -10,9 +10,12 @@ import {
   groundCellFor,
   hash01,
   isLitWindow,
+  isStreetTile,
   propCanvas,
   propFrame,
+  roadMarkTiles,
   roofHeight,
+  sidewalkJointLines,
   upperCellFor,
   type BuildingDef,
   type CityPalette,
@@ -28,12 +31,17 @@ import { TILE_H, isoDepth, toScreen } from '../iso/iso';
 import { StreetLife } from './streetLife';
 
 /**
- * Tiefen innerhalb der Stadt-Ebene (`Layer`, liegt komplett hinter dem Café): Boden, ferne Häuser (Flächen),
- * Fassaden-Module und Hofobjekte nach Position, zuletzt alle Dächer. Die Ebene wird nur beim Aufbau sortiert –
- * die bewegten Figuren der Szene lösen kein Umsortieren der vielen Stadt-Sprites aus.
+ * Tiefen der Stadt (alles hinter dem Café): unten der Boden, darüber die Dampfer, darüber noch einmal die
+ * Brückendecks (die Dampfer fahren darunter durch statt darüber), darüber die Häuser-Ebene (`Layer`: ferne Häuser,
+ * Fassaden-Module und Hofobjekte nach Position, zuletzt alle Dächer), die auch vor ihnen liegende Dampfer verdeckt.
+ * Die Ebene wird nur beim Aufbau sortiert – die bewegten Figuren der Szene lösen kein Umsortieren der vielen
+ * Stadt-Sprites aus.
  */
-const LAYER = { ground: -1e7, lod: -1e7 + 1, roofs: 1e7 } as const;
-const LAYER_DEPTH = -9000;
+const LAYER = { lod: -1e7 + 1, roofs: 1e7 } as const;
+const GROUND_DEPTH = -9000;
+const BOAT_DEPTH = GROUND_DEPTH + 1;
+const DECK_DEPTH = GROUND_DEPTH + 2;
+const HOUSE_DEPTH = GROUND_DEPTH + 3;
 /** Helligkeit der sichtbaren Seiten (UI_STYLE § 4): links (+y) 85 %, rechts (+x) 70 %; Dachflächen eigene Stufen. */
 const SHADE_A = 0.85;
 const SHADE_B = 0.7;
@@ -60,9 +68,6 @@ function P(x: number, y: number, z = 0): { x: number; y: number } {
 }
 
 type V3 = readonly [number, number, number];
-
-const inRect = (r: GridRect, x: number, y: number): boolean =>
-  x >= r.x0 && x < r.x1 && y >= r.y0 && y < r.y1;
 
 /** Ursprung eines Sprites aus seiner Leinwand (Bodenpunkt). */
 function originOf(s: { w: number; h: number; ox: number; oy: number }): [number, number] {
@@ -93,8 +98,6 @@ export class CityView {
   private clock = 0;
   /** Höhe (px) belegter Kacheln: Häuser und die Café-Box; daraus der Verdeckungstest der Fassaden-Module. */
   private readonly occupied = new Map<string, number>();
-  /** Bebaute Blöcke (Fläche ohne Gehweg): Was nicht darin liegt und kein Wasser/Park ist, gilt als Gehweg. */
-  private readonly blocks: GridRect[];
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -106,10 +109,7 @@ export class CityView {
   ) {
     this.palette = getCityPalette(locationId);
     scene.cameras.main.setBackgroundColor(this.palette.haze);
-    this.layer = scene.add.layer().setDepth(LAYER_DEPTH);
-    this.blocks = CITY.ground
-      .filter((a) => a.kind !== 'sidewalk' && a.kind !== 'road' && a.kind !== 'bridge')
-      .map((a) => a.rect);
+    this.layer = scene.add.layer().setDepth(HOUSE_DEPTH);
     for (let x = cafe.x0; x < cafe.x1; x++)
       for (let y = cafe.y0; y < cafe.y1; y++)
         this.occupied.set(`${String(x)},${String(y)}`, CITY_STYLE.cafeH);
@@ -121,6 +121,7 @@ export class CityView {
         }
 
     this.drawGround();
+    this.drawDecks();
     const visible = CITY.buildings.filter((b) => this.inView(b));
     const lod = scene.add.graphics();
     this.addToLayer(lod, LAYER.lod);
@@ -213,8 +214,7 @@ export class CityView {
   }
 
   private drawGround(): void {
-    const g = this.scene.add.graphics();
-    this.addToLayer(g, LAYER.ground);
+    const g = this.scene.add.graphics().setDepth(GROUND_DEPTH);
     for (const a of CITY.ground) {
       this.fillRect(g, a.rect, this.groundColor(a.kind));
       const r = {
@@ -233,55 +233,62 @@ export class CityView {
     this.roadMarks(g);
   }
 
-  /** Gehwegplatten an den Hauptstraßen: Fugen je Kachel (Granitplatten). */
+  /** Gehwegplatten an den Hauptstraßen: Fugen je Kachel (Granitplatten), nur auf dem Gehweg. */
   private sidewalkJoints(g: Phaser.GameObjects.Graphics): void {
-    const joint = hex(this.palette.sidewalkJoint);
-    const { road: R, sidewalk: S } = CITY_GRID;
-    g.lineStyle(1, joint, 0.85);
-    const line = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+    g.lineStyle(1, hex(this.palette.sidewalkJoint), 0.85);
+    for (const [x0, y0, x1, y1] of sidewalkJointLines()) {
+      const a = P(x0, y0);
+      const b = P(x1, y1);
       g.lineBetween(a.x, a.y, b.x, b.y);
-    for (const r of CITY.roads) {
-      if (Math.abs(r.at - CITY_GRID.origin) > CITY_GRID.pitch * 1.2) continue;
-      for (const [a0, a1] of [
-        [r.at - S, r.at],
-        [r.at + R, r.at + R + S],
-      ] as const) {
-        for (let s = -60; s < 50; s++)
-          if (r.axis === 'u') line(P(s, a0), P(s, a1));
-          else line(P(a0, s), P(a1, s));
-        for (const a of [a0 + 1, a0 + 2])
-          if (r.axis === 'u') line(P(-60, a), P(50, a));
-          else line(P(a, -60), P(a, 50));
-      }
+    }
+  }
+
+  /** Brückendecks noch einmal über den Dampfern (`DECK_DEPTH`): so fahren sie unter den Brücken durch. */
+  private drawDecks(): void {
+    const g = this.scene.add.graphics().setDepth(DECK_DEPTH);
+    for (const b of CITY.bridges) {
+      this.fillRect(g, b.rect, this.groundColor('bridge'));
+      const [from, to] = b.axis === 'u' ? [b.rect.x0, b.rect.x1] : [b.rect.y0, b.rect.y1];
+      this.drawRoadMarks(
+        g,
+        b,
+        Math.max(Math.floor(from), DETAIL.x0),
+        Math.min(Math.ceil(to), DETAIL.x1),
+      );
+    }
+  }
+
+  /** Bordsteine und Mittellinie einer Fahrbahn auf den Kacheln [from, to) (nur Fahrbahn/Brücke, keine Kreuzung). */
+  private drawRoadMarks(
+    g: Phaser.GameObjects.Graphics,
+    r: { axis: 'u' | 'v'; at: number },
+    from: number,
+    to: number,
+  ): void {
+    const curb = hex(this.palette.curb);
+    const curbDark = shadeNum(hex(this.palette.road), 0.8);
+    const mark = hex(this.palette.roadMark);
+    const R = CITY_GRID.road;
+    for (const s of roadMarkTiles(r, from, to)) {
+      const seg = (a0: number, a1: number, color: number) =>
+        this.fillRect(
+          g,
+          r.axis === 'u'
+            ? { x0: s, x1: s + 1, y0: a0, y1: a1 }
+            : { x0: a0, x1: a1, y0: s, y1: s + 1 },
+          color,
+        );
+      seg(r.at - 0.12, r.at + 0.02, curb);
+      seg(r.at + 0.02, r.at + 0.1, curbDark);
+      seg(r.at + R - 0.1, r.at + R + 0.12, curb);
+      if (s % 2 === 0) seg(r.at + R / 2 - 0.05, r.at + R / 2 + 0.05, mark);
     }
   }
 
   /** Bordsteine, Mittellinien, Haltelinien, Zebrastreifen. */
   private roadMarks(g: Phaser.GameObjects.Graphics): void {
-    const p = this.palette;
-    const curb = hex(p.curb);
-    const curbDark = shadeNum(hex(p.road), 0.8);
-    const mark = hex(p.roadMark);
-    const R = CITY_GRID.road;
-    const starts = CITY.roads.filter((r) => r.axis === 'u').map((r) => r.at);
-    const onCrossing = (s: number) => starts.some((a) => s > a - 0.01 && s < a + R + 0.01);
-    for (const r of CITY.roads) {
-      for (let s = DETAIL.x0; s < DETAIL.x1; s++) {
-        if (onCrossing(s + 0.5)) continue;
-        const seg = (a0: number, a1: number, color: number) =>
-          this.fillRect(
-            g,
-            r.axis === 'u'
-              ? { x0: s, x1: s + 1, y0: a0, y1: a1 }
-              : { x0: a0, x1: a1, y0: s, y1: s + 1 },
-            color,
-          );
-        seg(r.at - 0.12, r.at + 0.02, curb);
-        seg(r.at + 0.02, r.at + 0.1, curbDark);
-        seg(r.at + R - 0.1, r.at + R + 0.12, curb);
-        if (s % 2 === 0) seg(r.at + R / 2 - 0.05, r.at + R / 2 + 0.05, mark);
-      }
-    }
+    const mark = hex(this.palette.roadMark);
+    for (const r of CITY.roads) this.drawRoadMarks(g, r, DETAIL.x0, DETAIL.x1);
     for (const lane of CITY.lanes) {
       const a = lane.stopAt;
       const h0 = lane.at - 0.5;
@@ -353,12 +360,9 @@ export class CityView {
   // ---------------------------------------------------------------------------------------------
   // Häuser
   // ---------------------------------------------------------------------------------------------
-  /** Liegt vor dieser Fassadenachse ein Gehweg (dann Läden statt Hochparterre)? */
+  /** Liegt vor dieser Fassadenachse ein Gehweg (dann Läden statt Hochparterre)? Wie `doorFronts` in den Daten. */
   private isStreet(x: number, y: number): boolean {
-    return (
-      !this.blocks.some((r) => inRect(r, x + 0.5, y + 0.5)) &&
-      !this.occupied.has(`${String(x)},${String(y)}`)
-    );
+    return isStreetTile(x, y) && !this.occupied.has(`${String(x)},${String(y)}`);
   }
 
   /**
@@ -814,17 +818,18 @@ export class CityView {
       const p = P(pos.x, pos.y);
       const f = FRAME.boat(b.dir > 0);
       if (s.frame.name !== f) s.setFrame(f);
-      // Entlang v (Kanal): Sprite entlang u gespiegelt.
+      // Entlang v (Kanal): Sprite entlang u gespiegelt. Tiefe in der Wasser-Ebene (unter Brücken und Häusern).
       s.setFlipX(route.axis === 'v')
         .setPosition(p.x, p.y)
-        .setDepth(isoDepth(pos.x - 0.5, pos.y - 0.5, 4));
+        .setDepth(BOAT_DEPTH + isoDepth(pos.x - 0.5, pos.y - 0.5) * 1e-5);
     });
     life.pigeons.forEach((pg, i) => {
       const s = this.pigeonSprites[i];
       if (!s) return;
-      const show = pg.state !== 'away';
+      const show = pg.alpha > 0;
       s.setVisible(show);
       if (!show) return;
+      s.setAlpha(pg.alpha);
       const flying = pg.state === 'fly' || pg.state === 'land';
       const pose = flying
         ? Math.floor(this.clock * 9 + i) % 2
