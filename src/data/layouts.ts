@@ -73,6 +73,8 @@ export interface PickupArea {
   waiterHomes: GridPos[];
   /** Weg vom Personal-Gang in den Gastraum (Lücke am Thekenende). */
   exit: GridPos[];
+  /** Hier stellen Baristas das Fertige auf die Ausgabe (Personal-Gang, neben den Bedienungen). */
+  baristaDrop: GridPos;
 }
 
 export interface AmbiencePlacement {
@@ -116,6 +118,8 @@ export interface CafeLayout {
   decor: DecorItem[];
   /** Startplatz der Putzkräfte. */
   cleanerHome: GridPos;
+  /** Hier wischen Putzkräfte den Boden, solange kein Tisch dreckig ist (abseits von Tischen und Deko). */
+  mopSpots: GridPos[];
 }
 
 /** Darstellungs-Parameter der kosmetischen Figuren (nur Optik, keine Spielbalance). */
@@ -125,6 +129,13 @@ export const CROWD = {
   maxQueue: 3,
   /** Streuung (Kacheln) des Grüppchens hinter der Schlange. */
   crowdSpread: 0.9,
+  /**
+   * Höchstens so viele Figuren warten an der Kasse (Schlange + Grüppchen); wer darüber hinaus käme, zählt nur auf
+   * der Warteschlangen-Tafel (bis `maxQueueOverflow`) und kommt nach, sobald Platz ist. Hält die Theke aufgeräumt,
+   * wenn die Nachfrage die sichtbare Bestellzeit übersteigt.
+   */
+  maxQueueFigures: 6,
+  maxQueueOverflow: 14,
   walkTilesPerSec: 2.4,
   staffTilesPerSec: 3.2,
   /** Sichtbare Bestellzeit = 1 / Bestell-Kapazität, begrenzt auf diesen Bereich. */
@@ -143,7 +154,23 @@ export const CROWD = {
   maxCashiers: 3,
   maxWaiters: 3,
   maxCleaners: 2,
+  /** Je gekauftem Rückwand-Gerät höchstens ein Barista (sieben Geräte). */
+  maxBaristas: 7,
   wipeSec: 2.5,
+  /** Boden wischen, wenn kein Tisch dreckig ist: so lange je Stelle, dazwischen Pause am Startplatz. */
+  mopMinSec: 3,
+  mopMaxSec: 6,
+  restMinSec: 2,
+  restMaxSec: 6,
+  /**
+   * Baristas: sichtbare Zubereitungszeit je Becher (aus der Zubereitungs-Kapazität, begrenzt), danach bringen sie
+   * ihn zur Ausgabe und stellen ihn ab.
+   */
+  minPrepSec: 3.5,
+  maxPrepSec: 7,
+  dropSec: 0.45,
+  /** Höchstens so viele Teller/Becher stehen auf der Ausgabe; Bedienungen nehmen je Auftrag einen mit. */
+  passItemsMax: 4,
   /** Schätzung für die Verweildauer, aus der „+N“ berechnet wird. */
   avgVisitSec: 14,
 } as const;
@@ -268,7 +295,11 @@ const DECOR: DecorItem[] = [
   { frame: 'wall-art-abstract', minLevel: 22, tile: { x: 0, y: 4 }, wall: 'v' },
   { frame: 'wall-sconce', minLevel: 24, tile: { x: 0, y: 8 }, wall: 'v' },
   { frame: 'deco-plants', minLevel: 26, tile: { x: 9, y: 11 } },
+  // Endausbau: Olivenbäume in Messingkübeln, Kronleuchter über dem Mittelgang
+  { frame: 'deco-olive', minLevel: 27, tile: { x: 11, y: 11 } },
+  { frame: 'deco-olive', minLevel: 27, tile: { x: 0, y: 8 } },
   { frame: 'wall-art-gold', minLevel: 28, tile: { x: 0, y: 11 }, wall: 'v' },
+  { frame: 'deco-chandelier', minLevel: 29, tile: { x: 6, y: 7 } },
   { frame: 'deco-sculpture', minLevel: 30, tile: { x: 4.4, y: 12.3 } },
 ];
 
@@ -314,6 +345,7 @@ const DEFAULT_LAYOUT: CafeLayout = {
       { x: 11, y: COUNTER_Y },
       { x: 11, y: 4 },
     ],
+    baristaDrop: { x: 9.35, y: 1.1 },
   },
   tables: TABLES,
   ambience: [
@@ -324,6 +356,16 @@ const DEFAULT_LAYOUT: CafeLayout = {
   ],
   decor: DECOR,
   cleanerHome: { x: 0, y: 11 },
+  // Untere Laufzeile und vorderste Reihe (nicht vor Eingang, Pflanzen, Musik/WLAN)
+  mopSpots: [
+    { x: 1.6, y: 11 },
+    { x: 3.2, y: 11 },
+    { x: 2.6, y: 10 },
+    { x: 4.6, y: 10.2 },
+    { x: 8.3, y: 10.3 },
+    { x: 10.2, y: 11 },
+    { x: 9.6, y: 10 },
+  ],
 };
 
 export const LAYOUTS: Readonly<Record<string, CafeLayout>> = {

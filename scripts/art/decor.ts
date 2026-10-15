@@ -341,6 +341,28 @@ const FLOOR_ITEMS: Record<string, (c: IsoCanvas) => void> = {
     c.dome(0.48, 0.66, 24, 0.17, 12, '#8aa86f');
     c.dome(0.44, 0.64, 29, 0.1, 8, '#a2bf86');
   },
+  // Olivenbaum im Messingkübel mit Nachtblau-Band (Endausbau)
+  'deco-olive': (c) => {
+    c.shadowDisc(0.5, 0.5, 0, 0.22, 0.26);
+    c.frustum(0.5, 0.5, 0, 0.15, 0.18, 15, C.brass, shade(C.brass, 0.7));
+    c.shine(0.5, 0.5, 0, 0.17, 15, C.brass, 0.45);
+    c.cylinder(0.5, 0.5, 5, 0.172, 3, C.lacquerNavy, shade(C.brass, 0.7));
+    c.disc(0.5, 0.5, 15, 0.15, C.woodDeep);
+    c.box(0.49, 0.49, 15, 0.025, 0.025, 20, '#7a6a55');
+    c.box(0.47, 0.5, 27, 0.07, 0.015, 1.2, '#7a6a55');
+    const leaves: [number, number, number, number][] = [
+      [0.4, 0.46, 34, 0.14],
+      [0.6, 0.5, 33, 0.15],
+      [0.5, 0.6, 31, 0.13],
+      [0.48, 0.42, 41, 0.15],
+      [0.58, 0.58, 40, 0.12],
+      [0.5, 0.5, 47, 0.12],
+    ];
+    for (const [u, v, z, r] of leaves) {
+      c.dome(u, v, z, r, 9, '#7d9468');
+      c.dome(u - 0.02, v - 0.02, z + 2.5, r * 0.62, 6, '#a3b98c');
+    }
+  },
   // Marmorsockel mit goldener Matcha-Schale und Besen
   'deco-sculpture': (c) => {
     c.shadow(0.3, 0.3, 0, 0.4, 0.4, 0.26);
@@ -356,6 +378,44 @@ const FLOOR_ITEMS: Record<string, (c: IsoCanvas) => void> = {
 const BIG = DECOR_BIG;
 
 const BIG_ITEMS: Record<string, (c: IsoCanvas) => void> = {
+  // Kronleuchter über dem Mittelgang (Endausbau): Messing, zwei Kerzenkränze, Kristalltropfen
+  'deco-chandelier': (c) => {
+    const u = 0.5;
+    const v = 0.5;
+    c.box(u - 0.006, v - 0.006, 92, 0.012, 0.012, 28, C.ink);
+    c.cylinder(u, v, 88, 0.06, 4, C.brass, tint(C.brass, 0.3));
+    c.cylinder(u, v, 62, 0.022, 26, C.brass);
+    c.shine(u, v, 62, 0.022, 26, C.brass, 0.5);
+    c.dome(u, v, 58, 0.07, 6, C.brass);
+    const ring = (z: number, r: number, n: number, arm: number) => {
+      // Kranz als flache Messingscheibe, Arme mit Kerzen und Leuchtpunkten
+      c.disc(u, v, z, r, shade(C.brass, 0.8));
+      c.disc(u, v, z + 0.4, r * 0.82, tint(C.brass, 0.15));
+      for (let k = 0; k < n; k++) {
+        const a = (k / n) * Math.PI * 2 + 0.3;
+        const x = u + Math.cos(a) * r;
+        const y = v + Math.sin(a) * r;
+        c.cylinder(x, y, z, 0.03, 1.4, C.brass, tint(C.brass, 0.3));
+        c.cylinder(x, y, z + 1.4, 0.014, arm, C.cream, C.white);
+        c.glowFlat(x - 0.05, y - 0.05, z + arm + 2.5, 0.1, 0.1, C.glow, 0.7, 1.2);
+        c.dome(x, y, z + arm + 1.4, 0.016, 2.6, C.led);
+        // Kristalltropfen unter dem Arm
+        c.poly(
+          [
+            [x, y, z - 0.6],
+            [x + 0.012, y, z - 3],
+            [x, y, z - 5.4],
+            [x - 0.012, y, z - 3],
+          ],
+          '#dff1fb',
+        );
+      }
+    };
+    ring(64, 0.46, 12, 4.4);
+    ring(75, 0.28, 8, 3.6);
+    c.cylinder(u, v, 64, 0.06, 2.2, C.brass, tint(C.brass, 0.35));
+    c.dome(u, v, 79, 0.045, 3, C.gold);
+  },
   // Läufer unter einer Tischgruppe (zwei Tische entlang x): Kobalt mit hellem Rand und Rautenband
   'deco-rug-blue': (c) => {
     // Unter zwei Tischen (Mitten bei u = 0,5 ∓ 1,5): 4 Kacheln lang, über die Stühle hinaus
@@ -373,6 +433,17 @@ function pendant(c: IsoCanvas) {
   c.frustum(0.5, 0.5, 39, 0.12, 0.045, 7, C.cobalt, C.cobaltDeep);
   c.shine(0.5, 0.5, 39, 0.09, 7, C.cobalt, 0.35);
   c.dome(0.5, 0.5, 37.6, 0.045, 2, C.led);
+}
+
+/** Pendelleuchte im Endausbau: Messingstange, Opalglas-Kugel mit Messingkappe, warmer Schein. */
+function pendantLux(c: IsoCanvas) {
+  c.glowFlat(0.2, 0.2, 15.6, 0.6, 0.6, C.glow, 0.42, 3);
+  c.box(0.495, 0.495, 48, 0.01, 0.01, 26, C.brass);
+  c.cylinder(0.5, 0.5, 46, 0.035, 2, C.brass, tint(C.brass, 0.35));
+  c.dome(0.5, 0.5, 36.5, 0.1, 10, C.white);
+  c.glowFlat(0.4, 0.4, 38, 0.2, 0.2, C.led, 0.6, 1.5);
+  c.cylinder(0.5, 0.5, 45, 0.045, 1.4, C.brass, tint(C.brass, 0.35));
+  c.disc(0.5, 0.5, 36.4, 0.1, tint(C.glow, 0.4));
 }
 
 /** Drei Barhocker vor der Theke (Edelstahl, blaue Sitze), entlang x. */
@@ -451,6 +522,9 @@ export function decorSprites(): SpriteDef[] {
   const p = canvas();
   pendant(p);
   out.push({ name: 'deco-pendant', svg: p.svg() });
+  const pl = canvas();
+  pendantLux(pl);
+  out.push({ name: 'deco-pendant-lux', svg: pl.svg() });
   const st = new IsoCanvas(BIG.w, BIG.h, BIG.ox, BIG.oy);
   stools(st);
   out.push({ name: 'deco-stools', svg: st.svg() });
@@ -463,5 +537,6 @@ export const DECOR_IDS: readonly string[] = [
   ...Object.keys(FLOOR_ITEMS),
   ...Object.keys(BIG_ITEMS),
   'deco-pendant',
+  'deco-pendant-lux',
   'deco-stools',
 ];

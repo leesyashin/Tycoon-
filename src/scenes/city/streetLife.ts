@@ -39,13 +39,36 @@ export interface Boat {
   rest: number;
 }
 
+/**
+ * Taube (kosmetisch): pickt an ihrem Platz, fliegt auf, wenn ein Passant nahe kommt, bleibt eine Weile weg und
+ * landet wieder. `z` = Höhe in Pixeln über dem Boden.
+ */
+export interface Pigeon {
+  home: { x: number; y: number };
+  state: 'peck' | 'fly' | 'away' | 'land';
+  x: number;
+  y: number;
+  z: number;
+  /** Flugrichtung (Grid, Einheitsvektor). */
+  dx: number;
+  dy: number;
+  timer: number;
+  /** Nächster Wechsel Kopf hoch/runter beim Picken. */
+  peckIn: number;
+  pecking: boolean;
+}
+
 /** Grüne Achse der Ampel: `u` = Fahrbahn entlang x, `v` = entlang y, `none` = alles Rot. */
 export type Signal = 'u' | 'v' | 'none';
+
+/** Was die Autoampel einer Achse zeigt (deutsche Folge: Rot → Rot-Gelb → Grün → Gelb → Rot). */
+export type LightState = 'red' | 'redYellow' | 'green' | 'yellow';
 
 export class StreetLife {
   readonly cars: Car[];
   readonly walkers: Walker[];
   readonly boats: Boat[];
+  readonly pigeons: Pigeon[];
   private clock = 0;
   private readonly spawnIn: number[];
 
@@ -72,6 +95,18 @@ export class StreetLife {
       rest: i * 0.8,
       seed: 0,
     }));
+    this.pigeons = city.pigeons.map((home, i) => ({
+      home,
+      state: 'peck' as const,
+      x: home.x,
+      y: home.y,
+      z: 0,
+      dx: 1,
+      dy: 0,
+      timer: 0,
+      peckIn: 0.3 + (i % 5) * 0.2,
+      pecking: false,
+    }));
     this.boats = city.boats.map((r, i) => ({
       route: i,
       pos: r.from + (r.to - r.from) * (0.3 + 0.4 * i),
@@ -92,6 +127,18 @@ export class StreetLife {
     return 'none';
   }
 
+  /** Lichtzeichen der Autoampel für die Fahrbahn der Achse `axis`. */
+  lightState(axis: 'u' | 'v'): LightState {
+    const { greenSec, allRedSec, yellowSec, redYellowSec } = STREET_LIFE;
+    const cycle = 2 * (greenSec + allRedSec);
+    const start = axis === 'u' ? 0 : greenSec + allRedSec;
+    const rel = (((this.clock - start) % cycle) + cycle) % cycle;
+    if (rel < greenSec - yellowSec) return 'green';
+    if (rel < greenSec) return 'yellow';
+    if (rel >= cycle - redYellowSec) return 'redYellow';
+    return 'red';
+  }
+
   /** Verbleibende Grünzeit der Achse `axis` (0, wenn sie Rot hat). */
   greenLeft(axis: 'u' | 'v'): number {
     const { greenSec, allRedSec } = STREET_LIFE;
@@ -105,6 +152,73 @@ export class StreetLife {
     this.updateCars(dt);
     this.updateWalkers(dt);
     this.updateBoat(dt);
+    this.updatePigeons(dt);
+  }
+
+  /** Ist das ein Radfahrer (Typ nach den Autos)? */
+  static isBike(type: number): boolean {
+    return type >= STREET_LIFE.carTypes;
+  }
+
+  private updatePigeons(dt: number): void {
+    const { pigeonScare, pigeonFlySec, pigeonAwayMin, pigeonAwayMax, pigeonLandSec } = STREET_LIFE;
+    for (const p of this.pigeons) {
+      switch (p.state) {
+        case 'peck': {
+          p.peckIn -= dt;
+          if (p.peckIn <= 0) {
+            p.pecking = !p.pecking;
+            p.peckIn = p.pecking ? 0.25 + this.rng() * 0.3 : 0.4 + this.rng() * 1.2;
+          }
+          const near = this.walkers.find(
+            (w) => w.active && Math.hypot(w.x - p.x, w.y - p.y) < pigeonScare,
+          );
+          if (!near) break;
+          // Weg vom Passanten, schräg nach oben
+          const ax = p.x - near.x;
+          const ay = p.y - near.y;
+          const d = Math.hypot(ax, ay) || 1;
+          p.dx = ax / d;
+          p.dy = ay / d;
+          p.state = 'fly';
+          p.timer = pigeonFlySec;
+          break;
+        }
+        case 'fly':
+          p.timer -= dt;
+          p.x += p.dx * 2.2 * dt;
+          p.y += p.dy * 2.2 * dt;
+          p.z += 34 * dt;
+          if (p.timer <= 0) {
+            p.state = 'away';
+            p.timer = pigeonAwayMin + this.rng() * (pigeonAwayMax - pigeonAwayMin);
+          }
+          break;
+        case 'away':
+          p.timer -= dt;
+          if (p.timer > 0) break;
+          // Zurück: aus der Höhe schräg auf den Platz
+          p.state = 'land';
+          p.timer = pigeonLandSec;
+          p.dx = this.rng() < 0.5 ? -1 : 1;
+          p.dy = 0;
+          break;
+        case 'land': {
+          p.timer -= dt;
+          const t = Math.max(0, p.timer / pigeonLandSec);
+          p.x = p.home.x + p.dx * 2.5 * t;
+          p.y = p.home.y - 1.2 * t;
+          p.z = 40 * t;
+          if (p.timer <= 0) {
+            p.state = 'peck';
+            p.x = p.home.x;
+            p.y = p.home.y;
+            p.z = 0;
+          }
+          break;
+        }
+      }
+    }
   }
 
   /** Weltposition eines Autos (Grid-Punkt der Mitte). */
@@ -121,8 +235,11 @@ export class StreetLife {
   private updateCars(dt: number): void {
     const { carTilesPerSec, carGap, laneFrom, laneTo, maxCarsPerLane, carEverySec, carTypes } =
       STREET_LIFE;
+    const { bikeShare, bikeTypes, bikeSpeed } = STREET_LIFE;
     const green = this.signal();
+    const { yellowCommit } = STREET_LIFE;
     this.city.lanes.forEach((lane, li) => {
+      const yellow = this.lightState(lane.axis) === 'yellow';
       // Fortschritt s wächst in Fahrtrichtung; vorn = größtes s.
       const s = (c: Car) => c.pos * lane.dir;
       const mine = this.cars.filter((c) => c.active && c.lane === li).sort((a, b) => s(b) - s(a));
@@ -130,9 +247,12 @@ export class StreetLife {
       const endS = lane.dir > 0 ? laneTo : -laneFrom;
       let leader: number | null = null;
       for (const c of mine) {
-        let next = s(c) + carTilesPerSec * dt;
+        const speed = StreetLife.isBike(c.type) ? carTilesPerSec * bikeSpeed : carTilesPerSec;
+        let next = s(c) + speed * dt;
         if (leader !== null) next = Math.min(next, leader - carGap);
-        if (green !== lane.axis && s(c) <= stopS + 1e-6) next = Math.min(next, stopS);
+        // Rot: vor der Haltelinie warten; Gelb: anhalten, wer noch nicht dicht davor ist.
+        const stop = green !== lane.axis || (yellow && s(c) < stopS - yellowCommit);
+        if (stop && s(c) <= stopS + 1e-6) next = Math.min(next, stopS);
         next = Math.max(next, s(c));
         c.pos = next * lane.dir;
         leader = next;
@@ -149,7 +269,10 @@ export class StreetLife {
       free.active = true;
       free.lane = li;
       free.pos = startS * lane.dir;
-      free.type = Math.floor(this.rng() * carTypes) % carTypes;
+      free.type =
+        this.rng() < bikeShare
+          ? carTypes + (Math.floor(this.rng() * bikeTypes) % bikeTypes)
+          : Math.floor(this.rng() * carTypes) % carTypes;
     });
   }
 

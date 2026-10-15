@@ -68,7 +68,8 @@ export interface Waiter {
   route: GridPos[];
 }
 
-export type CleanerPhase = 'idle' | 'toTable' | 'wipe' | 'back';
+/** `toMop`/`mop`: kein Tisch ist dreckig, die Putzkraft wischt den Boden (nur Optik). */
+export type CleanerPhase = 'idle' | 'toTable' | 'wipe' | 'back' | 'toMop' | 'mop';
 
 export interface Cleaner {
   readonly id: number;
@@ -82,6 +83,33 @@ export interface Cleaner {
   table: number;
   /** Hinweg zum zuletzt geputzten Tisch (rückwärts zurück auf die Laufzeile). */
   route: GridPos[];
+}
+
+/**
+ * Barista am Gerät (kosmetisch): bereitet zu (`work`, Fortschrittsring), bringt den Becher zur Ausgabe (`toPass`),
+ * stellt ihn ab (`drop`) und geht zurück (`back`). `idle`, solange keine Gäste kommen.
+ */
+export type BaristaPhase = 'idle' | 'work' | 'toPass' | 'drop' | 'back';
+
+export interface Barista {
+  readonly id: number;
+  active: boolean;
+  /** Gerät, an dem die Figur arbeitet (Stations-ID). */
+  station: string;
+  home: GridPos;
+  phase: BaristaPhase;
+  x: number;
+  y: number;
+  path: GridPos[];
+  timer: number;
+  /** Dauer der laufenden Zubereitung (für den Ring), 0 außerhalb von „work“. */
+  workTotal: number;
+}
+
+/** Ein sichtbarer Barista: Gerät und Arbeitsplatz davor. */
+export interface BaristaPost {
+  station: string;
+  home: GridPos;
 }
 
 export interface CrowdInput {
@@ -98,11 +126,17 @@ export interface CrowdInput {
   terrace?: number;
   /** Sauberkeit 0..100 → Anteil dreckiger Tische. */
   cleanliness: number;
+  /** Sichtbare Baristas (je gekauftem Gerät einer, in Reihenfolge); leer = keine Barista-Figuren. */
+  baristas?: readonly BaristaPost[];
+  /** Sekunden je Becher und Barista (aus der Zubereitungs-Kapazität); 0 = niemand arbeitet. */
+  prepSec?: number;
 }
 
 export interface CrowdUpdate {
   /** Gäste, die in diesem Schritt ihre Bestellung bekommen haben (Münz-Popups). */
   purchases: Agent[];
+  /** Gäste, die in diesem Schritt an der Kasse fertig bestellt haben (Kassenlade). */
+  orders: Agent[];
   spawned: number;
 }
 
@@ -112,14 +146,22 @@ export class CustomerCrowd {
   readonly agents: Agent[] = [];
   readonly waiters: Waiter[] = [];
   readonly cleaners: Cleaner[] = [];
+  readonly baristas: Barista[] = [];
   /** Dreckige Tische (Index in `layout.tables`). */
   readonly dirty = new Set<number>();
+  /**
+   * Was auf der Ausgabe steht (Stations-IDs, älteste zuerst): Baristas stellen ab, Bedienungen nehmen je Auftrag
+   * eins mit. Nur Optik.
+   */
+  readonly passItems: string[] = [];
   private readonly queue: Agent[] = [];
   private readonly serviceQueue: Agent[] = [];
   private readonly seatTaken: [boolean, boolean][];
   private readonly shares: Record<CustomerTypeId, number>;
   private spawnAcc = 0;
   private totalRate = 0;
+  /** Gäste, die nur auf der Tafel warten (die Schlange ist voll); kommen nach, sobald Platz ist. */
+  private overflow = 0;
   private tablesVisible = 0;
   /** Sichtbar je Tisch-Index (Raum nach `seats`, Terrasse nach Terrassen-Stufe). */
   private tableShown: boolean[] = [];
@@ -180,22 +222,44 @@ export class CustomerCrowd {
         route: [],
       });
     }
+    for (let i = 0; i < CROWD.maxBaristas; i++) {
+      this.baristas.push({
+        id: i,
+        active: false,
+        station: '',
+        home: { x: 0, y: 0 },
+        phase: 'idle',
+        x: 0,
+        y: 0,
+        path: [],
+        timer: 0,
+        workTotal: 0,
+      });
+    }
   }
 
   get activeCount(): number {
     return this.agents.reduce((n, a) => n + (a.active ? 1 : 0), 0);
   }
 
-  /** Geschätzte Gäste im Café, die nicht als Figur gezeigt werden („+N“); nur bei vollem Pool. */
+  /**
+   * Geschätzte Gäste im Café, die nicht als Figur gezeigt werden („+N“): nur bei vollem Figuren-Pool oder wenn auch
+   * die Tafel voll ist.
+   */
   get hiddenCount(): number {
     const active = this.activeCount;
-    if (active < CROWD.maxAgents) return 0;
+    if (active < CROWD.maxAgents && this.overflow < CROWD.maxQueueOverflow) return 0;
     return Math.max(0, Math.round(this.totalRate * CROWD.avgVisitSec) - active);
   }
 
-  /** Wartende vor der Kasse (Warteschlangen-Tafel, UI_STYLE § 3.10). */
+  /** Wartende vor der Kasse (Warteschlangen-Tafel, UI_STYLE § 3.10), auch die, die noch draußen warten. */
   get waitingCount(): number {
-    return this.queue.length;
+    return this.queue.length + this.overflow;
+  }
+
+  /** Platz eines Gasts in der Schlange (0 = bestellt gerade), −1 außerhalb der Schlange. */
+  queueIndex(a: Agent): number {
+    return this.queue.indexOf(a);
   }
 
   /** Gäste, die auf ihre Bestellung warten (Tisch oder Ausgabe). */
@@ -220,18 +284,30 @@ export class CustomerCrowd {
     this.spawnAcc = Math.min(this.spawnAcc, CROWD.maxAgents);
     while (this.spawnAcc >= 1) {
       this.spawnAcc -= 1;
+      if (this.queue.length >= CROWD.maxQueueFigures) {
+        this.overflow = Math.min(CROWD.maxQueueOverflow, this.overflow + 1);
+        continue;
+      }
       if (this.spawn()) spawned++;
+    }
+    if (this.totalRate <= 0) this.overflow = 0;
+    // Wer auf der Tafel wartet, kommt nach, sobald in der Schlange Platz ist.
+    while (this.overflow > 0 && this.queue.length < CROWD.maxQueueFigures && this.spawn()) {
+      this.overflow--;
+      spawned++;
     }
 
     const purchases: Agent[] = [];
+    const orders: Agent[] = [];
     const step = CROWD.walkTilesPerSec * dt;
     for (const a of this.agents) {
       if (!a.active) continue;
-      this.advance(a, step, dt, input.orderCap, purchases);
+      this.advance(a, step, dt, input.orderCap, purchases, orders);
     }
     this.updateWaiters(dt, input.waiters, purchases);
     this.updateCleaners(dt, input.cleaners, input.cleanliness);
-    return { purchases, spawned };
+    this.updateBaristas(dt, input.baristas ?? [], input.prepSec ?? 0);
+    return { purchases, orders, spawned };
   }
 
   /** Punkt auf dem Gehweg links oder rechts vom Eingang (Erscheinen und Verschwinden der Gäste). */
@@ -279,7 +355,14 @@ export class CustomerCrowd {
     return { x: access.x + queueDir.x * end + a.jx, y: access.y + queueDir.y * end + a.jy };
   }
 
-  private advance(a: Agent, step: number, dt: number, orderCap: number, purchases: Agent[]): void {
+  private advance(
+    a: Agent,
+    step: number,
+    dt: number,
+    orderCap: number,
+    purchases: Agent[],
+    orders: Agent[],
+  ): void {
     switch (a.phase) {
       case 'walkIn':
         if (follow(a, step)) a.phase = 'queue';
@@ -299,6 +382,7 @@ export class CustomerCrowd {
         if (a.timer > 0) return;
         a.serveTotal = 0;
         this.removeFrom(this.queue, a);
+        orders.push(a);
         this.afterOrder(a);
         return;
       case 'toSeat':
@@ -426,6 +510,8 @@ export class CustomerCrowd {
           const next = this.serviceQueue.find((a) => !this.waiters.some((o) => o.target === a.id));
           if (!next) return;
           w.target = next.id;
+          // Die Bedienung nimmt mit, was auf der Ausgabe steht.
+          this.passItems.shift();
           if (next.table < 0) {
             // Abholung: Übergabe über die Theke, ohne Weg.
             w.phase = 'serve';
@@ -499,13 +585,13 @@ export class CustomerCrowd {
         c.x = spot.x;
         c.y = spot.y;
         c.table = -1;
+        c.timer = this.rest(i);
       }
-      switch (c.phase) {
-        case 'idle': {
-          const target = [...this.dirty].find((t) => !this.cleaners.some((o) => o.table === t));
-          if (target === undefined) return;
-          const table = this.layout.tables[target];
-          if (!table) return;
+      // Ein dreckiger Tisch geht immer vor: auch vom Bodenwischen weg.
+      if (c.phase === 'idle' || c.phase === 'toMop' || c.phase === 'mop') {
+        const target = [...this.dirty].find((t) => !this.cleaners.some((o) => o.table === t));
+        const table = target === undefined ? undefined : this.layout.tables[target];
+        if (target !== undefined && table) {
           c.table = target;
           c.phase = 'toTable';
           // Erst den letzten Weg zurück auf die Laufzeile (z. B. von der Terrasse), dann zum nächsten Tisch.
@@ -513,6 +599,24 @@ export class CustomerCrowd {
           const from = back[back.length - 1] ?? { x: c.x, y: c.y };
           c.route = cleanerPathToTable(this.layout, from, table).map((p) => ({ ...p }));
           c.path = [...back, ...c.route];
+          return;
+        }
+      }
+      switch (c.phase) {
+        case 'idle': {
+          // Nichts zu tun: kurz verschnaufen, dann irgendwo den Boden wischen.
+          c.timer -= dt;
+          const spots = this.layout.mopSpots;
+          if (c.timer > 0 || spots.length === 0) return;
+          const taken = this.cleaners
+            .filter((o) => o !== c && (o.phase === 'toMop' || o.phase === 'mop'))
+            .map((o) => o.path[o.path.length - 1] ?? { x: o.x, y: o.y });
+          const free = spots.filter((p) => !taken.some((t) => t.x === p.x && t.y === p.y));
+          const to = free[Math.floor(this.rng() * free.length)] ?? spots[0];
+          if (!to) return;
+          c.phase = 'toMop';
+          c.path = [{ x: c.x, y: row }, { x: to.x, y: row }, { ...to }];
+          c.route = [];
           return;
         }
         case 'toTable':
@@ -528,6 +632,7 @@ export class CustomerCrowd {
           c.table = -1;
           if (this.dirty.size > 0) {
             c.phase = 'idle';
+            c.timer = 0;
             return;
           }
           c.phase = 'back';
@@ -535,10 +640,105 @@ export class CustomerCrowd {
           c.route = [];
           return;
         case 'back':
-          if (follow(c, step)) c.phase = 'idle';
+          if (follow(c, step)) {
+            c.phase = 'idle';
+            c.timer = this.rest(i);
+          }
+          return;
+        case 'toMop':
+          if (follow(c, step)) {
+            c.phase = 'mop';
+            c.timer = CROWD.mopMinSec + this.rng() * (CROWD.mopMaxSec - CROWD.mopMinSec);
+          }
+          return;
+        case 'mop':
+          c.timer -= dt;
+          if (c.timer > 0) return;
+          // Noch eine Stelle oder zurück zum Startplatz.
+          if (this.rng() < 0.5) {
+            c.phase = 'idle';
+            c.timer = 0;
+            return;
+          }
+          c.phase = 'back';
+          c.path = [{ x: c.x, y: row }, { x: spot.x, y: row }, { ...spot }];
           return;
       }
     });
+  }
+
+  private rest(i: number): number {
+    return CROWD.restMinSec + ((this.rng() + i * 0.37) % 1) * (CROWD.restMaxSec - CROWD.restMinSec);
+  }
+
+  /**
+   * Baristas (kosmetisch): je sichtbarem Gerät einer; bereitet zu, bringt den Becher zur Ausgabe, stellt ihn ab,
+   * geht zurück. Wechselt ein Platz das Gerät (neues Gerät gekauft), beginnt die Figur dort neu.
+   */
+  private updateBaristas(dt: number, posts: readonly BaristaPost[], prepSec: number): void {
+    const step = CROWD.staffTilesPerSec * dt;
+    const drop = this.layout.pickup.baristaDrop;
+    this.baristas.forEach((b, i) => {
+      const post = posts[i];
+      if (!post) {
+        b.active = false;
+        b.workTotal = 0;
+        return;
+      }
+      if (!b.active || b.station !== post.station) {
+        b.active = true;
+        b.station = post.station;
+        b.home = { ...post.home };
+        b.x = post.home.x;
+        b.y = post.home.y;
+        b.path = [];
+        b.phase = 'idle';
+        b.workTotal = 0;
+      }
+      switch (b.phase) {
+        case 'idle':
+          if (prepSec > 0) this.startWork(b, prepSec);
+          return;
+        case 'work':
+          if (prepSec <= 0) {
+            b.phase = 'idle';
+            b.workTotal = 0;
+            return;
+          }
+          b.timer -= dt;
+          if (b.timer > 0) return;
+          b.workTotal = 0;
+          b.phase = 'toPass';
+          // Leicht versetzt, damit zwei Baristas an der Ausgabe nicht exakt übereinander stehen.
+          b.path = [{ x: drop.x - (i % 3) * 0.12, y: drop.y + ((i % 2) - 0.5) * 0.16 }];
+          return;
+        case 'toPass':
+          if (follow(b, step)) {
+            b.phase = 'drop';
+            b.timer = CROWD.dropSec;
+          }
+          return;
+        case 'drop':
+          b.timer -= dt;
+          if (b.timer > 0) return;
+          this.passItems.push(b.station);
+          if (this.passItems.length > CROWD.passItemsMax) this.passItems.shift();
+          b.phase = 'back';
+          b.path = [{ ...b.home }];
+          return;
+        case 'back':
+          if (!follow(b, step)) return;
+          if (prepSec > 0) this.startWork(b, prepSec);
+          else b.phase = 'idle';
+          return;
+      }
+    });
+  }
+
+  private startWork(b: Barista, prepSec: number): void {
+    b.phase = 'work';
+    b.workTotal = clamp(prepSec * (0.85 + 0.3 * this.rng()), CROWD.minPrepSec, CROWD.maxPrepSec);
+    b.timer = b.workTotal;
   }
 
   private removeFrom(list: Agent[], a: Agent): void {

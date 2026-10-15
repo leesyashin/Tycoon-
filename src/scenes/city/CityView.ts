@@ -86,6 +86,9 @@ export class CityView {
   private readonly lit: Phaser.GameObjects.Image[] = [];
   private readonly lampGlows: Phaser.GameObjects.Image[] = [];
   private readonly pedLights: { sprite: Phaser.GameObjects.Image; road: 'u' | 'v' }[] = [];
+  private readonly trafficLights: { sprite: Phaser.GameObjects.Image; axis: 'u' | 'v' }[] = [];
+  private readonly pigeonSprites: Phaser.GameObjects.Image[] = [];
+  private readonly fountains: Phaser.GameObjects.Particles.ParticleEmitter[] = [];
   private shownLit = false;
   private clock = 0;
   /** Höhe (px) belegter Kacheln: Häuser und die Café-Box; daraus der Verdeckungstest der Fassaden-Module. */
@@ -684,6 +687,22 @@ export class CityView {
     // Quer gestellt: entlang v ist gespiegelt entlang u (Fahrzeuge, Fahrräder, Tore …)
     if (p.axis === 'v' && FLIP_ON_V.includes(p.kind)) img.setFlipX(true);
     if (p.kind === 'pedLight') this.pedLights.push({ sprite: img, road: p.axis ?? 'u' });
+    if (p.kind === 'trafficLight') this.trafficLights.push({ sprite: img, axis: p.axis ?? 'u' });
+    if (p.kind === 'fountain')
+      this.fountains.push(
+        this.scene.add
+          .particles(s.x, s.y - 34, ATLAS.common, {
+            frame: FRAME.drop,
+            speedY: { min: -46, max: -30 },
+            speedX: { min: -16, max: 16 },
+            gravityY: 120,
+            lifespan: 820,
+            frequency: 45,
+            scale: { start: ART_SCALE, end: ART_SCALE * 0.6 },
+            alpha: { start: 0.9, end: 0.2 },
+          })
+          .setDepth(depth + 1),
+      );
     if (p.kind === 'lamp')
       this.lampGlows.push(
         this.scene.add
@@ -714,6 +733,13 @@ export class CityView {
           .setOrigin(0.5, CHAR_FOOT_ORIGIN_Y)
           .setVisible(false),
       );
+    for (let i = 0; i < this.life.pigeons.length; i++)
+      this.pigeonSprites.push(
+        this.scene.add
+          .image(0, 0, ATLAS.city, FRAME.pigeon('stand'))
+          .setScale(ART_SCALE)
+          .setOrigin(0.5, 13 / 18),
+      );
     const [box, boy] = originOf(CITY_SPRITE.boat);
     for (let i = 0; i < this.life.boats.length; i++)
       this.boatSprites.push(
@@ -737,6 +763,10 @@ export class CityView {
     if (!still) {
       this.clock += dt;
       this.life.update(dt);
+    }
+    for (const f of this.fountains) {
+      if (still && f.emitting) f.stop();
+      else if (!still && !f.emitting) f.start();
     }
     this.sync();
   }
@@ -789,10 +819,36 @@ export class CityView {
         .setPosition(p.x, p.y)
         .setDepth(isoDepth(pos.x - 0.5, pos.y - 0.5, 4));
     });
+    life.pigeons.forEach((pg, i) => {
+      const s = this.pigeonSprites[i];
+      if (!s) return;
+      const show = pg.state !== 'away';
+      s.setVisible(show);
+      if (!show) return;
+      const flying = pg.state === 'fly' || pg.state === 'land';
+      const pose = flying
+        ? Math.floor(this.clock * 9 + i) % 2
+          ? 'fly0'
+          : 'fly1'
+        : pg.pecking
+          ? 'peck'
+          : 'stand';
+      const f = FRAME.pigeon(pose);
+      if (s.frame.name !== f) s.setFrame(f);
+      const p = P(pg.x, pg.y);
+      // Blickrichtung: nach Flugrichtung bzw. abwechselnd je Taube
+      s.setFlipX(flying ? pg.dx - pg.dy < 0 : i % 2 === 1)
+        .setPosition(p.x, p.y - pg.z)
+        .setDepth(isoDepth(pg.x - 0.5, pg.y - 0.5, 5.5) + pg.z);
+    });
     const signal = life.signal();
     for (const l of this.pedLights) {
       const go = signal === (l.road === 'u' ? 'v' : 'u');
       const f = FRAME.pedLight(go);
+      if (l.sprite.frame.name !== f) l.sprite.setFrame(f);
+    }
+    for (const l of this.trafficLights) {
+      const f = FRAME.trafficLight(l.axis, life.lightState(l.axis));
       if (l.sprite.frame.name !== f) l.sprite.setFrame(f);
     }
   }

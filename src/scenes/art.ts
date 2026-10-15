@@ -31,6 +31,9 @@ export const FRAME = {
   /** Front zeigt nach +y (Facing „a“) oder nach ±x („b“); Stufe aus dem Level (`STATION_LOOK_LEVELS`). */
   station: (id: string, level: number, facesX: boolean) =>
     `station-${id}-${String(stationLookTier(level))}-${facesX ? 'b' : 'a'}`,
+  /** Kasse mit ausgefahrener Lade (kurz nach dem Kassieren). */
+  registerOpen: (level: number, facesX: boolean) =>
+    `station-register-${String(stationLookTier(level))}-${facesX ? 'b' : 'a'}-open`,
   /** Thekenmodul in der Stufe des Cafés mit Deko-Variante (`COUNTER_PROPS`). */
   counter: (tier: LookTier, variant: number, facesX: boolean) =>
     `counter-${String(tier)}-${String(variant)}-${facesX ? 'b' : 'a'}`,
@@ -46,8 +49,16 @@ export const FRAME = {
   petal: 'fx-petal',
   sparkle: 'fx-sparkle',
   steam: 'fx-steam',
+  frost: 'fx-frost',
+  powder: 'fx-powder',
+  note: 'fx-note',
+  drop: 'fx-drop',
   shine: 'fx-shine',
   glow: 'glow',
+  /** Fortschrittsring, Stufe 0 … `SCENE_FX.ringSteps`. */
+  ring: (step: number) => `ring-${String(step)}`,
+  /** Teller/Becher auf der Ausgabe (`PASS_ITEMS`). */
+  item: (id: string) => `item-${id}`,
   /**
    * `look`: Variante aus `CUSTOMER_LOOKS`/`STAFF_LOOKS`; `front`: Blick nach +x/+y (zur Kamera), `back`: weg
    * von der Kamera; Frame 0 = Stehen, 1/2 = Laufen.
@@ -70,7 +81,11 @@ export const FRAME = {
   // Atlas `city`
   car: (type: number, front: boolean) => `car-${String(type)}-${front ? 'f' : 'b'}`,
   boat: (front: boolean) => `boat-${front ? 'f' : 'b'}`,
+  pigeon: (pose: 'stand' | 'peck' | 'fly0' | 'fly1') => `pigeon-${pose}`,
   pedLight: (go: boolean) => `pedLight-${go ? 'go' : 'stop'}`,
+  /** Autoampel, Lichter zur Kamera (Achse u nach +x, v nach +y). */
+  trafficLight: (axis: 'u' | 'v', state: 'red' | 'redYellow' | 'green' | 'yellow') =>
+    `tlight-${axis}-${state}`,
   emote: (id: 'heart' | 'note' | 'star') => `emote-${id}`,
 } as const;
 

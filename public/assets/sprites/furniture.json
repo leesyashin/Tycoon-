@@ -2,7 +2,7 @@
  "frames": {
   "ambience-decor": {
    "frame": {
-    "x": 902,
+    "x": 1352,
     "y": 2,
     "w": 128,
     "h": 208
@@ -22,7 +22,7 @@
   },
   "ambience-music": {
    "frame": {
-    "x": 1032,
+    "x": 1482,
     "y": 2,
     "w": 128,
     "h": 208
@@ -42,7 +42,7 @@
   },
   "ambience-terrace": {
    "frame": {
-    "x": 1162,
+    "x": 1612,
     "y": 2,
     "w": 128,
     "h": 208
@@ -62,7 +62,7 @@
   },
   "ambience-wifi": {
    "frame": {
-    "x": 1292,
+    "x": 1742,
     "y": 2,
     "w": 128,
     "h": 208
@@ -82,7 +82,7 @@
   },
   "counter-1-0-a": {
    "frame": {
-    "x": 1422,
+    "x": 1872,
     "y": 2,
     "w": 128,
     "h": 208
@@ -102,8 +102,8 @@
   },
   "counter-1-1-a": {
    "frame": {
-    "x": 1552,
-    "y": 2,
+    "x": 2,
+    "y": 420,
     "w": 128,
     "h": 208
    },
@@ -122,8 +122,8 @@
   },
   "counter-1-2-a": {
    "frame": {
-    "x": 1682,
-    "y": 2,
+    "x": 132,
+    "y": 420,
     "w": 128,
     "h": 208
    },
@@ -142,8 +142,8 @@
   },
   "counter-1-3-a": {
    "frame": {
-    "x": 1812,
-    "y": 2,
+    "x": 262,
+    "y": 420,
     "w": 128,
     "h": 208
    },
@@ -162,7 +162,7 @@
   },
   "counter-2-0-a": {
    "frame": {
-    "x": 2,
+    "x": 392,
     "y": 420,
     "w": 128,
     "h": 208
@@ -182,7 +182,7 @@
   },
   "counter-2-1-a": {
    "frame": {
-    "x": 132,
+    "x": 522,
     "y": 420,
     "w": 128,
     "h": 208
@@ -202,7 +202,7 @@
   },
   "counter-2-2-a": {
    "frame": {
-    "x": 262,
+    "x": 652,
     "y": 420,
     "w": 128,
     "h": 208
@@ -222,7 +222,7 @@
   },
   "counter-2-3-a": {
    "frame": {
-    "x": 392,
+    "x": 782,
     "y": 420,
     "w": 128,
     "h": 208
@@ -242,7 +242,7 @@
   },
   "counter-3-0-a": {
    "frame": {
-    "x": 522,
+    "x": 912,
     "y": 420,
     "w": 128,
     "h": 208
@@ -262,7 +262,7 @@
   },
   "counter-3-1-a": {
    "frame": {
-    "x": 652,
+    "x": 1042,
     "y": 420,
     "w": 128,
     "h": 208
@@ -282,7 +282,7 @@
   },
   "counter-3-2-a": {
    "frame": {
-    "x": 782,
+    "x": 1172,
     "y": 420,
     "w": 128,
     "h": 208
@@ -302,7 +302,7 @@
   },
   "counter-3-3-a": {
    "frame": {
-    "x": 912,
+    "x": 1302,
     "y": 420,
     "w": 128,
     "h": 208
@@ -322,7 +322,7 @@
   },
   "counter-4-0-a": {
    "frame": {
-    "x": 1042,
+    "x": 1432,
     "y": 420,
     "w": 128,
     "h": 208
@@ -342,7 +342,7 @@
   },
   "counter-4-1-a": {
    "frame": {
-    "x": 1172,
+    "x": 1562,
     "y": 420,
     "w": 128,
     "h": 208
@@ -362,7 +362,7 @@
   },
   "counter-4-2-a": {
    "frame": {
-    "x": 1302,
+    "x": 1692,
     "y": 420,
     "w": 128,
     "h": 208
@@ -382,7 +382,7 @@
   },
   "counter-4-3-a": {
    "frame": {
-    "x": 1432,
+    "x": 1822,
     "y": 420,
     "w": 128,
     "h": 208
@@ -402,66 +402,6 @@
   },
   "counter-5-0-a": {
    "frame": {
-    "x": 1562,
-    "y": 420,
-    "w": 128,
-    "h": 208
-   },
-   "rotated": false,
-   "trimmed": false,
-   "spriteSourceSize": {
-    "x": 0,
-    "y": 0,
-    "w": 128,
-    "h": 208
-   },
-   "sourceSize": {
-    "w": 128,
-    "h": 208
-   }
-  },
-  "counter-5-1-a": {
-   "frame": {
-    "x": 1692,
-    "y": 420,
-    "w": 128,
-    "h": 208
-   },
-   "rotated": false,
-   "trimmed": false,
-   "spriteSourceSize": {
-    "x": 0,
-    "y": 0,
-    "w": 128,
-    "h": 208
-   },
-   "sourceSize": {
-    "w": 128,
-    "h": 208
-   }
-  },
-  "counter-5-2-a": {
-   "frame": {
-    "x": 1822,
-    "y": 420,
-    "w": 128,
-    "h": 208
-   },
-   "rotated": false,
-   "trimmed": false,
-   "spriteSourceSize": {
-    "x": 0,
-    "y": 0,
-    "w": 128,
-    "h": 208
-   },
-   "sourceSize": {
-    "w": 128,
-    "h": 208
-   }
-  },
-  "counter-5-3-a": {
-   "frame": {
     "x": 2,
     "y": 630,
     "w": 128,
@@ -480,9 +420,89 @@
     "h": 208
    }
   },
-  "deco-floorlamp": {
+  "counter-5-1-a": {
    "frame": {
     "x": 132,
+    "y": 630,
+    "w": 128,
+    "h": 208
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 208
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 208
+   }
+  },
+  "counter-5-2-a": {
+   "frame": {
+    "x": 262,
+    "y": 630,
+    "w": 128,
+    "h": 208
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 208
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 208
+   }
+  },
+  "counter-5-3-a": {
+   "frame": {
+    "x": 392,
+    "y": 630,
+    "w": 128,
+    "h": 208
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 208
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 208
+   }
+  },
+  "deco-chandelier": {
+   "frame": {
+    "x": 2,
+    "y": 2,
+    "w": 448,
+    "h": 416
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 448,
+    "h": 416
+   },
+   "sourceSize": {
+    "w": 448,
+    "h": 416
+   }
+  },
+  "deco-floorlamp": {
+   "frame": {
+    "x": 522,
     "y": 630,
     "w": 128,
     "h": 208
@@ -502,7 +522,27 @@
   },
   "deco-monstera": {
    "frame": {
-    "x": 262,
+    "x": 652,
+    "y": 630,
+    "w": 128,
+    "h": 208
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 208
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 208
+   }
+  },
+  "deco-olive": {
+   "frame": {
+    "x": 782,
     "y": 630,
     "w": 128,
     "h": 208
@@ -522,7 +562,27 @@
   },
   "deco-pendant": {
    "frame": {
-    "x": 392,
+    "x": 912,
+    "y": 630,
+    "w": 128,
+    "h": 208
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 208
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 208
+   }
+  },
+  "deco-pendant-lux": {
+   "frame": {
+    "x": 1042,
     "y": 630,
     "w": 128,
     "h": 208
@@ -542,7 +602,7 @@
   },
   "deco-plants": {
    "frame": {
-    "x": 522,
+    "x": 1172,
     "y": 630,
     "w": 128,
     "h": 208
@@ -562,7 +622,7 @@
   },
   "deco-rug": {
    "frame": {
-    "x": 652,
+    "x": 1302,
     "y": 630,
     "w": 128,
     "h": 208
@@ -582,7 +642,7 @@
   },
   "deco-rug-blue": {
    "frame": {
-    "x": 2,
+    "x": 452,
     "y": 2,
     "w": 448,
     "h": 416
@@ -602,7 +662,7 @@
   },
   "deco-sculpture": {
    "frame": {
-    "x": 782,
+    "x": 1432,
     "y": 630,
     "w": 128,
     "h": 208
@@ -622,7 +682,7 @@
   },
   "deco-stools": {
    "frame": {
-    "x": 452,
+    "x": 902,
     "y": 2,
     "w": 448,
     "h": 416
@@ -642,7 +702,7 @@
   },
   "fx-dirt": {
    "frame": {
-    "x": 912,
+    "x": 1562,
     "y": 630,
     "w": 128,
     "h": 208
@@ -662,7 +722,7 @@
   },
   "station-ceremonySet-1-a": {
    "frame": {
-    "x": 1042,
+    "x": 1692,
     "y": 630,
     "w": 128,
     "h": 208
@@ -682,7 +742,7 @@
   },
   "station-ceremonySet-2-a": {
    "frame": {
-    "x": 1172,
+    "x": 1822,
     "y": 630,
     "w": 128,
     "h": 208
@@ -702,8 +762,8 @@
   },
   "station-ceremonySet-3-a": {
    "frame": {
-    "x": 1302,
-    "y": 630,
+    "x": 2,
+    "y": 840,
     "w": 128,
     "h": 208
    },
@@ -722,8 +782,8 @@
   },
   "station-ceremonySet-4-a": {
    "frame": {
-    "x": 1432,
-    "y": 630,
+    "x": 132,
+    "y": 840,
     "w": 128,
     "h": 208
    },
@@ -742,8 +802,8 @@
   },
   "station-ceremonySet-5-a": {
    "frame": {
-    "x": 1562,
-    "y": 630,
+    "x": 262,
+    "y": 840,
     "w": 128,
     "h": 208
    },
@@ -762,8 +822,8 @@
   },
   "station-coffeeMachine-1-a": {
    "frame": {
-    "x": 1692,
-    "y": 630,
+    "x": 392,
+    "y": 840,
     "w": 128,
     "h": 208
    },
@@ -782,8 +842,8 @@
   },
   "station-coffeeMachine-2-a": {
    "frame": {
-    "x": 1822,
-    "y": 630,
+    "x": 522,
+    "y": 840,
     "w": 128,
     "h": 208
    },
@@ -802,7 +862,7 @@
   },
   "station-coffeeMachine-3-a": {
    "frame": {
-    "x": 2,
+    "x": 652,
     "y": 840,
     "w": 128,
     "h": 208
@@ -822,7 +882,7 @@
   },
   "station-coffeeMachine-4-a": {
    "frame": {
-    "x": 132,
+    "x": 782,
     "y": 840,
     "w": 128,
     "h": 208
@@ -842,7 +902,7 @@
   },
   "station-coffeeMachine-5-a": {
    "frame": {
-    "x": 262,
+    "x": 912,
     "y": 840,
     "w": 128,
     "h": 208
@@ -862,7 +922,7 @@
   },
   "station-displayCase-1-a": {
    "frame": {
-    "x": 392,
+    "x": 1042,
     "y": 840,
     "w": 128,
     "h": 208
@@ -882,7 +942,7 @@
   },
   "station-displayCase-2-a": {
    "frame": {
-    "x": 522,
+    "x": 1172,
     "y": 840,
     "w": 128,
     "h": 208
@@ -902,7 +962,7 @@
   },
   "station-displayCase-3-a": {
    "frame": {
-    "x": 652,
+    "x": 1302,
     "y": 840,
     "w": 128,
     "h": 208
@@ -922,7 +982,7 @@
   },
   "station-displayCase-4-a": {
    "frame": {
-    "x": 782,
+    "x": 1432,
     "y": 840,
     "w": 128,
     "h": 208
@@ -942,7 +1002,7 @@
   },
   "station-displayCase-5-a": {
    "frame": {
-    "x": 912,
+    "x": 1562,
     "y": 840,
     "w": 128,
     "h": 208
@@ -962,7 +1022,7 @@
   },
   "station-ghost": {
    "frame": {
-    "x": 1042,
+    "x": 1692,
     "y": 840,
     "w": 128,
     "h": 208
@@ -982,7 +1042,7 @@
   },
   "station-grinder-1-a": {
    "frame": {
-    "x": 1172,
+    "x": 1822,
     "y": 840,
     "w": 128,
     "h": 208
@@ -1002,8 +1062,8 @@
   },
   "station-grinder-2-a": {
    "frame": {
-    "x": 1302,
-    "y": 840,
+    "x": 2,
+    "y": 1050,
     "w": 128,
     "h": 208
    },
@@ -1022,8 +1082,8 @@
   },
   "station-grinder-3-a": {
    "frame": {
-    "x": 1432,
-    "y": 840,
+    "x": 132,
+    "y": 1050,
     "w": 128,
     "h": 208
    },
@@ -1042,8 +1102,8 @@
   },
   "station-grinder-4-a": {
    "frame": {
-    "x": 1562,
-    "y": 840,
+    "x": 262,
+    "y": 1050,
     "w": 128,
     "h": 208
    },
@@ -1062,8 +1122,8 @@
   },
   "station-grinder-5-a": {
    "frame": {
-    "x": 1692,
-    "y": 840,
+    "x": 392,
+    "y": 1050,
     "w": 128,
     "h": 208
    },
@@ -1082,8 +1142,8 @@
   },
   "station-iceBox-1-a": {
    "frame": {
-    "x": 1822,
-    "y": 840,
+    "x": 522,
+    "y": 1050,
     "w": 128,
     "h": 208
    },
@@ -1102,7 +1162,7 @@
   },
   "station-iceBox-2-a": {
    "frame": {
-    "x": 2,
+    "x": 652,
     "y": 1050,
     "w": 128,
     "h": 208
@@ -1122,7 +1182,7 @@
   },
   "station-iceBox-3-a": {
    "frame": {
-    "x": 132,
+    "x": 782,
     "y": 1050,
     "w": 128,
     "h": 208
@@ -1142,7 +1202,7 @@
   },
   "station-iceBox-4-a": {
    "frame": {
-    "x": 262,
+    "x": 912,
     "y": 1050,
     "w": 128,
     "h": 208
@@ -1162,7 +1222,7 @@
   },
   "station-iceBox-5-a": {
    "frame": {
-    "x": 392,
+    "x": 1042,
     "y": 1050,
     "w": 128,
     "h": 208
@@ -1182,7 +1242,7 @@
   },
   "station-matchaStation-1-a": {
    "frame": {
-    "x": 522,
+    "x": 1172,
     "y": 1050,
     "w": 128,
     "h": 208
@@ -1202,7 +1262,7 @@
   },
   "station-matchaStation-2-a": {
    "frame": {
-    "x": 652,
+    "x": 1302,
     "y": 1050,
     "w": 128,
     "h": 208
@@ -1222,7 +1282,7 @@
   },
   "station-matchaStation-3-a": {
    "frame": {
-    "x": 782,
+    "x": 1432,
     "y": 1050,
     "w": 128,
     "h": 208
@@ -1242,7 +1302,7 @@
   },
   "station-matchaStation-4-a": {
    "frame": {
-    "x": 912,
+    "x": 1562,
     "y": 1050,
     "w": 128,
     "h": 208
@@ -1262,7 +1322,7 @@
   },
   "station-matchaStation-5-a": {
    "frame": {
-    "x": 1042,
+    "x": 1692,
     "y": 1050,
     "w": 128,
     "h": 208
@@ -1282,7 +1342,7 @@
   },
   "station-oven-1-a": {
    "frame": {
-    "x": 1172,
+    "x": 1822,
     "y": 1050,
     "w": 128,
     "h": 208
@@ -1302,106 +1362,6 @@
   },
   "station-oven-2-a": {
    "frame": {
-    "x": 1302,
-    "y": 1050,
-    "w": 128,
-    "h": 208
-   },
-   "rotated": false,
-   "trimmed": false,
-   "spriteSourceSize": {
-    "x": 0,
-    "y": 0,
-    "w": 128,
-    "h": 208
-   },
-   "sourceSize": {
-    "w": 128,
-    "h": 208
-   }
-  },
-  "station-oven-3-a": {
-   "frame": {
-    "x": 1432,
-    "y": 1050,
-    "w": 128,
-    "h": 208
-   },
-   "rotated": false,
-   "trimmed": false,
-   "spriteSourceSize": {
-    "x": 0,
-    "y": 0,
-    "w": 128,
-    "h": 208
-   },
-   "sourceSize": {
-    "w": 128,
-    "h": 208
-   }
-  },
-  "station-oven-4-a": {
-   "frame": {
-    "x": 1562,
-    "y": 1050,
-    "w": 128,
-    "h": 208
-   },
-   "rotated": false,
-   "trimmed": false,
-   "spriteSourceSize": {
-    "x": 0,
-    "y": 0,
-    "w": 128,
-    "h": 208
-   },
-   "sourceSize": {
-    "w": 128,
-    "h": 208
-   }
-  },
-  "station-oven-5-a": {
-   "frame": {
-    "x": 1692,
-    "y": 1050,
-    "w": 128,
-    "h": 208
-   },
-   "rotated": false,
-   "trimmed": false,
-   "spriteSourceSize": {
-    "x": 0,
-    "y": 0,
-    "w": 128,
-    "h": 208
-   },
-   "sourceSize": {
-    "w": 128,
-    "h": 208
-   }
-  },
-  "station-register-1-a": {
-   "frame": {
-    "x": 1822,
-    "y": 1050,
-    "w": 128,
-    "h": 208
-   },
-   "rotated": false,
-   "trimmed": false,
-   "spriteSourceSize": {
-    "x": 0,
-    "y": 0,
-    "w": 128,
-    "h": 208
-   },
-   "sourceSize": {
-    "w": 128,
-    "h": 208
-   }
-  },
-  "station-register-2-a": {
-   "frame": {
     "x": 2,
     "y": 1260,
     "w": 128,
@@ -1420,7 +1380,7 @@
     "h": 208
    }
   },
-  "station-register-3-a": {
+  "station-oven-3-a": {
    "frame": {
     "x": 132,
     "y": 1260,
@@ -1440,7 +1400,7 @@
     "h": 208
    }
   },
-  "station-register-4-a": {
+  "station-oven-4-a": {
    "frame": {
     "x": 262,
     "y": 1260,
@@ -1460,7 +1420,7 @@
     "h": 208
    }
   },
-  "station-register-5-a": {
+  "station-oven-5-a": {
    "frame": {
     "x": 392,
     "y": 1260,
@@ -1480,7 +1440,7 @@
     "h": 208
    }
   },
-  "station-servingStation-1-a": {
+  "station-register-1-a": {
    "frame": {
     "x": 522,
     "y": 1260,
@@ -1500,7 +1460,7 @@
     "h": 208
    }
   },
-  "station-servingStation-2-a": {
+  "station-register-1-a-open": {
    "frame": {
     "x": 652,
     "y": 1260,
@@ -1520,7 +1480,7 @@
     "h": 208
    }
   },
-  "station-servingStation-3-a": {
+  "station-register-2-a": {
    "frame": {
     "x": 782,
     "y": 1260,
@@ -1540,7 +1500,7 @@
     "h": 208
    }
   },
-  "station-servingStation-4-a": {
+  "station-register-2-a-open": {
    "frame": {
     "x": 912,
     "y": 1260,
@@ -1560,7 +1520,7 @@
     "h": 208
    }
   },
-  "station-servingStation-5-a": {
+  "station-register-3-a": {
    "frame": {
     "x": 1042,
     "y": 1260,
@@ -1580,7 +1540,7 @@
     "h": 208
    }
   },
-  "table-1": {
+  "station-register-3-a-open": {
    "frame": {
     "x": 1172,
     "y": 1260,
@@ -1600,7 +1560,7 @@
     "h": 208
    }
   },
-  "table-2": {
+  "station-register-4-a": {
    "frame": {
     "x": 1302,
     "y": 1260,
@@ -1620,7 +1580,7 @@
     "h": 208
    }
   },
-  "table-3": {
+  "station-register-4-a-open": {
    "frame": {
     "x": 1432,
     "y": 1260,
@@ -1640,7 +1600,7 @@
     "h": 208
    }
   },
-  "table-4": {
+  "station-register-5-a": {
    "frame": {
     "x": 1562,
     "y": 1260,
@@ -1660,7 +1620,7 @@
     "h": 208
    }
   },
-  "table-out-1": {
+  "station-register-5-a-open": {
    "frame": {
     "x": 1692,
     "y": 1260,
@@ -1680,7 +1640,7 @@
     "h": 208
    }
   },
-  "table-out-2": {
+  "station-servingStation-1-a": {
    "frame": {
     "x": 1822,
     "y": 1260,
@@ -1700,7 +1660,7 @@
     "h": 208
    }
   },
-  "table-out-3": {
+  "station-servingStation-2-a": {
    "frame": {
     "x": 2,
     "y": 1470,
@@ -1720,7 +1680,7 @@
     "h": 208
    }
   },
-  "table-out-4": {
+  "station-servingStation-3-a": {
    "frame": {
     "x": 132,
     "y": 1470,
@@ -1740,9 +1700,209 @@
     "h": 208
    }
   },
-  "wall-art-abstract-u": {
+  "station-servingStation-4-a": {
    "frame": {
     "x": 262,
+    "y": 1470,
+    "w": 128,
+    "h": 208
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 208
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 208
+   }
+  },
+  "station-servingStation-5-a": {
+   "frame": {
+    "x": 392,
+    "y": 1470,
+    "w": 128,
+    "h": 208
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 208
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 208
+   }
+  },
+  "table-1": {
+   "frame": {
+    "x": 522,
+    "y": 1470,
+    "w": 128,
+    "h": 208
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 208
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 208
+   }
+  },
+  "table-2": {
+   "frame": {
+    "x": 652,
+    "y": 1470,
+    "w": 128,
+    "h": 208
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 208
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 208
+   }
+  },
+  "table-3": {
+   "frame": {
+    "x": 782,
+    "y": 1470,
+    "w": 128,
+    "h": 208
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 208
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 208
+   }
+  },
+  "table-4": {
+   "frame": {
+    "x": 912,
+    "y": 1470,
+    "w": 128,
+    "h": 208
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 208
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 208
+   }
+  },
+  "table-out-1": {
+   "frame": {
+    "x": 1042,
+    "y": 1470,
+    "w": 128,
+    "h": 208
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 208
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 208
+   }
+  },
+  "table-out-2": {
+   "frame": {
+    "x": 1172,
+    "y": 1470,
+    "w": 128,
+    "h": 208
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 208
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 208
+   }
+  },
+  "table-out-3": {
+   "frame": {
+    "x": 1302,
+    "y": 1470,
+    "w": 128,
+    "h": 208
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 208
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 208
+   }
+  },
+  "table-out-4": {
+   "frame": {
+    "x": 1432,
+    "y": 1470,
+    "w": 128,
+    "h": 208
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 208
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 208
+   }
+  },
+  "wall-art-abstract-u": {
+   "frame": {
+    "x": 1562,
     "y": 1470,
     "w": 64,
     "h": 168
@@ -1762,7 +1922,7 @@
   },
   "wall-art-abstract-v": {
    "frame": {
-    "x": 328,
+    "x": 1628,
     "y": 1470,
     "w": 64,
     "h": 168
@@ -1782,7 +1942,7 @@
   },
   "wall-art-gold-u": {
    "frame": {
-    "x": 394,
+    "x": 1694,
     "y": 1470,
     "w": 64,
     "h": 168
@@ -1802,7 +1962,7 @@
   },
   "wall-art-gold-v": {
    "frame": {
-    "x": 460,
+    "x": 1760,
     "y": 1470,
     "w": 64,
     "h": 168
@@ -1822,7 +1982,7 @@
   },
   "wall-art-leaf-u": {
    "frame": {
-    "x": 526,
+    "x": 1826,
     "y": 1470,
     "w": 64,
     "h": 168
@@ -1842,7 +2002,7 @@
   },
   "wall-art-leaf-v": {
    "frame": {
-    "x": 592,
+    "x": 1892,
     "y": 1470,
     "w": 64,
     "h": 168
@@ -1862,7 +2022,7 @@
   },
   "wall-art-photo-u": {
    "frame": {
-    "x": 658,
+    "x": 1958,
     "y": 1470,
     "w": 64,
     "h": 168
@@ -1882,8 +2042,8 @@
   },
   "wall-art-photo-v": {
    "frame": {
-    "x": 724,
-    "y": 1470,
+    "x": 2,
+    "y": 1680,
     "w": 64,
     "h": 168
    },
@@ -1902,8 +2062,8 @@
   },
   "wall-art-tower-u": {
    "frame": {
-    "x": 790,
-    "y": 1470,
+    "x": 68,
+    "y": 1680,
     "w": 64,
     "h": 168
    },
@@ -1922,8 +2082,8 @@
   },
   "wall-art-tower-v": {
    "frame": {
-    "x": 856,
-    "y": 1470,
+    "x": 134,
+    "y": 1680,
     "w": 64,
     "h": 168
    },
@@ -1942,8 +2102,8 @@
   },
   "wall-clock-u": {
    "frame": {
-    "x": 922,
-    "y": 1470,
+    "x": 200,
+    "y": 1680,
     "w": 64,
     "h": 168
    },
@@ -1962,8 +2122,8 @@
   },
   "wall-clock-v": {
    "frame": {
-    "x": 988,
-    "y": 1470,
+    "x": 266,
+    "y": 1680,
     "w": 64,
     "h": 168
    },
@@ -1982,8 +2142,8 @@
   },
   "wall-neon-u": {
    "frame": {
-    "x": 1054,
-    "y": 1470,
+    "x": 332,
+    "y": 1680,
     "w": 64,
     "h": 168
    },
@@ -2002,8 +2162,8 @@
   },
   "wall-neon-v": {
    "frame": {
-    "x": 1120,
-    "y": 1470,
+    "x": 398,
+    "y": 1680,
     "w": 64,
     "h": 168
    },
@@ -2022,8 +2182,8 @@
   },
   "wall-plants-u": {
    "frame": {
-    "x": 1186,
-    "y": 1470,
+    "x": 464,
+    "y": 1680,
     "w": 64,
     "h": 168
    },
@@ -2042,8 +2202,8 @@
   },
   "wall-plants-v": {
    "frame": {
-    "x": 1252,
-    "y": 1470,
+    "x": 530,
+    "y": 1680,
     "w": 64,
     "h": 168
    },
@@ -2062,8 +2222,8 @@
   },
   "wall-records-u": {
    "frame": {
-    "x": 1318,
-    "y": 1470,
+    "x": 596,
+    "y": 1680,
     "w": 64,
     "h": 168
    },
@@ -2082,8 +2242,8 @@
   },
   "wall-records-v": {
    "frame": {
-    "x": 1384,
-    "y": 1470,
+    "x": 662,
+    "y": 1680,
     "w": 64,
     "h": 168
    },
@@ -2102,8 +2262,8 @@
   },
   "wall-sconce-u": {
    "frame": {
-    "x": 1450,
-    "y": 1470,
+    "x": 728,
+    "y": 1680,
     "w": 64,
     "h": 168
    },
@@ -2122,8 +2282,8 @@
   },
   "wall-sconce-v": {
    "frame": {
-    "x": 1516,
-    "y": 1470,
+    "x": 794,
+    "y": 1680,
     "w": 64,
     "h": 168
    },
@@ -2142,8 +2302,8 @@
   },
   "wall-shelf-u": {
    "frame": {
-    "x": 1582,
-    "y": 1470,
+    "x": 860,
+    "y": 1680,
     "w": 64,
     "h": 168
    },
@@ -2162,8 +2322,8 @@
   },
   "wall-shelf-v": {
    "frame": {
-    "x": 1648,
-    "y": 1470,
+    "x": 926,
+    "y": 1680,
     "w": 64,
     "h": 168
    },
@@ -2184,8 +2344,8 @@
  "meta": {
   "image": "furniture.png",
   "size": {
-   "w": 1952,
-   "h": 1680
+   "w": 2024,
+   "h": 1850
   },
   "scale": "2"
  }

@@ -13,14 +13,23 @@ import {
 import { STATIONS, REGISTER_ID, PRODUCT_LINES, getStationDef } from '@data/stations';
 import { CROWD } from '@data/layouts';
 import {
+  CHAR_CARRY,
   CHAR_FRAMES,
   CHAR_WALK,
+  CHAR_WORK,
   CUSTOMER_LOOKS,
   DECOR_BIG,
   DECOR_BIG_FRAMES,
+  COUNTER_TOP_PX,
+  FRONT_PLANTER_H,
+  PASS_ITEMS,
+  PASS_SLOTS,
   SCENE_FX,
+  STATION_FX,
   counterLookTier,
   counterPropsAt,
+  decorFrame,
+  roomLook,
   staffLookFor,
   stationLookTier,
   tableLookTier,
@@ -40,7 +49,7 @@ import { getCafeClock } from '@core/time/dayCycle';
 import type { EventOverlay } from '@data/events';
 import { Decimal } from '@core/math/bignum';
 import { getLang, t } from '@i18n/index';
-import { CustomerCrowd, type Agent } from './agents/crowd';
+import { CustomerCrowd, type Agent, type BaristaPost } from './agents/crowd';
 import { CameraControls } from './cameraControls';
 import { CityView } from './city/CityView';
 import { TILE_H, TILE_W, isoDepth, toGrid, toScreen } from './iso/iso';
@@ -68,6 +77,8 @@ const LABEL_STAGGER_FROM = 1.05;
 /** HUD-Münzsymbol in CSS-Pixeln vom linken oberen Rand (Ziel des Münz-Flugs). */
 const HUD_COIN = { x: 34, y: 34 };
 const DEPTH = { wall: -2000, floor: -1000, label: 10_000, overlay: 20_000 } as const;
+/** Teller/Becher-Sprites (`item-*`): Bodenpunkt 16 px unter der Oberkante einer 22 px hohen Leinwand. */
+const ITEM_ORIGIN_Y = 16 / 22;
 /** Tisch-Objekt-ID für das Antippen (öffnet das Ambiente-Panel „Tische“). */
 const TABLE_OBJECT = 'ambience:seats';
 
@@ -84,6 +95,20 @@ interface StationView {
   shownLock: 'open' | 'level' | 'terrace' | '';
   /** Gezeigte Skin-Tönung (0xffffff = keine). */
   shownTint: number;
+  /** Ruhelage (die Mühle rüttelt bei der Arbeit). */
+  baseX: number;
+}
+
+/** Effekt eines Geräts, solange daran gearbeitet wird (`STATION_FX`). */
+interface StationFxView {
+  stationId: string;
+  emitter: Phaser.GameObjects.Particles.ParticleEmitter | null;
+  /** Ofen: warmer Schein über dem Fenster (pulsiert). */
+  glow: Phaser.GameObjects.Image | null;
+  burst: boolean;
+  /** Nächster Dampfstoß (Sekunden Szenenzeit). */
+  nextBurst: number;
+  running: boolean;
 }
 
 interface TableView {
@@ -145,7 +170,26 @@ export class CafeScene extends Phaser.Scene {
   private waiterFigures: StaffFigure[] = [];
   private cleanerFigures: StaffFigure[] = [];
   private cashierFigures: Phaser.GameObjects.Image[] = [];
-  private baristaFigures: { stationId: string; sprite: Phaser.GameObjects.Image }[] = [];
+  private baristaFigures: StaffFigure[] = [];
+  /** Sichtbare Baristas: je gekauftem Gerät einer (Reihenfolge der Produktlinien), höchstens so viele wie eingestellt. */
+  private baristaPosts: BaristaPost[] = [];
+  private stationFx: StationFxView[] = [];
+  /** Ringe über Bestellendem, Baristas und wischenden Putzkräften (Pool, vorgerenderte Frames). */
+  private ringPool: Phaser.GameObjects.Image[] = [];
+  private passItemSprites: Phaser.GameObjects.Image[] = [];
+  /** Kassenlade offen bis (Szenenzeit in ms), danach wieder zu. */
+  private drawerUntil = 0;
+  private drawerShown = false;
+  private notes: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
+  /** Boden, Wände und Vorderwände des Raums: wechseln mit dem Deko-Level die Stufe (`roomLook`). */
+  private floorTiles: { sprite: Phaser.GameObjects.Image; checker: 'a' | 'b' }[] = [];
+  private wallTiles: { sprite: Phaser.GameObjects.Image; side: 'u' | 'v'; deco: boolean }[] = [];
+  private frontTiles: { sprite: Phaser.GameObjects.Image; side: 'u' | 'v' }[] = [];
+  private shownRoomLook = '';
+  /** Lichtkegel unter den Pendelleuchten (tags schwach, nachts warm). */
+  private lightPools: Phaser.GameObjects.Image[] = [];
+  private cupSteam: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
+  private cupSteamAcc = 0;
   private popups: Phaser.GameObjects.Text[] = [];
   private emotes: Phaser.GameObjects.Image[] = [];
   private coinsFlying = 0;
@@ -166,10 +210,8 @@ export class CafeScene extends Phaser.Scene {
   private nightTint!: Phaser.GameObjects.Rectangle;
   private glows: Phaser.GameObjects.Image[] = [];
   private shownNight = -1;
-  private rings!: Phaser.GameObjects.Graphics;
   private board: { text: Phaser.GameObjects.Text; bg: Phaser.GameObjects.Graphics } | null = null;
   private shownQueue = -1;
-  private steam: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
   private walkClock = 0;
   private fx: Partial<
     Record<NonNullable<EventOverlay['particles']>, Phaser.GameObjects.Particles.ParticleEmitter>
@@ -192,6 +234,20 @@ export class CafeScene extends Phaser.Scene {
     this.cleanerFigures = [];
     this.cashierFigures = [];
     this.baristaFigures = [];
+    this.baristaPosts = [];
+    this.stationFx = [];
+    this.ringPool = [];
+    this.passItemSprites = [];
+    this.drawerUntil = 0;
+    this.drawerShown = false;
+    this.notes = null;
+    this.floorTiles = [];
+    this.wallTiles = [];
+    this.frontTiles = [];
+    this.shownRoomLook = '';
+    this.lightPools = [];
+    this.cupSteam = null;
+    this.cupSteamAcc = 0;
     this.popups = [];
     this.emotes = [];
     this.coinsFlying = 0;
@@ -207,7 +263,6 @@ export class CafeScene extends Phaser.Scene {
     this.shownNight = -1;
     this.board = null;
     this.shownQueue = -1;
-    this.steam = null;
     this.walkClock = 0;
     this.fx = {};
     this.overlayKey = '';
@@ -252,8 +307,9 @@ export class CafeScene extends Phaser.Scene {
     this.moodSprites = this.crowd.agents.map(() =>
       this.sprite(0, 0, FRAME.mood('happy')).setOrigin(0.5, 1).setVisible(false),
     );
-    this.rings = this.add.graphics().setDepth(DEPTH.label - 2);
     this.createStaff();
+    this.createRings();
+    this.createPassItems();
     for (let i = 0; i < EMOTE_POOL; i++) {
       this.emotes.push(
         this.sprite(0, 0, FRAME.emote('heart'))
@@ -295,7 +351,8 @@ export class CafeScene extends Phaser.Scene {
     this.updateRoomBounds(getLocation(state, this.locationId).ambience['terrace'] ?? 0);
     this.createEventFx();
     this.createNight();
-    this.createSteam();
+    this.createStationFx();
+    this.createAmbientFx();
     // Schwenken über das Viertel, ohne je einen Rand zu sehen; die Startansicht passt auf den Raum (`fitCamera`).
     this.controls = new CameraControls(this, CityView.viewLimits());
     this.fitCamera();
@@ -350,7 +407,7 @@ export class CafeScene extends Phaser.Scene {
       this.refreshBoard();
     }
     const loc = getLocation(state, this.locationId);
-    const { purchases } = this.crowd.update(dt, {
+    const { purchases, orders } = this.crowd.update(dt, {
       served: this.visibleServed(this.rates),
       orderCap: this.rates.stages.order,
       waiters: getStaffLevel(loc, 'waiter'),
@@ -358,11 +415,20 @@ export class CafeScene extends Phaser.Scene {
       tables: loc.ambience['seats'] ?? 0,
       terrace: loc.ambience['terrace'] ?? 0,
       cleanliness: loc.cleanliness,
+      baristas: this.baristaPosts,
+      prepSec: this.prepSec(this.rates),
     });
     this.syncAgents(mood(loc.satisfaction));
     this.syncStaffFigures();
+    this.syncBaristas();
+    this.syncCashiers();
     this.syncDirt();
+    this.syncPassItems();
+    this.syncStationFx(dt);
     this.drawRings();
+    if (orders.length > 0) this.onOrder();
+    this.syncDrawer();
+    this.updateAmbientFx(dt);
     for (const a of purchases) this.onPurchase(a);
     const hidden = this.crowd.hiddenCount;
     this.moreText.setVisible(hidden > 0);
@@ -458,19 +524,33 @@ export class CafeScene extends Phaser.Scene {
           : inAnnex(gx, gy)
             ? `floor-wg-${checker}`
             : `floor-${checker}`;
-        this.sprite(p.x, p.y, frame, theme).setOrigin(0.5, 0).setDepth(DEPTH.floor);
+        const img = this.sprite(p.x, p.y, frame, theme).setOrigin(0.5, 0).setDepth(DEPTH.floor);
+        if (!isEntrance && !inAnnex(gx, gy)) this.floorTiles.push({ sprite: img, checker });
       }
     }
     for (let i = 0; i < n; i++) {
       const window = i % WINDOW_EVERY === 1;
       const pu = toScreen(i, 0);
-      this.sprite(pu.x, pu.y - WALL_H - 4, window ? 'wall-u-deco' : 'wall-u', theme)
-        .setOrigin(0, 0)
-        .setDepth(DEPTH.wall);
+      this.wallTiles.push({
+        sprite: this.sprite(pu.x, pu.y - WALL_H - 4, window ? 'wall-u-deco' : 'wall-u', theme)
+          .setOrigin(0, 0)
+          .setDepth(DEPTH.wall),
+        side: 'u',
+        deco: window,
+      });
       const pv = toScreen(0, i);
-      this.sprite(pv.x - TILE_W / 2, pv.y - WALL_H - 4, window ? 'wall-v-deco' : 'wall-v', theme)
-        .setOrigin(0, 0)
-        .setDepth(DEPTH.wall);
+      this.wallTiles.push({
+        sprite: this.sprite(
+          pv.x - TILE_W / 2,
+          pv.y - WALL_H - 4,
+          window ? 'wall-v-deco' : 'wall-v',
+          theme,
+        )
+          .setOrigin(0, 0)
+          .setDepth(DEPTH.wall),
+        side: 'v',
+        deco: window,
+      });
       if (window) {
         // Licht nachts (additiv, Alpha folgt der Tageszeit).
         this.glows.push(
@@ -498,15 +578,22 @@ export class CafeScene extends Phaser.Scene {
         if (!inRoom(this.layout, gx, gy)) continue;
         const glass = inAnnex(gx, gy);
         const pf = toScreen(gx, gy);
-        const wallH = glass ? GLASS_H : FRONT_WALL_H;
+        // Vorderwände haben oben Platz für die Blumenkästen des Endausbaus.
+        const top = glass ? GLASS_H + 2 : FRONT_WALL_H + 2 + FRONT_PLANTER_H;
+        const wall = (side: 'u' | 'v'): void => {
+          const img = this.sprite(
+            pf.x - TILE_W / 2,
+            pf.y - top,
+            glass ? `glass-${side}` : `front-${side}`,
+            theme,
+          )
+            .setOrigin(0, 0)
+            .setDepth(isoDepth(gx, gy, 9));
+          if (!glass) this.frontTiles.push({ sprite: img, side });
+        };
         if (!inRoom(this.layout, gx, gy + 1) && !(gx === entrance.x && gy === entrance.y))
-          this.sprite(pf.x - TILE_W / 2, pf.y - wallH - 2, glass ? 'glass-u' : 'front-u', theme)
-            .setOrigin(0, 0)
-            .setDepth(isoDepth(gx, gy, 9));
-        if (!inRoom(this.layout, gx + 1, gy) && !this.furnitureAt(gx, gy))
-          this.sprite(pf.x - TILE_W / 2, pf.y - wallH - 2, glass ? 'glass-v' : 'front-v', theme)
-            .setOrigin(0, 0)
-            .setDepth(isoDepth(gx, gy, 9));
+          wall('u');
+        if (!inRoom(this.layout, gx + 1, gy) && !this.furnitureAt(gx, gy)) wall('v');
       }
     }
   }
@@ -582,6 +669,7 @@ export class CafeScene extends Phaser.Scene {
         shownLevel: -1,
         shownLock: '',
         shownTint: -1,
+        baseX: w.x,
       });
     }
     this.createBoard();
@@ -656,12 +744,57 @@ export class CafeScene extends Phaser.Scene {
     }
     // Deko nach Level: Bilder, Neon und Regale an den Wänden, Pflanzen, Leuchten und Teppich im Raum.
     const decor = loc.ambience['decor'] ?? 0;
+    for (const p of this.lightPools) p.destroy();
+    this.lightPools = [];
     for (const d of this.layout.decor) {
       if (decor < d.minLevel) continue;
-      const img = this.decorSprite(d);
+      const img = this.decorSprite({ ...d, frame: decorFrame(d.frame, decor) });
       this.ambienceImages.push(img);
+      if (d.frame === 'deco-pendant') this.lightPools.push(this.lightPool(d.tile));
     }
+    this.refreshRoomLook(decor, !first);
     if (!first) this.plop(this.ambienceImages[this.ambienceImages.length - 1]);
+    this.shownNight = -1;
+  }
+
+  /** Warmer Lichtkegel auf dem Boden unter einer Pendelleuchte (additiv, Stärke folgt der Tageszeit). */
+  private lightPool(tile: GridPos): Phaser.GameObjects.Image {
+    const p = toScreen(tile.x + 0.5, tile.y + 0.5);
+    return this.sprite(p.x, p.y, FRAME.glow)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setScale(ART_SCALE * 1.5, ART_SCALE * 0.75)
+      .setDepth(DEPTH.floor + 3)
+      .setAlpha(0);
+  }
+
+  /**
+   * Endausbau (`roomLook`): Boden, Wände und Vorderwände tauschen mit dem Deko-Level ihr Bild; beim Aufstieg
+   * ploppt der Boden als Welle und „Neues Design!“ erscheint mitten im Raum.
+   */
+  private refreshRoomLook(decor: number, animate: boolean): void {
+    const look = roomLook(decor);
+    const key = `${String(look.floor)}${String(look.wall)}${String(look.front)}`;
+    if (key === this.shownRoomLook) return;
+    const upgrade = animate && this.shownRoomLook !== '';
+    this.shownRoomLook = key;
+    const floor = look.floor > 1 ? `${String(look.floor)}-` : '';
+    for (const f of this.floorTiles) {
+      const name = `floor-${floor}${f.checker}`;
+      if (f.sprite.frame.name !== name) f.sprite.setFrame(name);
+    }
+    const wall = look.wall > 1 ? '-2' : '';
+    for (const w of this.wallTiles) {
+      const name = `wall-${w.side}${wall}${w.deco ? '-deco' : ''}`;
+      if (w.sprite.frame.name !== name) w.sprite.setFrame(name);
+    }
+    for (const f of this.frontTiles) {
+      const name = `front-${f.side}${look.front > 1 ? '-2' : ''}`;
+      if (f.sprite.frame.name !== name) f.sprite.setFrame(name);
+    }
+    if (upgrade && !reducedMotion()) {
+      const c = this.world({ x: this.layout.gridSize / 2, y: this.layout.gridSize / 2 });
+      this.newLook(new Phaser.Geom.Rectangle(c.x - 40, c.y - 80, 80, 80));
+    }
   }
 
   /** Wand-Deko liegt bündig auf der Rückwand (gleiche Leinwand wie die Wandkachel), sonst wie ein Möbel. */
@@ -791,7 +924,7 @@ export class CafeScene extends Phaser.Scene {
                 : t('scene.station.locked', { level: getStationDef(v.id).unlockCafeLevel }),
         );
       }
-      if (v.id === 'matchaStation') this.refreshSteam(level > 0);
+      if (v.id === REGISTER_ID) this.drawerShown = false;
     }
   }
 
@@ -859,32 +992,6 @@ export class CafeScene extends Phaser.Scene {
       duration: SCENE_FX.shineMs,
       onComplete: () => s.destroy(),
     });
-  }
-
-  /** Dampf über der Matcha-Station (kosmetisch). */
-  private createSteam(): void {
-    const p = this.layout.stations.find((s) => s.stationId === 'matchaStation');
-    if (!p) return;
-    const w = this.world(p.tile);
-    // Über dem Kessel links auf der Arbeitsplatte (alle Stufen an derselben Stelle).
-    this.steam = this.add.particles(w.x - 6, w.y - 28, ATLAS.common, {
-      frame: FRAME.steam,
-      speedY: { min: -18, max: -10 },
-      speedX: { min: -4, max: 4 },
-      lifespan: 1600,
-      frequency: 1000 / SCENE_FX.steamPerSec,
-      scale: { start: 0.25, end: 0.7 },
-      alpha: { start: 0.7, end: 0 },
-      emitting: false,
-    });
-    this.steam.setDepth(DEPTH.label - 3);
-  }
-
-  private refreshSteam(on: boolean): void {
-    if (!this.steam) return;
-    const run = on && !reducedMotion();
-    if (run && !this.steam.emitting) this.steam.start();
-    else if (!run && this.steam.emitting) this.steam.stop();
   }
 
   /** Warteschlangen-Tafel über der Kasse: dunkle Tafel, rote LED-Zahl (UI_STYLE § 3.10). */
@@ -1005,38 +1112,26 @@ export class CafeScene extends Phaser.Scene {
     this.nightTint.setAlpha(night * DAY_CYCLE.nightAlpha);
     this.nightTint.setVisible(night > 0);
     for (const g of this.glows) g.setAlpha(night * 0.8);
+    // Heller Marmor sättigt schnell: nur ein Hauch Licht, nachts etwas mehr.
+    for (const p of this.lightPools) p.setAlpha(0.06 + night * 0.24);
     this.city.setNight(night);
   }
 
   /**
-   * Personal-Figuren (kosmetisch): Verkäufer hinter der Kasse, Baristas an den Geräten, Bedienungen und
-   * Putzkräfte als bewegte Figuren aus `crowd`. Sichtbar nach Anzahl, gedeckelt (`CROWD.max*`).
+   * Personal-Figuren (kosmetisch): Verkäufer hinter der Kasse, Baristas an den Geräten (laufen mit dem Becher zur
+   * Ausgabe), Bedienungen und Putzkräfte als bewegte Figuren aus `crowd`. Sichtbar nach Anzahl, gedeckelt
+   * (`CROWD.max*`).
    */
   private createStaff(): void {
     // Die n-te Figur einer Rolle bekommt den n-ten Look (`STAFF_LOOKS`), rein optisch.
-    const standing = (
-      role: StaffRoleId,
-      spot: GridPos,
-      n: number,
-      dir: 'front' | 'back' = 'front',
-    ) => {
-      const w = this.world(spot);
-      return this.sprite(w.x, w.y + TILE_H * 0.5, FRAME.staff(role, staffLookFor(role, n), dir))
-        .setOrigin(0.5, CHAR_FOOT_ORIGIN_Y)
-        .setDepth(isoDepth(spot.x, spot.y, 6))
-        .setVisible(false);
-    };
     this.layout.order.cashierSpots.slice(0, CROWD.maxCashiers).forEach((spot, i) => {
-      this.cashierFigures.push(standing('cashier', spot, i));
-    });
-    PRODUCT_LINES.forEach((line, i) => {
-      const p = this.layout.stations.find((s) => s.stationId === line.id);
-      if (!p) return;
-      // Baristas arbeiten mit dem Rücken zum Gastraum am Gerät an der Rückwand.
-      this.baristaFigures.push({
-        stationId: line.id,
-        sprite: standing('barista', p.workSpot, i, 'back'),
-      });
+      const w = this.world(spot);
+      this.cashierFigures.push(
+        this.sprite(w.x, w.y + TILE_H * 0.5, FRAME.staff('cashier', staffLookFor('cashier', i)))
+          .setOrigin(0.5, CHAR_FOOT_ORIGIN_Y)
+          .setDepth(isoDepth(spot.x, spot.y, 6))
+          .setVisible(false),
+      );
     });
     const moving = (role: StaffRoleId, n: number): StaffFigure[] =>
       Array.from({ length: n }, (_, i) => ({
@@ -1045,6 +1140,7 @@ export class CafeScene extends Phaser.Scene {
           .setVisible(false),
         prev: { x: 0, y: 0 },
       }));
+    this.baristaFigures = moving('barista', CROWD.maxBaristas);
     this.waiterFigures = moving('waiter', CROWD.maxWaiters);
     this.cleanerFigures = moving('cleaner', CROWD.maxCleaners);
   }
@@ -1056,13 +1152,96 @@ export class CafeScene extends Phaser.Scene {
       const show = i < cashiers;
       if (s.visible !== show) s.setVisible(show);
     });
-    // Baristas stehen an den gekauften Geräten, in Reihenfolge der Produktlinien.
+    // Baristas arbeiten an den gekauften Geräten, in Reihenfolge der Produktlinien; die Simulation bewegt sie.
     let left = getStaffLevel(loc, 'barista');
-    for (const b of this.baristaFigures) {
-      const show = left > 0 && (loc.stations[b.stationId]?.level ?? 0) > 0;
-      if (show) left--;
-      if (b.sprite.visible !== show) b.sprite.setVisible(show);
+    const posts: BaristaPost[] = [];
+    for (const line of PRODUCT_LINES) {
+      if (left <= 0 || posts.length >= CROWD.maxBaristas) break;
+      const p = this.layout.stations.find((x) => x.stationId === line.id);
+      if (!p || (loc.stations[line.id]?.level ?? 0) <= 0) continue;
+      posts.push({ station: line.id, home: p.workSpot });
+      left--;
     }
+    const same =
+      posts.length === this.baristaPosts.length &&
+      posts.every((p, i) => p.station === this.baristaPosts[i]?.station);
+    if (!same) this.baristaPosts = posts;
+  }
+
+  /** Sekunden je Becher und sichtbarem Barista (aus der Zubereitungs-Kapazität); 0, solange niemand kommt. */
+  private prepSec(r: LocationRates): number {
+    const n = this.baristaPosts.length;
+    if (n === 0 || this.visibleServed(r) <= 0) return 0;
+    return n / Math.max(r.stages.production, 1e-6);
+  }
+
+  /** Frame im Arbeits-Takt (Hände wechseln), je Figur versetzt; bei „weniger Bewegung“ Stehen. */
+  private workFrame(offset: number): number {
+    if (reducedMotion()) return CHAR_FRAMES.stand;
+    const c = CHAR_WORK.cycle;
+    return (
+      c[Math.floor(this.walkClock / CHAR_WORK.stepSec + offset) % c.length] ?? CHAR_FRAMES.stand
+    );
+  }
+
+  /**
+   * Baristas: am Gerät mit dem Rücken zum Gastraum arbeiten (Hände im Takt), mit dem Becher in der Hand zur Ausgabe
+   * laufen, abstellen (Blick zur Theke) und zurückgehen.
+   */
+  private syncBaristas(): void {
+    const still = reducedMotion();
+    this.crowd.baristas.forEach((b, i) => {
+      const f = this.baristaFigures[i];
+      if (!f) return;
+      if (!b.active) {
+        if (f.sprite.visible) f.sprite.setVisible(false);
+        return;
+      }
+      const dx = b.x - f.prev.x;
+      const dy = b.y - f.prev.y;
+      const moving = f.sprite.visible && Math.hypot(dx, dy) > 1e-4;
+      f.prev.x = b.x;
+      f.prev.y = b.y;
+      const carrying = b.phase === 'toPass' || b.phase === 'drop';
+      let look = facing(0, -1);
+      let frame: number = CHAR_FRAMES.stand;
+      if (moving) {
+        look = facing(dx, dy);
+        const cycle = carrying ? CHAR_CARRY : CHAR_WALK;
+        const c = cycle.cycle;
+        frame = still
+          ? (c[1] ?? CHAR_FRAMES.stand)
+          : (c[Math.floor((this.walkClock + i * 0.05) / cycle.stepSec) % c.length] ??
+            CHAR_FRAMES.stand);
+      } else if (b.phase === 'drop') {
+        look = facing(0, 1);
+        frame = CHAR_FRAMES.carry[0];
+      } else if (b.phase === 'work') {
+        frame = this.workFrame(i * 0.5);
+      }
+      const name = FRAME.staff('barista', staffLookFor('barista', i), look.dir, frame);
+      if (f.sprite.frame.name !== name) f.sprite.setFrame(name);
+      const p = toScreen(b.x, b.y);
+      f.sprite
+        .setFlipX(look.flip)
+        .setVisible(true)
+        .setPosition(p.x, p.y + TILE_H / 2)
+        .setDepth(isoDepth(b.x, b.y, 6));
+    });
+  }
+
+  /** Verkäufer tippen, solange jemand bestellt (die Kasse zeigt zu ihnen); sonst stehen sie und schauen zum Gast. */
+  private syncCashiers(): void {
+    const ordering = this.crowd.agents.some((a) => a.active && a.phase === 'order');
+    const busy = ordering || this.crowd.waitingCount > 0;
+    this.cashierFigures.forEach((s, i) => {
+      if (!s.visible) return;
+      // Der erste Verkäufer steht an der Kasse; die anderen helfen erst, wenn sich eine Schlange bildet.
+      const works = i === 0 ? ordering : busy && this.crowd.waitingCount > i;
+      const frame = works ? this.workFrame(i * 0.7) : CHAR_FRAMES.stand;
+      const name = FRAME.staff('cashier', staffLookFor('cashier', i), 'front', frame);
+      if (s.frame.name !== name) s.setFrame(name);
+    });
   }
 
   /** Bewegte Personal-Figuren (Bedienungen, Putzkräfte) aus der Crowd-Simulation. */
@@ -1072,7 +1251,11 @@ export class CafeScene extends Phaser.Scene {
       role: StaffRoleId,
       figures: StaffFigure[],
       agents: { active: boolean; x: number; y: number; phase: string }[],
-      lookWhenIdle: (a: { x: number; y: number }) => ReturnType<typeof facing>,
+      lookWhenIdle: (
+        a: { x: number; y: number; phase: string },
+        i: number,
+      ) => ReturnType<typeof facing>,
+      workPhases: readonly string[] = [],
     ): void => {
       agents.forEach((a, i) => {
         const f = figures[i];
@@ -1087,10 +1270,14 @@ export class CafeScene extends Phaser.Scene {
         const moving = f.sprite.visible && Math.hypot(dx, dy) > 1e-4;
         f.prev.x = a.x;
         f.prev.y = a.y;
-        const look = moving ? facing(dx, dy) : lookWhenIdle(a);
-        // Laufend im Zyklus, je Figur versetzt; stehend Frame 0 (bei reduzierter Bewegung immer).
+        const look = moving ? facing(dx, dy) : lookWhenIdle(a, i);
+        // Laufend im Zyklus, je Figur versetzt; wischend im Arbeits-Takt; sonst Frame 0.
         const frame =
-          moving && !still ? walkFrame(this.walkClock + i * CHAR_WALK.stepSec) : CHAR_FRAMES.stand;
+          moving && !still
+            ? walkFrame(this.walkClock + i * CHAR_WALK.stepSec)
+            : !moving && workPhases.includes(a.phase)
+              ? this.workFrame(i * 0.5)
+              : CHAR_FRAMES.stand;
         const name = FRAME.staff(role, staffLookFor(role, i), look.dir, frame);
         if (f.sprite.frame.name !== name) f.sprite.setFrame(name);
         f.sprite
@@ -1100,13 +1287,269 @@ export class CafeScene extends Phaser.Scene {
           .setDepth(isoDepth(a.x, a.y, 6));
       });
     };
-    // Stehend blicken Bedienungen zum Gastraum (+y), Putzkräfte zum Tisch bzw. zur Mitte.
+    // Stehend blicken Bedienungen zum Gastraum (+y), Putzkräfte zum Tisch bzw. beim Bodenwischen schräg zur Kamera.
     sync('waiter', this.waiterFigures, this.crowd.waiters, () => facing(0, 1));
-    sync('cleaner', this.cleanerFigures, this.crowd.cleaners, (a) => {
-      const c = this.crowd.cleaners.find((x) => x.x === a.x && x.y === a.y);
-      const table = c && c.table >= 0 ? this.layout.tables[c.table] : undefined;
-      return table ? facing(table.tile.x - a.x, table.tile.y - a.y) : facing(0, 1);
+    sync(
+      'cleaner',
+      this.cleanerFigures,
+      this.crowd.cleaners,
+      (a, i) => {
+        const c = this.crowd.cleaners[i];
+        const table = c && c.table >= 0 ? this.layout.tables[c.table] : undefined;
+        if (table) return facing(table.tile.x - a.x, table.tile.y - a.y);
+        return a.phase === 'mop' ? facing(i % 2 ? 1 : 0, i % 2 ? 0 : 1) : facing(0, 1);
+      },
+      ['wipe', 'mop'],
+    );
+  }
+
+  /** Ring-Pool: Bestellender, Baristas, wischende Putzkräfte. */
+  private createRings(): void {
+    const n = 1 + CROWD.maxBaristas + CROWD.maxCleaners;
+    for (let i = 0; i < n; i++)
+      this.ringPool.push(
+        this.sprite(0, 0, FRAME.ring(0))
+          .setOrigin(0.5, 1)
+          .setDepth(DEPTH.label - 2)
+          .setVisible(false),
+      );
+  }
+
+  /** Teller/Becher auf der Ausgabe (Baristas stellen ab, Bedienungen nehmen mit). */
+  private createPassItems(): void {
+    const pass = this.layout.stations.find((s) => getStationDef(s.stationId).area === 'service');
+    const tile = pass?.tile ?? this.layout.pickup.waiterHomes[0] ?? { x: 0, y: 0 };
+    for (const slot of PASS_SLOTS.slice(0, CROWD.passItemsMax)) {
+      const p = toScreen(tile.x + slot.u, tile.y + slot.v);
+      this.passItemSprites.push(
+        this.sprite(p.x, p.y - COUNTER_TOP_PX, FRAME.item('matcha'))
+          .setOrigin(0.5, ITEM_ORIGIN_Y)
+          .setDepth(isoDepth(tile.x, tile.y, 5.7))
+          .setVisible(false),
+      );
+    }
+  }
+
+  private syncPassItems(): void {
+    const items = this.crowd.passItems;
+    this.passItemSprites.forEach((s, i) => {
+      const station = items[i];
+      if (station === undefined) {
+        if (s.visible) s.setVisible(false);
+        return;
+      }
+      const frame = FRAME.item(PASS_ITEMS[station] ?? 'matcha');
+      if (s.frame.name !== frame) s.setFrame(frame);
+      if (!s.visible) {
+        s.setVisible(true);
+        this.plop(s);
+      }
     });
+  }
+
+  /** Geräte-Effekte (`STATION_FX`): Dampf, Frost, Glut, Pulver, Funkeln – nur solange ein Barista dort arbeitet. */
+  private createStationFx(): void {
+    for (const p of this.layout.stations) {
+      const fx = STATION_FX[p.stationId];
+      if (!fx) continue;
+      const at = toScreen(p.tile.x + fx.u, p.tile.y + fx.v);
+      const x = at.x;
+      const y = at.y - fx.z;
+      const local = isoDepth(p.tile.x, p.tile.y, 5.8);
+      const particles = (
+        frame: string,
+        cfg: Phaser.Types.GameObjects.Particles.ParticleEmitterConfig,
+      ) =>
+        this.add.particles(x, y, ATLAS.common, {
+          frame,
+          emitting: false,
+          frequency: fx.burst ? -1 : 1000 / fx.rate,
+          ...cfg,
+        });
+      let emitter: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
+      let glow: Phaser.GameObjects.Image | null = null;
+      switch (fx.kind) {
+        case 'steam':
+          emitter = particles(FRAME.steam, {
+            speedY: { min: -26, max: -14 },
+            speedX: { min: -6, max: 6 },
+            lifespan: 1500,
+            scale: { start: ART_SCALE * 0.5, end: ART_SCALE * 1.5 },
+            alpha: { start: 0.85, end: 0 },
+          }).setDepth(DEPTH.label - 3);
+          break;
+        case 'frost':
+          emitter = particles(FRAME.frost, {
+            speed: { min: 6, max: 16 },
+            angle: { min: 40, max: 140 },
+            gravityY: 12,
+            lifespan: 900,
+            scale: { start: ART_SCALE, end: ART_SCALE * 0.4 },
+            alpha: { start: 1, end: 0 },
+            emitZone: {
+              type: 'random' as const,
+              source: new Phaser.Geom.Rectangle(-8, -10, 16, 14),
+              quantity: 1,
+            },
+          }).setDepth(local);
+          break;
+        case 'powder':
+          emitter = particles(FRAME.powder, {
+            speedX: { min: -10, max: 10 },
+            speedY: { min: -8, max: 4 },
+            gravityY: 40,
+            lifespan: 650,
+            scale: { start: ART_SCALE, end: ART_SCALE * 0.5 },
+            alpha: { start: 1, end: 0 },
+          }).setDepth(local);
+          break;
+        case 'sparkle':
+          emitter = particles(FRAME.sparkle, {
+            speed: { min: 4, max: 12 },
+            lifespan: 800,
+            scale: { start: ART_SCALE, end: 0 },
+            alpha: { start: 1, end: 0 },
+            emitZone: {
+              type: 'random' as const,
+              source: new Phaser.Geom.Rectangle(-10, -8, 20, 12),
+              quantity: 1,
+            },
+          }).setDepth(local);
+          break;
+        case 'glow':
+          glow = this.sprite(x, y, FRAME.glow)
+            .setBlendMode(Phaser.BlendModes.ADD)
+            .setScale(ART_SCALE * 0.75, ART_SCALE * 0.45)
+            .setDepth(local)
+            .setAlpha(0);
+          emitter = particles(FRAME.steam, {
+            speedY: { min: -18, max: -10 },
+            speedX: { min: -4, max: 4 },
+            lifespan: 1200,
+            scale: { start: ART_SCALE * 0.4, end: ART_SCALE * 1.1 },
+            alpha: { start: 0.5, end: 0 },
+            y: -18,
+          }).setDepth(DEPTH.label - 3);
+          break;
+      }
+      this.stationFx.push({
+        stationId: p.stationId,
+        emitter,
+        glow,
+        burst: !!fx.burst,
+        nextBurst: 0,
+        running: false,
+      });
+    }
+  }
+
+  private syncStationFx(dt: number): void {
+    const still = reducedMotion();
+    const t = this.walkClock;
+    for (const v of this.stationFx) {
+      const run =
+        !still &&
+        this.crowd.baristas.some(
+          (b) => b.active && b.station === v.stationId && b.phase === 'work',
+        );
+      if (v.burst) {
+        if (run && t >= v.nextBurst) {
+          v.emitter?.explode(STATION_FX[v.stationId]?.rate ?? 4);
+          v.nextBurst = t + 1.2 + Math.random() * 1.2;
+        }
+      } else if (run !== v.running) {
+        if (run) v.emitter?.start();
+        else v.emitter?.stop();
+      }
+      v.running = run;
+      if (v.glow)
+        v.glow.setAlpha(run ? 0.45 + 0.25 * Math.sin(t * 5) : Math.max(0, v.glow.alpha - dt * 2));
+      // Die Steinmühle rüttelt, solange sie mahlt.
+      if (STATION_FX[v.stationId]?.kind === 'powder') {
+        const view = this.stations.find((s) => s.id === v.stationId);
+        if (view) view.sprite.setX(view.baseX + (run ? Math.sin(t * 45) * 0.45 : 0));
+      }
+    }
+  }
+
+  /** Atmosphäre: Musiknoten über der Anlage, Dampf über den Tassen besetzter Tische (kosmetisch). */
+  private createAmbientFx(): void {
+    const music = this.layout.ambience.find((a) => a.id === 'music');
+    if (music) {
+      const w = this.world(music.tile);
+      this.notes = this.add
+        .particles(w.x, w.y - 8, ATLAS.common, {
+          frame: FRAME.note,
+          speedY: { min: -16, max: -9 },
+          speedX: { min: -8, max: 8 },
+          lifespan: 1800,
+          frequency: 900,
+          scale: { start: ART_SCALE * 0.9, end: ART_SCALE * 0.6 },
+          alpha: { start: 0.9, end: 0 },
+          rotate: { min: -15, max: 15 },
+          emitting: false,
+        })
+        .setDepth(DEPTH.label - 3);
+    }
+    this.cupSteam = this.add
+      .particles(0, 0, ATLAS.common, {
+        frame: FRAME.steam,
+        speedY: { min: -12, max: -7 },
+        speedX: { min: -3, max: 3 },
+        lifespan: 1300,
+        scale: { start: ART_SCALE * 0.3, end: ART_SCALE * 0.8 },
+        alpha: { start: 0.6, end: 0 },
+        emitting: false,
+      })
+      .setDepth(DEPTH.label - 3);
+  }
+
+  private updateAmbientFx(dt: number): void {
+    const still = reducedMotion();
+    const loc = getLocation(this.store.getState(), this.locationId);
+    const music = !still && (loc.ambience['music'] ?? 0) > 0;
+    if (this.notes && music !== this.notes.emitting) {
+      if (music) this.notes.start();
+      else this.notes.stop();
+    }
+    if (still || !this.cupSteam) return;
+    // Etwa ein Wölkchen je Sekunde über einem zufälligen Gast, der gerade trinkt.
+    this.cupSteamAcc += dt;
+    if (this.cupSteamAcc < 0.5) return;
+    this.cupSteamAcc = 0;
+    const drinking = this.crowd.agents.filter(
+      (a) => a.active && a.phase === 'consume' && a.table >= 0,
+    );
+    const a = drinking[Math.floor(Math.random() * drinking.length)];
+    const table = a ? this.layout.tables[a.table] : undefined;
+    if (!table) return;
+    const p = toScreen(table.tile.x + 0.5 + (a?.seat ? 0.12 : -0.12), table.tile.y + 0.5);
+    this.cupSteam.emitParticleAt(p.x, p.y - 20);
+  }
+
+  /** Kassieren: Lade fährt aus, ein paar Funken (die Gutschrift passiert im Rate-Modell). */
+  private onOrder(): void {
+    const register = this.stations.find((v) => v.id === REGISTER_ID);
+    if (!register || register.shownLevel <= 0) return;
+    this.drawerUntil = this.time.now + SCENE_FX.drawerOpenMs;
+    if (!reducedMotion()) {
+      const b = this.restBounds(register.sprite);
+      this.sparkles.explode(3, b.centerX, b.bottom - TILE_H - COUNTER_TOP_PX);
+    }
+  }
+
+  private syncDrawer(): void {
+    const register = this.stations.find((v) => v.id === REGISTER_ID);
+    if (!register || register.shownLevel <= 0) return;
+    const open = this.time.now < this.drawerUntil;
+    if (open === this.drawerShown) return;
+    this.drawerShown = open;
+    const { shownLevel: level, placement } = register;
+    register.sprite.setFrame(
+      open
+        ? FRAME.registerOpen(level, placement.facesX)
+        : FRAME.station(REGISTER_ID, level, placement.facesX),
+    );
   }
 
   private syncDirt(): void {
@@ -1163,8 +1606,8 @@ export class CafeScene extends Phaser.Scene {
       s.setVisible(true)
         .setPosition(x, y)
         .setDepth(isoDepth(a.x, a.y, 6));
-      // Smiley nur in der Schlange, damit die Szene nicht überladen wirkt.
-      const queueing = a.phase === 'queue';
+      // Smiley nur über den sichtbaren Schlangenplätzen, nicht über dem Grüppchen dahinter.
+      const queueing = a.phase === 'queue' && this.crowd.queueIndex(a) < CROWD.maxQueue;
       m.setVisible(queueing);
       if (queueing) {
         if (m.frame.name !== moodFrame) m.setFrame(moodFrame);
@@ -1174,38 +1617,35 @@ export class CafeScene extends Phaser.Scene {
   }
 
   /**
-   * Fortschrittsringe (UI_STYLE § 3.10): über dem Gast, der gerade bestellt, und über arbeitenden Baristas
-   * (Takt aus der Zubereitungs-Kapazität je sichtbarem Barista, kosmetisch).
+   * Fortschrittsringe (UI_STYLE § 3.10): über dem Gast, der gerade bestellt, über arbeitenden Baristas und über
+   * Putzkräften, die einen Tisch wischen. Vorgerenderte Frames, damit der Ring in jedem Zoom sauber bleibt.
    */
   private drawRings(): void {
-    const g = this.rings;
-    g.clear();
-    const r = SCENE_FX.ringRadius;
-    const ring = (x: number, y: number, frac: number): void => {
-      g.fillStyle(UI_THEME.navy900, 0.6);
-      g.fillCircle(x, y, r);
-      g.lineStyle(SCENE_FX.ringWidth, UI_THEME.successDeep, 1);
-      g.strokeCircle(x, y, r);
-      g.lineStyle(SCENE_FX.ringWidth, UI_THEME.success, 1);
-      g.beginPath();
-      g.arc(x, y, r, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2);
-      g.strokePath();
+    let used = 0;
+    const ring = (gx: number, gy: number, frac: number): void => {
+      const img = this.ringPool[used++];
+      if (!img) return;
+      const step = Math.round(Phaser.Math.Clamp(frac, 0, 1) * SCENE_FX.ringSteps);
+      const name = FRAME.ring(step);
+      if (img.frame.name !== name) img.setFrame(name);
+      const p = toScreen(gx, gy);
+      img.setPosition(p.x, p.y + TILE_H / 2 - CHAR_OVERLAY_Y - SCENE_FX.ringLift).setVisible(true);
     };
     for (const a of this.crowd.agents) {
       if (!a.active || a.phase !== 'order' || a.serveTotal <= 0) continue;
-      const p = toScreen(a.x, a.y);
-      const y = p.y + TILE_H / 2 - CHAR_OVERLAY_Y - r - 1;
-      ring(p.x, y, Phaser.Math.Clamp(1 - a.timer / a.serveTotal, 0, 1));
+      ring(a.x, a.y, 1 - a.timer / a.serveTotal);
     }
-    const rates = this.rates;
-    if (!rates || rates.served <= 0 || reducedMotion()) return;
-    const busy = this.baristaFigures.filter((b) => b.sprite.visible);
-    if (busy.length === 0) return;
-    const cycle = Phaser.Math.Clamp(busy.length / Math.max(rates.stages.production, 1e-6), 0.8, 6);
-    busy.forEach((b, i) => {
-      const frac = (((this.walkClock / cycle + i * 0.37) % 1) + 1) % 1;
-      ring(b.sprite.x, b.sprite.y - CHAR_OVERLAY_Y - r - 1, frac);
-    });
+    if (!reducedMotion()) {
+      for (const b of this.crowd.baristas)
+        if (b.active && b.phase === 'work' && b.workTotal > 0)
+          ring(b.x, b.y, 1 - b.timer / b.workTotal);
+      for (const c of this.crowd.cleaners)
+        if (c.active && c.phase === 'wipe') ring(c.x, c.y, 1 - c.timer / CROWD.wipeSec);
+    }
+    for (let i = used; i < this.ringPool.length; i++) {
+      const img = this.ringPool[i];
+      if (img?.visible) img.setVisible(false);
+    }
   }
 
   private onPurchase(a: Agent): void {
