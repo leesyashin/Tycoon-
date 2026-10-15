@@ -55,6 +55,16 @@ async function reloadWithSave(
   await page.reload();
 }
 
+/**
+ * Wanduhr auf heute 12:00 Ortszeit: Zwischen 2 und 4 Uhr gäbe es sonst den geheimen Erfolg „Nachtschicht“
+ * (+5 🍃) dazu, und Tests, die Blätter zählen, schlügen je nach Uhrzeit des CI-Laufs fehl.
+ */
+async function atNoon(page: Page): Promise<void> {
+  const noon = new Date();
+  noon.setHours(12, 0, 0, 0);
+  await page.clock.setFixedTime(noon);
+}
+
 /** Wartet, bis der erste Kauf bezahlbar ist (Startmünzen + Einkommen, ~10 s), und kauft ×1. */
 async function buyFirstUpgrade(page: Page): Promise<void> {
   await page.getByTestId('nav-shop').click();
@@ -252,6 +262,7 @@ test('Qualität kaufen: Preis-Stufe steigt, Produktname wechselt', async ({ page
 });
 
 test('Erfolg löst einmal aus: Toast und Blätter, nach Neuladen nicht erneut', async ({ page }) => {
+  await atNoon(page);
   await page.goto('?lang=en&tutorial=0');
   await reloadWithSave(page, { stats: { customersServed: 150 } });
   await expect(page.getByTestId('toasts')).toContainText('Achievement: Regular crowd I (+2 🍃)');
@@ -269,6 +280,7 @@ test('Erfolg löst einmal aus: Toast und Blätter, nach Neuladen nicht erneut', 
 test('Tagesaufgabe erledigen und abholen', async ({ page }) => {
   // 100 Taps im Takt > 11 s plus Screen-Wechsel; auf dem CI-Runner knapp über 30 s.
   test.setTimeout(60_000);
+  await atNoon(page);
   await page.goto('?lang=en&tutorial=0');
   await reloadWithSave(page, { questsToday: ['tap100', 'buy20', 'serve500'] });
   await page.getByTestId('nav-achievements').click();
