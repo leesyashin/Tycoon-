@@ -2,7 +2,22 @@
 
 Alle nennenswerten Änderungen an Matcha Café Empire. Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach [SemVer](https://semver.org/lang/de/).
 
-## [Unreleased] – Phase 2: bedientes Café (S10/S11, 2026-10-15)
+## [Unreleased]
+
+### Ausstattung wird mit dem Level edler (2026-10-15)
+
+Vorgabe Vincent: Theke, Küche, Kaffeemaschine, Matcha-Station und alle anderen Geräte im Hotel-Empire-Look neu
+zeichnen; beim Hochleveln sollen sie schöner und eleganter werden.
+
+- Alle neun Geräte in fünf Optik-Stufen an den Meilensteinen Level 1/10/25/50/100 (Katalog: `docs/screenshots/ausstattung/katalog.png`), mit einer durchgehenden Material-Leiter Kiefer → Eiche → Matcha-Lack → Nussbaum/Marmor/Messing → Nachtblau/Marmor/Gold. Höhepunkte der letzten Stufe: nostalgische Goldkasse, Hebel-Espressomaschine mit Goldkuppel, Herd in Nachtblau mit Haube, Vitrine mit Etagere, goldener Faltschirm am Zeremonie-Set.
+- Gästetheke wird mit dem Café-Level edler (fünf Stufen, wechselnde Deko je Modul); Kasse und Ausgabe stehen als eigene Geräte darauf.
+- Tische in vier Stufen nach Anzahl (Kiefer → Tischdecke → Marmor mit Bugholzstühlen → Samtsessel mit Tischlampe).
+- Neuer Zeichenstil näher am Vorbild: gefaste Kanten, weiche Kontaktschatten, Metall mit Glanz, Glas halbtransparent, warmes Licht; Deko, Musik und WLAN überarbeitet.
+- Neue Optik-Stufe in der Szene: Funken und „Neues Design!“; Theke und Tische ploppen als Welle. Der Shine-Sweep beim Level-up ist jetzt sichtbar (lief vorher auf ein auf 0 skaliertes Sprite).
+- Stations- und Tisch-Panel zeigen „Neues Design ab Lv X“ mit Vorschau der nächsten Stufe, auf der letzten „Edelste Ausführung erreicht“.
+- Möbel in eigenem Atlas `furniture.png` (eigene 256-Farben-Palette); Figuren und Effekte bleiben in `common.png`. Labels der Rückwand-Geräte stehen in Originalgröße als Treppe ohne Überlappung.
+
+### Phase 2: bedientes Café (S10/S11, 2026-10-15)
 
 Vorgabe Vincent: kein Selbstbedienungs-Café mehr. Gäste bestellen an der Bestelltheke, Baristas bereiten zu,
 Bedienungen geben aus oder servieren am Tisch, Putzkräfte halten das Café sauber (`docs/PLAN.md` „Phase 2“).

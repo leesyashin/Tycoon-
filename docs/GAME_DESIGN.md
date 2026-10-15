@@ -85,7 +85,9 @@ Café-Level = Summe der Level). Werte für Berlin (×1); andere Standorte skalie
 **Level-Effekt:** `price(level) = basePrice × level × milestonePriceMult` (wie Phase 1) und
 `speed(level) = (1 + (level − 1) × 0.02) × milestoneSpeedMult` ab Level 1 – bessere Geräte arbeiten schneller.
 Meilensteine (Level 10, 25, 50, 100, 200, 300, 400, 500, danach alle 100) verdoppeln das Tempo; ab Meilenstein 4
-alternierend ×2 Preis. Kasse Level 0 = Handkasse mit Tempo 0.6; Ausgabe-Station Level 0 = Tempo 1 (Bedienungen
+alternierend ×2 Preis. An den ersten vier Meilensteinen (10, 25, 50, 100) bekommt jedes Gerät außerdem ein
+edleres Aussehen (fünf Optik-Stufen, rein kosmetisch, UI_STYLE § 4); die Gästetheke wird mit dem Café-Level edler,
+die Tische mit ihrer Anzahl. Kasse Level 0 = Handkasse mit Tempo 0.6; Ausgabe-Station Level 0 = Tempo 1 (Bedienungen
 arbeiten auch ohne Station, nur langsamer als mit).
 
 **Warenkorb-Modell:** Jeder Gast bestellt das Matcha-Produkt und jede weitere freigeschaltete Linie mit ihrem
