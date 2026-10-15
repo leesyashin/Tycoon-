@@ -7,8 +7,9 @@ import { EVENT_CONFIG } from '@data/events';
 import { FREE_BOOST } from '@data/monetization';
 import { AUDIO_DEFAULTS } from '@data/audio';
 import { hashString, rng } from './math/random';
+import { createTill } from './economy/till';
 
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 export interface Settings {
   lang: 'de' | 'en';
@@ -112,7 +113,21 @@ export interface StationState {
   unlocked: boolean;
 }
 
+/**
+ * Offene Bons der Kasse (GAME_DESIGN § 7.2): Umsatz der Gäste, die gerade bestellen und bezahlen. Ins Geld
+ * (`coins`) kommt er erst, wenn ein Gast fertig bezahlt hat (`settleTill`).
+ */
+export interface TillState {
+  /** Umsatz, der noch nicht bezahlt ist. */
+  open: Decimal;
+  /** Wie weit der nächste Gast mit dem Bezahlen ist (0..1). */
+  progress: number;
+  /** Bezahlte Gäste seit Beginn des Laufs; die Szene zeigt je Zahlung Kassenlade und Geldschein. */
+  paid: number;
+}
+
 export interface LocationState {
+  /** Geld des Standorts (im Spiel als Geldscheine gezeigt; der Name stammt aus Phase 1). */
   coins: Decimal;
   earnedThisRun: Decimal;
   level: number;
@@ -129,6 +144,7 @@ export interface LocationState {
   prestigeCount: number;
   /** Höchstes je erreichtes Café-Level; überlebt den Franchise-Reset (Freischaltung, Blätter-Belohnung). */
   bestLevel: number;
+  till: TillState;
 }
 
 /** Zeiten in `playtimeSec`; die Abklingzeit beginnt erst nach dem Ende der Kampagne. */
@@ -192,6 +208,7 @@ export function createLocationState(locationId: string = START_LOCATION_ID): Loc
     autoBuy: false,
     prestigeCount: 0,
     bestLevel: 1,
+    till: createTill(),
   };
 }
 

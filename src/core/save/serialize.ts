@@ -22,6 +22,7 @@ import {
   type QuestState,
   type Settings,
   type Stats,
+  type TillState,
 } from '../GameState';
 import { migrate, SaveError } from './migrations';
 
@@ -71,6 +72,18 @@ function reviveLocation(id: string, raw: unknown): LocationState {
     bestLevel: Math.max(level, Math.floor(num(raw['bestLevel'], level))),
     prestigeCount: Math.max(0, Math.floor(num(raw['prestigeCount'], 0))),
     staff: reviveStaff(raw['staff']),
+    till: reviveTill(raw['till'], id),
+  };
+}
+
+/** Kaputte Kasse startet leer; offene Bons nie negativ, Fortschritt im Bereich 0..1. */
+function reviveTill(raw: unknown, id: string): TillState {
+  const t = isObj(raw) ? raw : {};
+  const open = t['open'] === undefined ? D(0) : dec(t['open'], `${id}.till.open`);
+  return {
+    open: open.lt(0) ? D(0) : open,
+    progress: Math.min(1, Math.max(0, num(t['progress'], 0))),
+    paid: Math.max(0, Math.floor(num(t['paid'], 0))),
   };
 }
 
