@@ -149,11 +149,25 @@ describe('Gäste, Bedienungen und Putzkräfte (kosmetisch)', () => {
     run(many, input({ waiters: 20 }), 5);
     expect(many.waiters.filter((w) => w.active)).toHaveLength(CROWD.maxWaiters);
   });
-  it('bei 100/s bleibt es bei 40 Agenten, der Rest wird als +N gezählt', () => {
+  it('bei 100/s bleibt die Schlange aufgeräumt, der Rest steht auf der Tafel bzw. als +N', () => {
     const crowd = new CustomerCrowd(getLayout('berlin'), 'berlin', lcg(7));
-    run(crowd, input({ served: 100, orderCap: 120, waiters: 3, tables: 12 }), 20);
-    expect(crowd.activeCount).toBe(CROWD.maxAgents);
+    for (let t = 0; t < 20 * 60; t++) {
+      crowd.update(1 / 60, input({ served: 100, orderCap: 120, waiters: 3, tables: 12 }));
+      const queued = crowd.agents.filter(
+        (a) => a.active && (a.phase === 'queue' || a.phase === 'order'),
+      );
+      expect(queued.length).toBeLessThanOrEqual(CROWD.maxQueueFigures);
+      expect(crowd.activeCount).toBeLessThanOrEqual(CROWD.maxAgents);
+    }
+    expect(crowd.waitingCount).toBeGreaterThan(CROWD.maxQueueFigures);
     expect(crowd.hiddenCount).toBeGreaterThan(0);
+  });
+  it('Wartende auf der Tafel kommen nach, sobald die Schlange Platz hat', () => {
+    const crowd = new CustomerCrowd(getLayout('berlin'), 'berlin', lcg(8));
+    run(crowd, input({ served: 20, orderCap: 1 }), 10);
+    expect(crowd.waitingCount).toBeGreaterThan(CROWD.maxQueueFigures);
+    run(crowd, input({ served: 0.0001, orderCap: 3 }), 120);
+    expect(crowd.waitingCount).toBe(0);
   });
   it('ohne Rate kommt niemand', () => {
     const crowd = new CustomerCrowd(getLayout('berlin'), 'berlin', lcg());
@@ -178,6 +192,62 @@ describe('Gäste, Bedienungen und Putzkräfte (kosmetisch)', () => {
     run(crowd, input({ tables: 12, cleanliness: 100, cleaners: 2 }), 60);
     expect(crowd.dirty.size).toBeLessThan(before);
     expect(crowd.cleaners.filter((c) => c.active)).toHaveLength(2);
+  });
+  it('Baristas bereiten zu, bringen den Becher zur Ausgabe und bleiben im Personal-Gang', () => {
+    const layout = getLayout('berlin');
+    const crowd = new CustomerCrowd(layout, 'berlin', lcg(12));
+    const posts = ['matchaStation', 'coffeeMachine', 'oven'].map((id) => {
+      const p = layout.stations.find((x) => x.stationId === id);
+      if (!p) throw new Error(id);
+      return { station: id, home: p.workSpot };
+    });
+    const phases = new Set<string>();
+    let maxItems = 0;
+    for (let t = 0; t < 40 * 60; t++) {
+      crowd.update(1 / 60, input({ served: 1, waiters: 0, baristas: posts, prepSec: 2 }));
+      for (const b of crowd.baristas.filter((x) => x.active)) {
+        phases.add(b.phase);
+        // Nie vor die Theke: Arbeitsplatz und Ausgabe liegen im Gang hinter der Theke.
+        expect(b.y).toBeLessThan(2);
+        expect(b.y).toBeGreaterThan(0.5);
+        if (b.phase === 'work') expect(b.workTotal).toBeGreaterThanOrEqual(CROWD.minPrepSec);
+      }
+      maxItems = Math.max(maxItems, crowd.passItems.length);
+    }
+    expect(crowd.baristas.filter((b) => b.active)).toHaveLength(3);
+    for (const p of ['work', 'toPass', 'drop', 'back']) expect(phases).toContain(p);
+    // Ohne Bedienung stapelt sich höchstens `passItemsMax` auf der Ausgabe.
+    expect(maxItems).toBe(CROWD.passItemsMax);
+    // Bedienungen nehmen je Auftrag einen Teller mit.
+    run(crowd, input({ served: 1, waiters: 3, baristas: posts, prepSec: 30 }), 30);
+    expect(crowd.passItems.length).toBeLessThan(CROWD.passItemsMax);
+    // Ohne Gäste stehen Baristas an ihrem Gerät.
+    run(crowd, input({ served: 0, baristas: posts, prepSec: 0 }), 10);
+    for (const b of crowd.baristas.filter((x) => x.active)) {
+      expect(b.phase).toBe('idle');
+      expect(b.x).toBeCloseTo(b.home.x);
+    }
+  });
+  it('Kassieren meldet jede fertige Bestellung', () => {
+    const crowd = new CustomerCrowd(getLayout('berlin'), 'berlin', lcg(13));
+    let orders = 0;
+    for (let t = 0; t < 20 * 60; t++) orders += crowd.update(1 / 60, input()).orders.length;
+    expect(orders).toBeGreaterThan(5);
+  });
+  it('ohne dreckige Tische wischen Putzkräfte den Boden an freien Stellen', () => {
+    const layout = getLayout('berlin');
+    const crowd = new CustomerCrowd(layout, 'berlin', lcg(14));
+    const seen = new Set<string>();
+    for (let t = 0; t < 40 * 60; t++) {
+      crowd.update(1 / 60, input({ served: 0, cleaners: 2, cleanliness: 100 }));
+      for (const c of crowd.cleaners) seen.add(c.phase);
+    }
+    expect(seen).toContain('mop');
+    for (const p of layout.mopSpots) {
+      expect(inRoom(layout, Math.floor(p.x), Math.floor(p.y))).toBe(true);
+      for (const t of layout.tables)
+        expect(Math.hypot(t.tile.x - p.x, t.tile.y - p.y)).toBeGreaterThan(0.9);
+    }
   });
   it('ungültige Zeitschritte bewegen nichts', () => {
     const crowd = new CustomerCrowd(getLayout('berlin'), 'berlin', lcg());

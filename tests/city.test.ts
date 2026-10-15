@@ -225,6 +225,32 @@ describe('Stadtviertel: Verkehr und Passanten', () => {
     expect([...seen].sort()).toEqual(['none', 'u', 'v']);
   });
 
+  it('Autoampel: Rot → Rot-Gelb → Grün → Gelb → Rot, nie beide Achsen zugleich frei', () => {
+    const life = new StreetLife(CITY, seeded(3));
+    const order: Record<string, string> = {
+      red: 'redYellow',
+      redYellow: 'green',
+      green: 'yellow',
+      yellow: 'red',
+    };
+    let last = { u: life.lightState('u'), v: life.lightState('v') };
+    const seen = new Set<string>();
+    for (let i = 0; i < 2000; i++) {
+      life.update(0.05);
+      const now = { u: life.lightState('u'), v: life.lightState('v') };
+      for (const axis of ['u', 'v'] as const) {
+        seen.add(now[axis]);
+        if (now[axis] !== last[axis]) expect(now[axis]).toBe(order[last[axis]]);
+      }
+      const free = (st: string) => st === 'green' || st === 'yellow';
+      expect(free(now.u) && free(now.v)).toBe(false);
+      // Grün/Gelb an der Ampel heißt: die Achse hat freie Fahrt in der Schaltung.
+      if (free(now.u)) expect(life.signal()).toBe('u');
+      last = now;
+    }
+    expect([...seen].sort()).toEqual(['green', 'red', 'redYellow', 'yellow']);
+  });
+
   it('Passanten queren die Fahrbahn nur bei Grün für die Gegenrichtung', () => {
     const life = new StreetLife(CITY, seeded(5));
     for (let step = 0; step < 4000; step++) {

@@ -7,6 +7,7 @@
  * Koordinaten („Theken-Koordinaten“): x quer, y Tiefe (0 = hinten/Wand bzw. Personalseite, 1 = Gastraum),
  * z Höhe in Pixeln. Variante „a“: Front zeigt nach +v, „b“: nach +u (gespiegelt).
  */
+import { COUNTER_TOP_PX } from '@data/art';
 import { LAYOUTS } from '@data/layouts';
 import { IsoCanvas, SHADE, shade, tint, type Vec3 } from './iso';
 import { C } from './palette';
@@ -19,8 +20,8 @@ export type Facing = 'a' | 'b';
 export type Tier = 1 | 2 | 3 | 4 | 5;
 export const TIERS: readonly Tier[] = [1, 2, 3, 4, 5];
 
-/** Oberkante der Gästetheke und der Arbeitsplatte an der Rückwand (Pixel). */
-export const COUNTER_TOP = 23;
+/** Oberkante der Gästetheke (Pixel, gemeinsam mit der Szene: `COUNTER_TOP_PX`). */
+export const COUNTER_TOP = COUNTER_TOP_PX;
 const BACK_TOP = 27;
 
 type P2 = readonly [number, number];
@@ -2013,7 +2014,8 @@ function cardTerminal(c: FacingCanvas, x: number, y: number, z: number, body: st
   c.fflat(x + 0.02, y + 0.02, z + 3.01, 0.08, 0.06, '#7fd6ff');
 }
 
-const register: Draw = (c, tier) => {
+/** Kasse wie früher mit Bildschirm/Tasten zum Gast: nur noch für das DOM-Icon (erkennbarer als die Rückseite). */
+const registerFront: Draw = (c, tier) => {
   const z = COUNTER_TOP;
   if (tier === 1) {
     // Registrierkasse aus Kunststoff: Schublade, schräges Tastenfeld, Anzeige, Bonrolle
@@ -2158,6 +2160,240 @@ const register: Draw = (c, tier) => {
     cardTerminal(c, 0.82, 0.62, z, C.lacquerNavy);
   }
 };
+
+/**
+ * Offene Kassenlade zum Verkäufer hin (−y): Einsatz mit Münzfächern und Scheinen. Liegt hinter dem Korpus, darum
+ * vor ihm zeichnen.
+ */
+function cashDrawer(c: FacingCanvas, x: number, w: number, y1: number, z: number, body: string) {
+  const y0 = y1 - 0.22;
+  c.fbevel(x, y0, z, w, 0.24, 2.6, body, { b: 0.5 });
+  const top = z + 2.62;
+  const cell = (w - 0.06) / 4;
+  for (let k = 0; k < 4; k++) {
+    const cx = x + 0.03 + k * cell;
+    c.fflat(cx, y0 + 0.03, top, cell - 0.015, 0.08, shade(body, 0.7));
+    const coin = k % 2 ? C.chrome : C.gold;
+    for (let j = 0; j < 2; j++)
+      c.fdisc(cx + cell * 0.5, y0 + 0.055 + j * 0.02, top + 0.4, 0.022, coin);
+  }
+  for (let k = 0; k < 3; k++)
+    c.fflat(
+      x + 0.04 + k * ((w - 0.08) / 3),
+      y0 + 0.13,
+      top + 0.2,
+      (w - 0.08) / 3 - 0.02,
+      0.07,
+      k === 1 ? '#8fc7a2' : '#a6d7b4',
+    );
+}
+
+/** Kleines Kundendisplay (zeigt zum Gast, +y): dunkle Fläche mit grünen Ziffern-Balken. */
+function customerDisplay(c: FacingCanvas, x: number, y: number, z: number, w: number, h: number) {
+  c.frontLit(x, y, z, w, h, '#1d2a3a');
+  for (let k = 0; k < 4; k++)
+    c.frontLit(
+      x + 0.02 + k * ((w - 0.04) / 4),
+      y + 0.001,
+      z + h * 0.3,
+      (w - 0.04) / 4 - 0.012,
+      h * 0.42,
+      '#7ff0a0',
+    );
+}
+
+/** Rückseite eines Bildschirms/Tablets (zeigt zum Gast): Gehäuse mit Blatt-Emblem. */
+function screenBack(
+  c: FacingCanvas,
+  x: number,
+  y: number,
+  z: number,
+  w: number,
+  h: number,
+  color: string,
+  emblem: string,
+) {
+  c.fbevel(x, y, z, w, 0.05, h, color, { b: 0.6 });
+  const cx = x + w / 2;
+  c.frontPoly(
+    y + 0.051,
+    [
+      [cx - 0.03, z + h * 0.42],
+      [cx - 0.005, z + h * 0.66],
+      [cx + 0.035, z + h * 0.6],
+      [cx + 0.01, z + h * 0.36],
+    ],
+    emblem,
+  );
+}
+
+/**
+ * Kasse mit Bildschirm bzw. Tasten zum Verkäufer (−y) – der steht dahinter und tippt; zum Gast zeigen Rückseite,
+ * Kundendisplay, Kartenterminal und Trinkgeldglas. `open`: Kassenlade ist ausgefahren (nach dem Kassieren).
+ */
+function drawRegister(c: FacingCanvas, tier: Tier, open: boolean) {
+  const z = COUNTER_TOP;
+  if (tier === 1) {
+    // Registrierkasse aus Kunststoff: Tastenfeld steigt zum Gast hin an, Anzeigeturm hinten, Bonrolle seitlich
+    c.fshadow(0.22, 0.28, z, 0.56, 0.44, 0.24);
+    if (open) cashDrawer(c, 0.28, 0.42, 0.32, z, shade(C.enamelCream, 0.9));
+    c.fbevel(0.24, 0.3, z, 0.5, 0.38, 6, C.enamelCream, { b: 1 });
+    c.front(0.28, 0.681, z + 1, 0.42, 3, shade(C.enamelCream, 0.88));
+    c.fpoly(
+      [
+        [0.28, 0.33, z + 6],
+        [0.7, 0.33, z + 6],
+        [0.7, 0.54, z + 9.5],
+        [0.28, 0.54, z + 9.5],
+      ],
+      tint(C.steel, 0.25),
+    );
+    for (let r = 0; r < 3; r++)
+      for (let k = 0; k < 4; k++) {
+        const t0 = 0.12 + r * 0.29;
+        const x0 = 0.31 + k * 0.095;
+        const y = (t: number) => 0.33 + 0.21 * t;
+        const zz = (t: number) => z + 6 + 3.5 * t;
+        c.fpoly(
+          [
+            [x0, y(t0), zz(t0)],
+            [x0 + 0.06, y(t0), zz(t0)],
+            [x0 + 0.06, y(t0 + 0.18), zz(t0 + 0.18)],
+            [x0, y(t0 + 0.18), zz(t0 + 0.18)],
+          ],
+          k === 3 ? C.red : C.white,
+        );
+      }
+    c.fbevel(0.36, 0.55, z + 6, 0.26, 0.12, 9, C.enamelCream, { b: 0.8 });
+    customerDisplay(c, 0.39, 0.671, z + 10, 0.2, 3.5);
+    c.fcyl(0.82, 0.5, z, 0.045, 4, C.white, C.paper);
+  } else if (tier === 2) {
+    // Kassensystem: Monitor zum Verkäufer (Rückseite mit Kundendisplay zum Gast), Lade, Kartenleser, Trinkgeld
+    c.fshadow(0.18, 0.28, z, 0.6, 0.46, 0.24);
+    if (open) cashDrawer(c, 0.24, 0.44, 0.32, z, tint(C.ink, 0.12));
+    c.fbevel(0.2, 0.3, z, 0.52, 0.4, 5, C.ink, { b: 0.8 });
+    c.front(0.24, 0.701, z + 1, 0.44, 2.8, tint(C.ink, 0.15));
+    c.fbox(0.42, 0.42, z + 5, 0.08, 0.08, 4, C.ink);
+    screenBack(c, 0.24, 0.44, z + 8, 0.42, 15, C.ink, tint(C.ink, 0.25));
+    customerDisplay(c, 0.33, 0.492, z + 9.5, 0.24, 4);
+    cardTerminal(c, 0.76, 0.52, z, C.ink);
+    tipJar(c, 0.12, 0.6, z);
+  } else if (tier === 3) {
+    // Tablet-Kasse auf Schwenkfuß (Rückseite weiß mit Blatt), Bondrucker, Terminal, Trinkgeldglas
+    c.fshadow(0.62, 0.3, z, 0.22, 0.24, 0.2);
+    c.fbevel(0.62, 0.3, z, 0.2, 0.22, 6, C.white, { b: 1 });
+    c.fflat(0.65, 0.36, z + 6.02, 0.14, 0.04, C.ink);
+    c.fpoly(
+      [
+        [0.66, 0.38, z + 6.1],
+        [0.78, 0.38, z + 6.1],
+        [0.78, 0.44, z + 10],
+        [0.66, 0.44, z + 10],
+      ],
+      C.paper,
+    );
+    c.fshadow(0.14, 0.26, z, 0.46, 0.4, 0.22);
+    if (open) cashDrawer(c, 0.16, 0.42, 0.3, z, C.white);
+    c.fbevel(0.16, 0.3, z, 0.42, 0.34, 3.4, C.white, { b: 0.8 });
+    c.front(0.2, 0.641, z + 0.8, 0.34, 1.8, shade(C.white, 0.9));
+    c.fcyl(0.38, 0.5, z + 3.4, 0.07, 1, C.chrome, tint(C.chrome, 0.3));
+    c.fcyl(0.38, 0.5, z + 4.4, 0.018, 7, C.chrome);
+    screenBack(c, 0.18, 0.48, z + 9.2, 0.4, 12.5, C.white, C.matcha);
+    c.fdisc(0.38, 0.5, z + 21, 0.008, C.ink);
+    cardTerminal(c, 0.74, 0.6, z, C.white);
+    tipJar(c, 0.1, 0.72, z, C.chrome);
+  } else if (tier === 4) {
+    // Nussbaum-Kassenlade, Tablet im Messingrahmen (Rückseite), Messingglocke, Blume
+    c.fshadow(0.16, 0.3, z, 0.56, 0.42, 0.24);
+    if (open) cashDrawer(c, 0.22, 0.42, 0.34, z, C.walnutLight);
+    c.fbevel(0.18, 0.32, z, 0.5, 0.36, 4.5, C.walnut, { b: 1, edge: 0.18 });
+    c.front(0.22, 0.681, z + 1, 0.42, 2.4, C.walnutLight);
+    c.fcyl(0.43, 0.5, z + 4.5, 0.06, 1.2, C.brass, tint(C.brass, 0.3));
+    c.fcyl(0.43, 0.5, z + 5.7, 0.016, 5, C.brass);
+    screenBack(c, 0.23, 0.48, z + 10, 0.4, 14, C.brass, C.walnut);
+    c.front(0.26, 0.531, z + 11.5, 0.34, 11, C.walnutLight);
+    c.frontPoly(
+      0.532,
+      [
+        [0.4, z + 15.5],
+        [0.425, z + 19],
+        [0.46, z + 18.2],
+        [0.435, z + 15],
+      ],
+      C.brass,
+    );
+    bell(c, 0.82, 0.6, z, C.brass, C.walnut);
+    c.fshadowDisc(0.84, 0.32, z, 0.04, 0.2);
+    c.fcyl(0.84, 0.32, z, 0.03, 7, C.cream, tint(C.cream, 0.3));
+    c.fdome(0.84, 0.32, z + 9, 0.03, 3.5, C.sakura);
+    c.fbox(0.838, 0.318, z + 7, 0.006, 0.006, 3, C.matchaDeep);
+  } else {
+    // Nostalgische Goldkasse: Tasten zum Verkäufer, Zierfront und Anzeige-Bekrönung zum Gast, Kurbel
+    c.fshadow(0.14, 0.26, z, 0.66, 0.5, 0.28);
+    if (open) cashDrawer(c, 0.22, 0.48, 0.3, z, C.goldDeep);
+    c.fbevel(0.16, 0.28, z, 0.6, 0.44, 3, C.lacquerNavy, { b: 0.8, frontColor: C.gold });
+    c.fbevel(0.2, 0.3, z + 3, 0.52, 0.38, 9, C.gold, { b: 1, edge: 0.3 });
+    c.front(0.24, 0.681, z + 4.5, 0.44, 6, C.goldDeep);
+    c.front(0.27, 0.682, z + 5.5, 0.38, 4, C.gold);
+    c.frontPoly(
+      0.683,
+      [
+        [0.46, z + 9],
+        [0.49, z + 7.5],
+        [0.46, z + 6],
+        [0.43, z + 7.5],
+      ],
+      C.lacquerNavy,
+    );
+    c.fpoly(
+      [
+        [0.22, 0.32, z + 12],
+        [0.7, 0.32, z + 12],
+        [0.7, 0.5, z + 15.5],
+        [0.22, 0.5, z + 15.5],
+      ],
+      C.goldDeep,
+    );
+    for (let r = 0; r < 3; r++)
+      for (let k = 0; k < 6; k++) {
+        const t = 0.2 + r * 0.3;
+        c.fdisc(
+          0.26 + k * 0.075,
+          0.32 + 0.18 * t,
+          z + 12 + 3.5 * t + 0.4,
+          0.022,
+          k % 2 ? C.cream : C.white,
+        );
+      }
+    c.fbevel(0.3, 0.5, z + 12, 0.32, 0.16, 10, C.gold, { b: 1 });
+    const arch: P2[] = [
+      [0.3, z + 22],
+      [0.62, z + 22],
+    ];
+    for (let i = 0; i <= 8; i++) {
+      const a = (i / 8) * Math.PI;
+      arch.push([0.46 + Math.cos(a) * 0.16, z + 22 + Math.sin(a) * 6]);
+    }
+    c.frontPoly(0.661, arch, c.frontShade(C.gold));
+    c.frontLit(0.36, 0.662, z + 15, 0.2, 5, C.cream);
+    for (let k = 0; k < 3; k++) c.frontLit(0.38 + k * 0.06, 0.663, z + 16, 0.04, 3, C.ink);
+    c.frontPoly(
+      0.663,
+      [
+        [0.46, z + 27],
+        [0.49, z + 24.5],
+        [0.46, z + 22.5],
+        [0.43, z + 24.5],
+      ],
+      C.lacquerNavy,
+    );
+    c.fbox(0.72, 0.42, z + 7, 0.08, 0.02, 1.6, C.gold);
+    c.fcyl(0.8, 0.43, z + 7, 0.016, 5, C.goldDeep, C.gold);
+    cardTerminal(c, 0.82, 0.62, z, C.lacquerNavy);
+  }
+}
+
+const register: Draw = (c, tier) => drawRegister(c, tier, false);
 
 /** Tablett mit Getränken (und optional einem Kuchenstück). */
 function tray(
@@ -2385,7 +2621,7 @@ export function stationFacings(id: string): readonly Facing[] {
 
 /** Einzelbild für das DOM: Geräte auf der Theke mit ihrem Thekenmodul, sonst wie in der Szene. */
 export function stationIconSvg(id: string, tier: Tier): string {
-  const draw = DEVICES[id];
+  const draw = id === 'register' ? registerFront : DEVICES[id];
   if (!draw) throw new Error(`No equipment art: ${id}`);
   const c = canvas('a');
   if (ON_COUNTER.includes(id)) counterBase(c, tier);
@@ -2413,6 +2649,13 @@ export function stationSprites(
       }
     }
   }
+  // Kasse mit ausgefahrener Lade (kurz nach jedem Kassieren)
+  for (const tier of TIERS)
+    for (const facing of facings('register')) {
+      const c = canvas(facing);
+      drawRegister(c, tier, true);
+      out.push({ name: `station-register-${String(tier)}-${facing}-open`, svg: c.svg() });
+    }
   const counterFacings = new Set(ON_COUNTER.flatMap((id) => facings(id)));
   counterFacings.add('a');
   for (const tier of TIERS)

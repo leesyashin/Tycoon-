@@ -9,7 +9,7 @@
  * z Höhe in Pixeln; Ursprung = Mitte zwischen den Füßen. Die Rückansicht spiegelt nur y, deshalb hält die
  * Figur Becher, Taschen und Handys immer auf der sichtbaren Seite.
  */
-import { CHAR_FRAMES, CHAR_SPRITE, CUSTOMER_LOOKS, STAFF_LOOKS, STAFF_WALKERS } from '@data/art';
+import { CHAR_FRAMES, CHAR_SPRITE, CUSTOMER_LOOKS, STAFF_FRAMES, STAFF_LOOKS } from '@data/art';
 import type { StaffRoleId } from '@data/staff';
 import { IsoCanvas, SHADE, shade, tint } from './iso';
 import { C } from './palette';
@@ -81,8 +81,13 @@ const K = {
 // Leinwand in Figur-Koordinaten
 // ---------------------------------------------------------------------------------------------
 class Fig extends IsoCanvas {
+  /** Hebt bzw. senkt alles, was danach gezeichnet wird (Kopfnicken bei der Arbeit). */
+  lift = 0;
   constructor(readonly dir: Dir) {
     super(CHAR_CANVAS.w, CHAR_CANVAS.h, CHAR_CANVAS.ox, CHAR_CANVAS.oy);
+  }
+  override p([u, v, z]: readonly [number, number, number]): [number, number] {
+    return super.p([u, v, z + this.lift]);
   }
   get facingCamera(): boolean {
     return this.dir === 'front';
@@ -999,6 +1004,59 @@ function arm(f: Fig, look: Look, side: -1 | 1, dy: number) {
   }
 }
 
+/**
+ * Arbeits-Pose (Frames 3/4): Oberarm hängt bis zum Ellbogen, der Unterarm zeigt nach vorn auf Arbeitshöhe, die
+ * Hände wechseln die Höhe (tippen an der Kasse, rühren und hantieren am Gerät).
+ */
+const WORK = {
+  elbowZ: 15.2,
+  reach: 0.165,
+  hand: 0.042,
+  poses: [
+    { l: 16.6, r: 18.8, nod: 0 },
+    { l: 18.8, r: 16.4, nod: -0.7 },
+  ],
+} as const;
+
+function armX(look: Look, side: -1 | 1): [number, number] {
+  const out = look.topStyle === 'hoodie' || look.topStyle === 'trench' ? 0.012 : 0;
+  return side < 0 ? [-ARM.x1 - out, -ARM.x0] : [ARM.x0, ARM.x1 + out];
+}
+
+function sleeveOf(look: Look): string {
+  const sleeve = look.sleeveColor ?? look.top;
+  return look.topStyle === 'varsity' ? (look.topAccent ?? sleeve) : sleeve;
+}
+
+/** Oberarm bis zum Ellbogen (Arbeits-Pose). */
+function upperArm(f: Fig, look: Look, side: -1 | 1) {
+  const [x0, x1] = armX(look, side);
+  const kind = sleeveKind(look);
+  const inset = 0.004;
+  if (kind === 'long') {
+    f.cube(x0, x1, -ARM.y, ARM.y, WORK.elbowZ, ARM.z1, sleeveOf(look));
+    return;
+  }
+  const skinTop = kind === 'short' ? 15.8 : ARM.z1;
+  f.cube(x0 + inset, x1 - inset, -ARM.y + 0.004, ARM.y - 0.004, WORK.elbowZ, skinTop, look.skin);
+  if (kind === 'short') f.cube(x0, x1, -ARM.y, ARM.y, skinTop, ARM.z1, sleeveOf(look));
+}
+
+/**
+ * Unterarm nach vorn mit Hand auf Höhe `handZ`. `from` = Beginn entlang y (in der Vorderansicht ab der Brust, damit
+ * der linke Unterarm nicht über den Rumpf gemalt wird).
+ */
+function forearm(f: Fig, look: Look, side: -1 | 1, handZ: number, from: number) {
+  const [x0, x1] = armX(look, side);
+  const inset = 0.006;
+  const color = sleeveKind(look) === 'long' ? sleeveOf(look) : look.skin;
+  const tip = WORK.reach - WORK.hand;
+  // Ellbogen-Stück: verbindet Oberarm und Unterarm, wenn die Hand höher liegt als der Ellbogen.
+  if (from <= 0) f.cube(x0 + inset, x1 - inset, -0.03, 0.03, WORK.elbowZ - 0.6, handZ + 1.2, color);
+  f.cube(x0 + inset, x1 - inset, Math.max(from, -0.01), tip, handZ - 0.6, handZ + 1.6, color);
+  f.cube(x0 + inset, x1 - inset, tip, WORK.reach, handZ - 1, handZ + 1.8, look.skin);
+}
+
 // ---------------------------------------------------------------------------------------------
 // Kopf: Gesicht (Accessoires), Haare, Hüte
 // ---------------------------------------------------------------------------------------------
@@ -1440,10 +1498,22 @@ function sideProps(f: Fig, look: Look, dy: number) {
         f.cube(0.204, 0.212, 0.03 + dy, 0.042 + dy, 12, 18.6, C.gold);
         break;
       }
-      case 'mop':
-        f.cube(0.15, 0.29, -0.075, 0.075, 0, 2.6, '#c9d6e6');
-        f.cube(0.214, 0.23, -0.009, 0.009, 2.6, 31, C.woodDark);
+      case 'mop': {
+        // Wischen (Arbeits-Frames): Moppkopf vor und zurück, der Stiel kippt mit.
+        const my = dy * 2.2;
+        f.cube(0.15, 0.29, -0.075 + my, 0.075 + my, 0, 2.6, '#c9d6e6');
+        if (Math.abs(my) < 1e-6) {
+          f.cube(0.214, 0.23, -0.009, 0.009, 2.6, 31, C.woodDark);
+          break;
+        }
+        const [bx, by] = f.at(0.222, my, 2.6);
+        const [tx, ty] = f.at(0.222, -0.01, 31);
+        const n = (v: number) => v.toFixed(2);
+        f.raw(
+          `<polygon points="${n(bx - 0.6)},${n(by)} ${n(bx + 0.6)},${n(by)} ${n(tx + 0.6)},${n(ty)} ${n(tx - 0.6)},${n(ty)}" fill="${shade(C.woodDark, SHADE.left)}"/>`,
+        );
         break;
+      }
       case 'tray': {
         // Tablett auf der flachen Hand: Platte mit hellem Rand, darauf Iced Matcha und ein Stück Matcha-Kuchen.
         const c = q.color ?? K.silver;
@@ -1522,34 +1592,50 @@ function fluffy(f: Fig, cx: number, cy: number, rx: number, ry: number, color: s
 // ---------------------------------------------------------------------------------------------
 // Zusammensetzen
 // ---------------------------------------------------------------------------------------------
+/** In der Hand gehalten (rechte Hand): Der Arm schwingt beim Laufen nicht, die Arbeits-Pose legt es weg. */
+const HELD: readonly PropKind[] = [
+  'icedMatcha',
+  'strawberryMatcha',
+  'tumbler',
+  'tablet',
+  'digicam',
+  'notebook',
+  'mop',
+  'tray',
+  'chasen',
+  'pretzel',
+  'ringLight',
+  'selfieStick',
+  'mic',
+  'laptop',
+  'yogaMat',
+];
+
 function figure(look: Look, dir: Dir, frame: number, shadow = true, seated = false): string {
   const f = new Fig(dir);
-  const pose = POSES[frame] ?? POSES[0];
+  const work = (CHAR_FRAMES.work as readonly number[]).indexOf(frame);
+  const carry = (CHAR_FRAMES.carry as readonly number[]).indexOf(frame);
+  const mops = !!has(look, 'mop');
+  // Mit Becher (Barista auf dem Weg zur Ausgabe): Iced Matcha in der rechten Hand statt anderer Requisiten.
+  if (carry >= 0)
+    look = {
+      ...look,
+      props: [
+        ...(look.props ?? []).filter((q) => q.left || !HELD.includes(q.kind)),
+        p('icedMatcha'),
+      ],
+    };
+  // Arbeiten mit beiden Händen: gehaltene Dinge (Tablet) liegen solange weg.
+  const hands = work >= 0 && !mops ? WORK.poses[work] : undefined;
+  if (hands) look = { ...look, props: (look.props ?? []).filter((q) => !HELD.includes(q.kind)) };
+  const pose = POSES[carry >= 0 ? carry : work >= 0 ? 0 : frame] ?? POSES[0];
   if (!pose) throw new Error('no pose');
-  const holds = (look.props ?? []).some(
-    (q) =>
-      !q.left &&
-      [
-        'icedMatcha',
-        'strawberryMatcha',
-        'tumbler',
-        'tablet',
-        'digicam',
-        'notebook',
-        'mop',
-        'tray',
-        'chasen',
-        'pretzel',
-        'ringLight',
-        'selfieStick',
-        'mic',
-        'laptop',
-        'yogaMat',
-      ].includes(q.kind),
-  );
-  const armR = holds ? 0 : pose.armR;
+  const holds = (look.props ?? []).some((q) => !q.left && HELD.includes(q.kind));
+  // Wischen: Arm und Mopp gehen gemeinsam vor und zurück.
+  const mopSwing = work >= 0 && mops ? (work === 0 ? 0.035 : -0.035) : 0;
+  const armR = mopSwing || (holds ? 0 : pose.armR);
   const holdsLeft = (look.props ?? []).some((q) => q.left);
-  const armL = holdsLeft || has(look, 'chawan') ? 0 : pose.armL;
+  const armL = mopSwing ? -mopSwing : holdsLeft || has(look, 'chawan') ? 0 : pose.armL;
   const hair = hairParts(look);
   const hat = hatParts(look);
 
@@ -1565,7 +1651,12 @@ function figure(look: Look, dir: Dir, frame: number, shadow = true, seated = fal
     hat?.behind(f);
   }
   leftHandProps(f, look, armL);
-  arm(f, look, -1, armL);
+  const t = torsoBox(look);
+  if (hands) {
+    // Rückansicht: der linke Unterarm liegt hinter dem Rumpf; Vorderansicht: vor der Brust (nach dem Rumpf).
+    if (!f.facingCamera) forearm(f, look, -1, hands.l, 0);
+    upperArm(f, look, -1);
+  } else arm(f, look, -1, armL);
   if (seated) {
     seatedLeg(f, look, -1);
     seatedLeg(f, look, 1);
@@ -1577,7 +1668,18 @@ function figure(look: Look, dir: Dir, frame: number, shadow = true, seated = fal
   torso(f, look);
   torsoDetails(f, look);
   frontBodyProps(f, look);
-  arm(f, look, 1, armR);
+  if (hands) {
+    if (f.facingCamera) {
+      forearm(f, look, -1, hands.l, t.y + 0.004);
+      upperArm(f, look, 1);
+      forearm(f, look, 1, hands.r, 0);
+    } else {
+      forearm(f, look, 1, hands.r, 0);
+      upperArm(f, look, 1);
+    }
+  } else arm(f, look, 1, armR);
+  // Bei der Arbeit nickt der Kopf im Takt der Hände (blickt auf Kasse bzw. Gerät).
+  f.lift = hands?.nod ?? 0;
   head(f, look);
   faceItems(f, look);
   if (!f.facingCamera) {
@@ -1587,15 +1689,20 @@ function figure(look: Look, dir: Dir, frame: number, shadow = true, seated = fal
   hair.over(f);
   hat?.over(f);
   headAccessories(f, look);
-  sideProps(f, look, armR);
+  f.lift = 0;
+  sideProps(f, look, mopSwing ? mopSwing : armR);
   if (!f.facingCamera) backItems(f, look);
   overheadProps(f, look);
   return f.svg();
 }
 
-function lookFrames(prefix: string, look: Look, walks: boolean, sits = false): SpriteDef[] {
+function lookFrames(
+  prefix: string,
+  look: Look,
+  frames: readonly number[],
+  sits = false,
+): SpriteDef[] {
   const out: SpriteDef[] = [];
-  const frames = walks ? [CHAR_FRAMES.stand, ...CHAR_FRAMES.walk] : [CHAR_FRAMES.stand];
   for (const dir of ['front', 'back'] as const) {
     for (const frame of frames)
       out.push({ name: `${prefix}-${dir}-${String(frame)}`, svg: figure(look, dir, frame) });
@@ -1610,23 +1717,23 @@ function lookFrames(prefix: string, look: Look, walks: boolean, sits = false): S
 
 /**
  * Alle Figuren-Frames: `customer-<typ>-<look>-<dir>-<frame>` plus Sitzpose `customer-<typ>-<look>-sit-<dir>`
- * (Gäste am Tisch) und `staff-<rolle>-<look>-<dir>-<frame>`. Personal, das nur an der Theke steht, bekommt
- * keine Lauf-Frames (spart Atlas-Fläche); Bedienungen und Putzkräfte laufen (`STAFF_WALKERS`).
+ * (Gäste am Tisch) und `staff-<rolle>-<look>-<dir>-<frame>`. Personal bekommt nur die Frames seiner Rolle
+ * (`STAFF_FRAMES`: Arbeiten, Laufen, Tragen), das spart Atlas-Fläche.
  */
 export function characterSprites(): SpriteDef[] {
   const out: SpriteDef[] = [];
+  const customerFrames = [CHAR_FRAMES.stand, ...CHAR_FRAMES.walk];
   for (const [type, looks] of Object.entries(CUSTOMER_LOOKS))
     for (const id of looks) {
       const look = CUSTOMER_LOOK_DEFS[id];
       if (!look) throw new Error(`No customer look: ${id}`);
-      out.push(...lookFrames(`customer-${type}-${id}`, look, true, true));
+      out.push(...lookFrames(`customer-${type}-${id}`, look, customerFrames, true));
     }
   for (const [role, looks] of Object.entries(STAFF_LOOKS))
     for (const id of looks) {
       const look = STAFF_LOOK_DEFS[`${role}-${id}`];
       if (!look) throw new Error(`No staff look: ${role}-${id}`);
-      const walks = STAFF_WALKERS.includes(role as StaffRoleId);
-      out.push(...lookFrames(`staff-${role}-${id}`, look, walks));
+      out.push(...lookFrames(`staff-${role}-${id}`, look, STAFF_FRAMES[role as StaffRoleId]));
     }
   return out;
 }

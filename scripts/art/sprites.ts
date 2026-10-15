@@ -3,6 +3,7 @@
  * App-Icon. Ausstattung, Theke und Tische stehen in `equipment.ts`, Figuren in `figures.ts`. `pnpm art` rendert
  * alles als PNG 2× in Texture-Atlanten. Stilregeln: UI_STYLE § 4 (Flat-Shaded-Iso, Dollhouse, Blockfiguren).
  */
+import { FRONT_PLANTER_H, SCENE_FX } from '@data/art';
 import { STATION_CANVAS } from './equipment';
 import { IsoCanvas, Z_PER_TILE, shade, tint, type Vec3 } from './iso';
 import { C } from './palette';
@@ -160,6 +161,106 @@ function flat(w: number, h: number, body: string): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${String(w * 2)}" height="${String(h * 2)}" viewBox="0 0 ${String(w)} ${String(h)}">${body}</svg>`;
 }
 
+/**
+ * Fortschrittsring (UI_STYLE § 3.10) in `SCENE_FX.ringSteps` Stufen: weiße Scheibe mit Schlagschatten, helle Spur,
+ * grüner Bogen mit runden Enden. Als Bild statt Phaser-Graphics, damit Kanten in jedem Zoom glatt bleiben.
+ */
+function ringSprites(): SpriteDef[] {
+  const size = 18;
+  const c = size / 2;
+  const r = 5.6;
+  const n = (v: number) => v.toFixed(3);
+  const out: SpriteDef[] = [];
+  for (let k = 0; k <= SCENE_FX.ringSteps; k++) {
+    const f = k / SCENE_FX.ringSteps;
+    let arc = '';
+    if (k === SCENE_FX.ringSteps) {
+      arc = `<circle cx="${n(c)}" cy="${n(c)}" r="${n(r)}" fill="none" stroke="${C.apron}" stroke-width="2.6"/>`;
+    } else if (k > 0) {
+      const a = -Math.PI / 2 + f * Math.PI * 2;
+      const large = f > 0.5 ? 1 : 0;
+      arc = `<path d="M${n(c)},${n(c - r)} A${n(r)},${n(r)} 0 ${String(large)} 1 ${n(c + Math.cos(a) * r)},${n(c + Math.sin(a) * r)}" fill="none" stroke="${C.apron}" stroke-width="2.6" stroke-linecap="round"/>`;
+    }
+    out.push({
+      name: `ring-${String(k)}`,
+      svg: flat(
+        size,
+        size,
+        `<circle cx="${n(c)}" cy="${n(c + 0.9)}" r="8.2" fill="${C.ink}" fill-opacity="0.22"/>` +
+          `<circle cx="${n(c)}" cy="${n(c)}" r="8.2" fill="${C.white}"/>` +
+          `<circle cx="${n(c)}" cy="${n(c)}" r="${n(r)}" fill="none" stroke="${tint(C.apron, 0.72)}" stroke-width="2.6"/>` +
+          arc,
+      ),
+    });
+  }
+  return out;
+}
+
+/**
+ * Was Baristas auf die Ausgabe stellen (`item-<id>`, `PASS_ITEMS`): Matcha-Latte, Kaffee, Iced Matcha, Croissant,
+ * Kuchenstück, Chawan. Kleine Leinwand, Bodenpunkt bei (12, 16).
+ */
+function passItemSprites(): SpriteDef[] {
+  const canvasItem = () => new IsoCanvas(24, 22, 12, 16);
+  const saucer = (c: IsoCanvas) => {
+    c.shadowDisc(0, 0, 0, 0.1, 0.22);
+    c.cylinder(0, 0, 0, 0.09, 0.8, C.cup, tint(C.cup, 0.2));
+  };
+  const items: Record<string, (c: IsoCanvas) => void> = {
+    matcha(c) {
+      saucer(c);
+      c.frustum(0, 0, 0.8, 0.045, 0.06, 6, C.cup, C.matchaFoam);
+      c.disc(-0.01, -0.01, 6.85, 0.025, tint(C.matchaFoam, 0.5));
+      c.box(0.055, -0.008, 3, 0.02, 0.016, 2.6, C.cup);
+    },
+    coffee(c) {
+      saucer(c);
+      c.frustum(0, 0, 0.8, 0.04, 0.052, 5, C.cobalt, C.coffee);
+      c.disc(0, 0, 5.85, 0.032, tint(C.coffee, 0.35));
+      c.box(0.048, -0.008, 2.6, 0.02, 0.016, 2.4, C.cobalt);
+    },
+    iced(c) {
+      c.shadowDisc(0, 0, 0, 0.06, 0.2);
+      c.group(0.85, () => c.cylinder(0, 0, 0, 0.045, 3.4, C.white, C.matchaFoam));
+      c.cylinder(0, 0, 3.4, 0.045, 3, C.matcha, C.matchaFoam);
+      c.group(0.55, () => c.cylinder(0, 0, 6.4, 0.047, 2.6, C.glass, tint(C.glass, 0.5)));
+      c.box(0.012, -0.006, 8, 0.012, 0.012, 5, C.cobalt);
+    },
+    croissant(c) {
+      saucer(c);
+      c.dome(-0.035, 0.02, 0.8, 0.035, 3.2, '#d9953f');
+      c.dome(0.0, 0.0, 0.8, 0.045, 4.2, '#e6a64d');
+      c.dome(0.04, -0.02, 0.8, 0.035, 3.2, '#d9953f');
+    },
+    cake(c) {
+      saucer(c);
+      c.poly(
+        [
+          [-0.05, -0.03, 0.8],
+          [0.05, -0.03, 0.8],
+          [0.0, 0.07, 0.8],
+        ],
+        C.ink,
+        0.15,
+      );
+      c.box(-0.04, -0.03, 0.8, 0.08, 0.07, 4.2, '#f2e3c4', { top: C.matchaFoam });
+      c.box(-0.04, -0.03, 2.6, 0.08, 0.07, 0.8, C.matcha, { top: C.matchaFoam });
+      c.dome(0, 0, 5, 0.018, 2, C.red);
+    },
+    bowl(c) {
+      c.shadowDisc(0, 0, 0, 0.08, 0.22);
+      c.frustum(0, 0, 0, 0.04, 0.07, 4.6, '#5a4a3e', '#7a6656');
+      c.disc(0, 0, 4.4, 0.056, C.matchaFoam);
+      c.disc(-0.01, -0.01, 4.45, 0.022, tint(C.matchaFoam, 0.5));
+    },
+  };
+  return Object.entries(items).map(([id, draw]) => {
+    const c = canvasItem();
+    draw(c);
+    return { name: `item-${id}`, svg: c.svg() };
+  });
+}
+
 export function fxSprites(): SpriteDef[] {
   const mood = (face: string, color: string, mouth: string) =>
     flat(
@@ -226,9 +327,49 @@ export function fxSprites(): SpriteDef[] {
       ),
     },
     {
+      // Dampf-Wölkchen: heller Kern, kühlgrauer Rand – sichtbar auch vor weißen Wänden (wird beim Aufsteigen
+      // größer und blasser)
       name: 'fx-steam',
-      svg: flat(8, 8, `<circle cx="4" cy="4" r="3.6" fill="${C.white}" fill-opacity="0.8"/>`),
+      svg: flat(
+        10,
+        10,
+        `<defs><radialGradient id="s"><stop offset="0" stop-color="${C.white}" stop-opacity="0.95"/><stop offset="0.5" stop-color="${C.white}" stop-opacity="0.85"/><stop offset="0.78" stop-color="#b9c6dc" stop-opacity="0.7"/><stop offset="1" stop-color="#9fb0cc" stop-opacity="0"/></radialGradient></defs><circle cx="5" cy="5" r="5" fill="url(#s)"/>`,
+      ),
     },
+    {
+      // Frost am Kühlfach: kleiner Eiskristall
+      name: 'fx-frost',
+      svg: flat(
+        6,
+        6,
+        `<path d="M3 0.2 L3.5 2.5 L5.8 3 L3.5 3.5 L3 5.8 L2.5 3.5 L0.2 3 L2.5 2.5 Z" fill="#e6f7ff"/><circle cx="3" cy="3" r="0.8" fill="${C.white}"/>`,
+      ),
+    },
+    {
+      // Matcha-Pulver aus der Steinmühle
+      name: 'fx-powder',
+      svg: flat(4, 4, `<circle cx="2" cy="2" r="1.6" fill="${C.matcha}"/>`),
+    },
+    {
+      // Musiknote über der Anlage
+      name: 'fx-note',
+      svg: flat(
+        8,
+        9,
+        `<path d="M2.6 1.4 L7 0.4 L7 6.4 A1.5 1.3 0 1 1 6 5.2 L6 2.2 L3.6 2.7 L3.6 7.6 A1.5 1.3 0 1 1 2.6 6.4 Z" fill="${C.ink}"/>`,
+      ),
+    },
+    {
+      // Wassertropfen (Brunnen im Park)
+      name: 'fx-drop',
+      svg: flat(
+        4,
+        5,
+        `<path d="M2 0.2 C3.4 2 3.8 2.9 3.8 3.4 A1.8 1.6 0 1 1 0.2 3.4 C0.2 2.9 0.6 2 2 0.2 Z" fill="#9fd4f2"/>`,
+      ),
+    },
+    ...ringSprites(),
+    ...passItemSprites(),
     {
       name: 'fx-shine',
       svg: flat(
@@ -293,6 +434,8 @@ export interface ThemeArt {
   /** Niedrige Vorderwand (Fassade zur Straße) und ihre Abdeckung; Standard: Wandfarbe. */
   front?: string;
   frontCap?: string;
+  /** Endausbau (Deko-Level): Marmor hell/dunkel mit Adern, Messing für Intarsien und Leisten. */
+  lux: { marbleA: string; marbleB: string; veinA: string; chips: readonly string[] };
 }
 
 export const THEME_ART: Record<string, ThemeArt> = {
@@ -310,6 +453,12 @@ export const THEME_ART: Record<string, ThemeArt> = {
     deco: 'lightbox',
     front: C.cobalt,
     frontCap: C.stainless,
+    lux: {
+      marbleA: '#f3f1ec',
+      marbleB: '#1f2c6e',
+      veinA: '#cdd3e2',
+      chips: [C.cobalt, C.cobaltLight, C.stainlessDark, C.white],
+    },
   },
   kyoto: {
     floorA: '#d9d39a',
@@ -320,6 +469,12 @@ export const THEME_ART: Record<string, ThemeArt> = {
     frame: C.woodDeep,
     terrace: C.woodDeep,
     accent: C.sakura,
+    lux: {
+      marbleA: '#f1e8d2',
+      marbleB: '#4a3426',
+      veinA: '#d8c9a6',
+      chips: [C.sakura, C.matcha, C.woodDark, C.white],
+    },
   },
   tokyo: {
     floorA: '#4a4f78',
@@ -330,6 +485,12 @@ export const THEME_ART: Record<string, ThemeArt> = {
     frame: '#2b2f52',
     terrace: '#5a5f88',
     accent: C.pink,
+    lux: {
+      marbleA: '#e9e6f2',
+      marbleB: '#262a4c',
+      veinA: '#c8c2dc',
+      chips: [C.pink, '#7fd6ff', C.white, '#2b2f52'],
+    },
   },
   seoul: {
     floorA: C.tileBlue,
@@ -340,6 +501,12 @@ export const THEME_ART: Record<string, ThemeArt> = {
     frame: C.white,
     terrace: '#c9a77c',
     accent: C.gold,
+    lux: {
+      marbleA: '#f2f5f0',
+      marbleB: '#2f5a46',
+      veinA: '#cfdccf',
+      chips: [C.gold, C.matcha, C.white, '#9fb7d0'],
+    },
   },
   newyork: {
     floorA: '#b9aea2',
@@ -350,6 +517,12 @@ export const THEME_ART: Record<string, ThemeArt> = {
     frame: '#2f2f3a',
     terrace: '#8d8478',
     accent: C.gold,
+    lux: {
+      marbleA: '#efe9e1',
+      marbleB: '#2a2a33',
+      veinA: '#d4cbbf',
+      chips: [C.gold, '#a0523d', C.white, '#5c3a30'],
+    },
   },
   bali: {
     floorA: '#efdcae',
@@ -360,11 +533,120 @@ export const THEME_ART: Record<string, ThemeArt> = {
     frame: '#8a6a3c',
     terrace: '#c9a26a',
     accent: C.teal,
+    lux: {
+      marbleA: '#f3ead6',
+      marbleB: '#4f6b43',
+      veinA: '#ddd0b2',
+      chips: [C.teal, '#8a6a3c', C.white, C.matcha],
+    },
   },
 };
 
 /** Wandhöhe hinten (Dollhouse) und vorn (25 %). */
 export const WALL = { back: 64, front: 16 } as const;
+
+/** Deterministische Zufallszahl 0..1 (Einschlüsse im Terrazzo, Marmoradern). */
+function rnd(seed: number): number {
+  const x = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+/** Terrazzo mit farbigen Einschlüssen und Messing-Fugen (Boden-Stufe 2). */
+function terrazzoLux(t: ThemeArt, base: string, phase: number): string {
+  const c = new IsoCanvas(64, 32, 32, 0);
+  c.flat(0, 0, 0, 1, 1, base);
+  for (let k = 0; k < 22; k++) {
+    const u = 0.06 + rnd(k + phase * 50) * 0.86;
+    const v = 0.06 + rnd(k * 3.1 + phase * 50 + 7) * 0.86;
+    const s = 0.018 + rnd(k * 1.7 + phase) * 0.03;
+    const col = t.lux.chips[k % t.lux.chips.length] ?? C.white;
+    c.poly(
+      [
+        [u, v, 0],
+        [u + s, v + s * 0.3, 0],
+        [u + s * 0.7, v + s, 0],
+        [u - s * 0.2, v + s * 0.6, 0],
+      ],
+      col,
+    );
+  }
+  c.flat(0, 0.975, 0, 1, 0.025, C.brass);
+  c.flat(0.975, 0, 0, 0.025, 1, shade(C.brass, 0.9));
+  return c.svg();
+}
+
+/**
+ * Heller Marmor mit Adern, Messingfugen und kleinen dunklen Einlegern an den Fliesenecken (Boden-Stufe 3). Jede
+ * Fliese zeichnet ein Viertel der Raute an jeder Ecke, zusammen ergeben sie ganze Einleger. `phase` variiert die
+ * Adern; die zweite Fliese ist eine Spur wärmer, damit die Fläche lebt.
+ */
+function marble(t: ThemeArt, phase: number): string {
+  const c = new IsoCanvas(64, 32, 32, 0);
+  const base = phase ? shade(tint(t.lux.marbleA, 0.1), 0.975) : t.lux.marbleA;
+  c.flat(0, 0, 0, 1, 1, base);
+  for (let k = 0; k < 3; k++) {
+    const v0 = rnd(k + phase * 10 + 3);
+    const pts: [number, number, number][] = [];
+    for (let i = 0; i <= 6; i++) {
+      const u = i / 6;
+      const v = v0 + (rnd(i + k * 9 + phase) - 0.5) * 0.16 + u * 0.3 - 0.15;
+      pts.push([u, Math.min(0.97, Math.max(0.03, v)), 0]);
+    }
+    const w = 0.005 + k * 0.003;
+    c.poly(
+      [
+        ...pts,
+        ...pts
+          .slice()
+          .reverse()
+          .map(([u, v, z]) => [u, v + w, z] as [number, number, number]),
+      ],
+      t.lux.veinA,
+      0.8,
+    );
+  }
+  // Polierter Stein: heller Glanzstreif
+  c.poly(
+    [
+      [0.14, 0.12, 0],
+      [0.3, 0.12, 0],
+      [0.2, 0.46, 0],
+      [0.08, 0.46, 0],
+    ],
+    C.white,
+    0.4,
+  );
+  c.flat(0, 0.975, 0, 1, 0.025, C.brass);
+  c.flat(0.975, 0, 0, 0.025, 1, shade(C.brass, 0.88));
+  // Einleger: Viertel-Rauten in den vier Ecken (dunkler Marmor mit Messingrand)
+  const q = 0.14;
+  for (const [cu, cv] of [
+    [0, 0],
+    [1, 0],
+    [1, 1],
+    [0, 1],
+  ] as const) {
+    const du = cu === 0 ? 1 : -1;
+    const dv = cv === 0 ? 1 : -1;
+    c.poly(
+      [
+        [cu, cv, 0],
+        [cu + du * (q + 0.025), cv, 0],
+        [cu, cv + dv * (q + 0.025), 0],
+      ],
+      C.brass,
+    );
+    c.poly(
+      [
+        [cu, cv, 0],
+        [cu + du * q, cv, 0],
+        [cu, cv + dv * q, 0],
+      ],
+      t.lux.marbleB,
+    );
+  }
+  return c.svg();
+}
 
 function tile(color: string, edge: string): string {
   const c = new IsoCanvas(64, 32, 32, 0);
@@ -384,9 +666,30 @@ const WAINSCOT_H = 28;
  */
 type Face = (a: number, z: number, w: number, h: number, color: string, layer?: number) => void;
 
-/** Wand mit Sockel bzw. Fliesenspiegel, oberer Abschlussleiste und optional Fenster/Leuchtkasten/Regal. */
-function wallFace(t: ThemeArt, h: number, face: Face, f: number, deco: 'none' | 'u' | 'v') {
+/**
+ * Wand mit Sockel bzw. Fliesenspiegel, oberer Abschlussleiste und optional Fenster/Leuchtkasten/Regal. `lux`:
+ * Endausbau mit Riffelpaneelen, Messingleiste und Gesims, Rahmen in Messing.
+ */
+function wallFace(
+  t: ThemeArt,
+  h: number,
+  face: Face,
+  f: number,
+  deco: 'none' | 'u' | 'v',
+  lux = false,
+) {
   face(0, 0, 1, h, shade(t.wall, f));
+  if (lux) {
+    // Riffelpaneele: schmale Schattenkanten alle 1/12 Kachel über dem Sockel bzw. den Fliesen
+    const from = t.wainscot ? WAINSCOT_H + 1.5 : 6;
+    for (let a = 1 / 24; a < 1; a += 1 / 12) {
+      face(a, from, 0.014, h - from - 6, shade(t.wall, f * 0.9), 1);
+      face(a + 0.016, from, 0.01, h - from - 6, shade(tint(t.wall, 0.5), f), 1);
+    }
+    // Gesims oben mit Messinglinie
+    face(0, h - 6, 1, 3, shade(tint(t.wall, 0.25), f * 0.96), 2);
+    face(0, h - 6.6, 1, 0.8, shade(C.brass, f), 3);
+  }
   if (t.wainscot) {
     // Glasierte Fliesen (4 × 8 je Kachel) mit hellen Fugen, Edelstahl-Sockel und -Abschlussleiste
     const tile = shade(t.wainscot, f);
@@ -402,21 +705,23 @@ function wallFace(t: ThemeArt, h: number, face: Face, f: number, deco: 'none' | 
         face(a, z + 3.4, 0.05, 0.6, glanz, 3);
     }
     face(0, 0, 1, 3, shade(t.wallTrim, f), 3);
-    face(0, WAINSCOT_H, 1, 1.5, shade(tint(t.wallTrim, 0.3), f), 3);
+    face(0, WAINSCOT_H, 1, 1.5, shade(lux ? C.brass : tint(t.wallTrim, 0.3), f), 3);
   } else {
     face(0, 0, 1, 6, shade(t.wallTrim, f), 1);
+    if (lux) face(0, 6, 1, 1.2, shade(C.brass, f), 2);
   }
   face(0, h - 3, 1, 3, shade(tint(t.wall, 0.3), f), 1);
   if (deco === 'none') return;
   if (t.deco !== 'lightbox') {
-    face(0.18, 18, 0.64, 34, shade(t.frame, f), 4);
+    face(0.18, 18, 0.64, 34, shade(lux ? C.brass : t.frame, f), 4);
     face(0.24, 21, 0.52, 28, shade(t.window, f + 0.05 > 1 ? 1 : f + 0.05), 5);
-    face(0.24, 33, 0.52, 3, shade(t.frame, f), 6);
+    face(0.24, 33, 0.52, 3, shade(lux ? C.brass : t.frame, f), 6);
     return;
   }
+  const frame = lux ? C.brass : t.frame;
   if (deco === 'u') {
-    // Leuchtkasten-Menü: Edelstahlrahmen, weiße Fläche, Blatt-Emblem und Zeilen als Balken (keine Schrift)
-    face(0.12, 34, 0.76, 24, shade(t.frame, f), 4);
+    // Leuchtkasten-Menü: Edelstahl- bzw. Messingrahmen, weiße Fläche, Blatt-Emblem und Zeilen als Balken
+    face(0.12, 34, 0.76, 24, shade(frame, f), 4);
     face(0.15, 35.5, 0.7, 21, C.lightbox, 5);
     face(0.2, 44, 0.16, 9, C.matcha, 6);
     face(0.24, 46, 0.08, 5, C.matchaFoam, 7);
@@ -428,7 +733,7 @@ function wallFace(t: ThemeArt, h: number, face: Face, f: number, deco: 'none' | 
   } else {
     // Wandregal: zwei Edelstahlböden mit blauen Bechern und Matcha-Dosen
     for (const z of [36, 48]) {
-      face(0.08, z, 0.84, 1.6, shade(t.frame, f), 4);
+      face(0.08, z, 0.84, 1.6, shade(frame, f), 4);
       for (let k = 0; k < 5; k++) {
         const a = 0.14 + k * 0.15;
         const col = (k + z) % 3 === 0 ? C.matcha : k % 2 ? C.cobalt : C.white;
@@ -440,7 +745,7 @@ function wallFace(t: ThemeArt, h: number, face: Face, f: number, deco: 'none' | 
 }
 
 /** Wandsegment entlang u (eine Kachel), Fläche zeigt nach +v. `deco` setzt Fenster bzw. Leuchtkasten. */
-function wallSegU(t: ThemeArt, h: number, deco: boolean): string {
+function wallSegU(t: ThemeArt, h: number, deco: boolean, lux = false): string {
   const c = new IsoCanvas(32, 16 + h + 4, 0, h + 4);
   wallFace(
     t,
@@ -448,12 +753,13 @@ function wallSegU(t: ThemeArt, h: number, deco: boolean): string {
     (a, z, w, hh, color, layer = 0) => c.wallV(a, layer * 0.001, z, w, hh, color),
     0.95,
     deco ? 'u' : 'none',
+    lux,
   );
   return c.svg();
 }
 
 /** Wandsegment entlang v, Fläche zeigt nach +u. */
-function wallSegV(t: ThemeArt, h: number, deco: boolean): string {
+function wallSegV(t: ThemeArt, h: number, deco: boolean, lux = false): string {
   const c = new IsoCanvas(32, 16 + h + 4, 32, h + 4);
   wallFace(
     t,
@@ -461,13 +767,18 @@ function wallSegV(t: ThemeArt, h: number, deco: boolean): string {
     (a, z, w, hh, color, layer = 0) => c.wallU(layer * 0.001, a, z, w, hh, color),
     0.8,
     deco ? 'v' : 'none',
+    lux,
   );
   return c.svg();
 }
 
-/** Niedrige Vorderwand (25 %) als Quader, damit sie Tiefe hat; im Kiez-Café blau mit Edelstahl-Abdeckung. */
-function frontWall(t: ThemeArt, alongU: boolean): string {
-  const c = new IsoCanvas(64, 32 + WALL.front + 2, 32, WALL.front + 2);
+/**
+ * Niedrige Vorderwand (25 %) als Quader, damit sie Tiefe hat; im Kiez-Café blau mit Edelstahl-Abdeckung. Leinwand
+ * `FRONT_PLANTER_H` höher, damit der Endausbau Blumenkästen daraufsetzen kann (`planter`).
+ */
+function frontWall(t: ThemeArt, alongU: boolean, planter = false): string {
+  const top = WALL.front + 2 + FRONT_PLANTER_H;
+  const c = new IsoCanvas(64, 32 + top, 32, top);
   const body = t.front ?? t.wall;
   const cap = t.frontCap ?? tint(t.wall, 0.3);
   if (alongU) {
@@ -477,7 +788,27 @@ function frontWall(t: ThemeArt, alongU: boolean): string {
     c.box(0.88, 0, 0, 0.12, 1, WALL.front - 2, body, { top: cap });
     c.box(0.87, 0, WALL.front - 2, 0.14, 1, 2, cap);
   }
+  if (planter) flowerBox(c, alongU, WALL.front, t);
   return c.svg();
+}
+
+/** Blumenkasten auf der Vorderwand: Kasten in Nussbaum, Buchs als Kuppeln, kleine Blüten (Endausbau). */
+function flowerBox(c: IsoCanvas, alongU: boolean, z: number, t: ThemeArt) {
+  const box = C.walnut;
+  const at = (a: number, b: number): [number, number] => (alongU ? [a, b] : [b, a]);
+  const [u0, v0] = at(0.03, 0.86);
+  const [w, d] = alongU ? [0.94, 0.16] : [0.16, 0.94];
+  c.box(u0, v0, z, w, d, 4, box, { top: shade(box, 0.75) });
+  c.box(u0, v0, z + 4, w, d, 0.8, C.brass);
+  const bloom = [C.sakura, C.white, t.accent, C.gold];
+  for (let k = 0; k < 5; k++) {
+    const [u, v] = at(0.12 + k * 0.19, 0.94);
+    c.dome(u, v, z + 4.6, 0.075, 7 + (k % 2) * 2, k % 2 ? C.matcha : C.matchaDeep);
+    const [fu, fv] = at(0.1 + k * 0.19 + 0.04, 0.95);
+    c.disc(fu, fv, z + 10 + (k % 2) * 2, 0.02, bloom[k % bloom.length] ?? C.sakura);
+    const [gu, gv] = at(0.1 + k * 0.19 - 0.03, 0.97);
+    c.disc(gu, gv, z + 9, 0.016, bloom[(k + 2) % bloom.length] ?? C.white);
+  }
 }
 
 /** Höhe der Glaswände des Wintergartens (Szene: `GLASS_H`). */
@@ -589,6 +920,17 @@ export function themeSprites(locationId: string): SpriteDef[] {
     { name: 'wall-v-deco', svg: wallSegV(t, WALL.back, true) },
     { name: 'front-u', svg: frontWall(t, true) },
     { name: 'front-v', svg: frontWall(t, false) },
+    // Endausbau nach Deko-Level (`ROOM_LOOK_DECOR_LEVELS`)
+    { name: 'floor-2-a', svg: terrazzoLux(t, t.floorA, 0) },
+    { name: 'floor-2-b', svg: terrazzoLux(t, t.floorB, 1) },
+    { name: 'floor-3-a', svg: marble(t, 0) },
+    { name: 'floor-3-b', svg: marble(t, 1) },
+    { name: 'wall-u-2', svg: wallSegU(t, WALL.back, false, true) },
+    { name: 'wall-u-2-deco', svg: wallSegU(t, WALL.back, true, true) },
+    { name: 'wall-v-2', svg: wallSegV(t, WALL.back, false, true) },
+    { name: 'wall-v-2-deco', svg: wallSegV(t, WALL.back, true, true) },
+    { name: 'front-u-2', svg: frontWall(t, true, true) },
+    { name: 'front-v-2', svg: frontWall(t, false, true) },
     { name: 'floor-wg-a', svg: herringbone(t, 0) },
     { name: 'floor-wg-b', svg: herringbone(t, 1) },
     { name: 'glass-u', svg: glassWall(t, true) },

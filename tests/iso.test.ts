@@ -32,7 +32,20 @@ describe('Standort-Skins', () => {
       const atlas = JSON.parse(
         readFileSync(`public/assets/sprites/theme-${l.id}.json`, 'utf8'),
       ) as { frames: Record<string, unknown> };
-      for (const f of [...needed, 'wall-v', 'wall-v-deco', 'front-u', 'front-v']) {
+      // Endausbau nach Deko-Level (`roomLook`): Boden 2/3, Wände 2, Vorderwände mit Blumenkästen
+      const lux = [
+        'floor-2-a',
+        'floor-2-b',
+        'floor-3-a',
+        'floor-3-b',
+        'wall-u-2',
+        'wall-u-2-deco',
+        'wall-v-2',
+        'wall-v-2-deco',
+        'front-u-2',
+        'front-v-2',
+      ];
+      for (const f of [...needed, 'wall-v', 'wall-v-deco', 'front-u', 'front-v', ...lux]) {
         expect(atlas.frames[f], `${l.id}:${f}`).toBeDefined();
       }
     }

@@ -1,17 +1,21 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
+  CHAR_CARRY,
   CHAR_FRAMES,
   CHAR_WALK,
+  CHAR_WORK,
   COUNTER_LOOK_CAFE_LEVELS,
   COUNTER_PROPS,
   CUSTOMER_LOOKS,
+  STAFF_FRAMES,
   STAFF_LOOKS,
-  STAFF_WALKERS,
   STATION_LOOK_LEVELS,
   TABLE_LOOK_LEVELS,
   counterLookTier,
   counterPropsAt,
+  decorFrame,
+  roomLook,
   nextStationLookLevel,
   nextTableLookLevel,
   staffLookFor,
@@ -110,6 +114,10 @@ describe('Möbel-Atlas (pnpm art)', () => {
       for (const d of layout.decor) {
         const frame = d.wall ? `${d.frame}-${d.wall}` : d.frame;
         expect(furniture.frames[frame], frame).toBeDefined();
+        // Endausbau-Tausch (`DECOR_UPGRADES`) muss ebenfalls gezeichnet sein
+        const lux = decorFrame(d.frame, 30);
+        const luxFrame = d.wall ? `${lux}-${d.wall}` : lux;
+        expect(furniture.frames[luxFrame], luxFrame).toBeDefined();
       }
   });
   it('enthält Ambiente (Tische als `table-*`)', () => {
@@ -162,27 +170,56 @@ describe('Figuren-Atlas (pnpm art)', () => {
         }
     }
   });
-  it('enthält jeden Personal-Look; Lauf-Frames nur für Rollen, die laufen', () => {
+  it('enthält jeden Personal-Look genau mit den Frames seiner Rolle (beide Richtungen)', () => {
+    const all = [CHAR_FRAMES.stand, ...CHAR_FRAMES.walk, ...CHAR_FRAMES.work, ...CHAR_FRAMES.carry];
     for (const r of STAFF_ROLES) {
-      const walks = STAFF_WALKERS.includes(r.id);
       expect(STAFF_LOOKS[r.id].length).toBeGreaterThan(0);
+      expect(STAFF_FRAMES[r.id]).toContain(CHAR_FRAMES.stand);
       for (const look of STAFF_LOOKS[r.id])
         for (const dir of ['front', 'back']) {
           const name = (f: number) => `staff-${r.id}-${look}-${dir}-${String(f)}`;
-          expect(common.frames[name(CHAR_FRAMES.stand)]).toBeDefined();
-          for (const f of CHAR_FRAMES.walk)
-            expect(common.frames[name(f)] !== undefined).toBe(walks);
+          for (const f of all)
+            expect(common.frames[name(f)] !== undefined, name(f)).toBe(
+              STAFF_FRAMES[r.id].includes(f),
+            );
         }
     }
   });
-  it('Bedienungen und Putzkräfte laufen durchs Café, Verkäufer und Baristas stehen', () => {
-    expect(STAFF_WALKERS).toContain('waiter');
-    expect(STAFF_WALKERS).toContain('cleaner');
-    expect(STAFF_WALKERS).not.toContain('cashier');
-    expect(STAFF_WALKERS).not.toContain('barista');
+  it('Baristas arbeiten, laufen und tragen; Verkäufer tippen; Bedienungen und Putzkräfte laufen', () => {
+    for (const f of [...CHAR_FRAMES.walk, ...CHAR_FRAMES.work, ...CHAR_FRAMES.carry])
+      expect(STAFF_FRAMES.barista).toContain(f);
+    for (const f of CHAR_FRAMES.work) expect(STAFF_FRAMES.cashier).toContain(f);
+    for (const f of CHAR_FRAMES.walk) {
+      expect(STAFF_FRAMES.waiter).toContain(f);
+      expect(STAFF_FRAMES.cleaner).toContain(f);
+      expect(STAFF_FRAMES.cashier).not.toContain(f);
+    }
+    for (const f of CHAR_FRAMES.work) expect(STAFF_FRAMES.cleaner).toContain(f);
   });
-  it('Lauf-Zyklus nutzt nur gerenderte Frames', () => {
+  it('Lauf-, Trage- und Arbeits-Zyklus nutzen nur gerenderte Frames', () => {
     for (const f of CHAR_WALK.cycle) expect([CHAR_FRAMES.stand, ...CHAR_FRAMES.walk]).toContain(f);
+    for (const f of CHAR_CARRY.cycle) expect(CHAR_FRAMES.carry).toContain(f);
+    for (const f of CHAR_WORK.cycle) expect(CHAR_FRAMES.work).toContain(f);
+  });
+});
+
+describe('Endausbau', () => {
+  it('Raum wird mit dem Deko-Level edler: Boden 1→3, Wände 1→2, Fassade 1→2, monoton', () => {
+    expect(roomLook(0)).toEqual({ floor: 1, wall: 1, front: 1 });
+    expect(roomLook(30)).toEqual({ floor: 3, wall: 2, front: 2 });
+    for (let l = 0; l < 30; l++) {
+      const a = roomLook(l);
+      const b = roomLook(l + 1);
+      expect(b.floor).toBeGreaterThanOrEqual(a.floor);
+      expect(b.wall).toBeGreaterThanOrEqual(a.wall);
+      expect(b.front).toBeGreaterThanOrEqual(a.front);
+    }
+    expect(getAmbienceDef('decor').maxLevel).toBeGreaterThanOrEqual(24);
+  });
+  it('Pendelleuchten werden im Endausbau zu Messing-Kugeln', () => {
+    expect(decorFrame('deco-pendant', 0)).toBe('deco-pendant');
+    expect(decorFrame('deco-pendant', 30)).toBe('deco-pendant-lux');
+    expect(decorFrame('deco-monstera', 30)).toBe('deco-monstera');
   });
 });
 
@@ -204,9 +241,14 @@ describe('Figuren (scripts/art/figures.ts)', () => {
     expect(svg.size).toBe(sprites.length);
     for (const s of sprites) expect(s.svg).not.toMatch(/NaN|undefined|Infinity/);
   });
-  it('Lauf-Frames unterscheiden sich vom Stehen', () => {
-    for (const s of sprites.filter((x) => /-(front|back)-[12]$/.test(x.name)))
-      expect(s.svg).not.toBe(svg.get(s.name.replace(/-[12]$/, '-0')));
+  it('Lauf-, Arbeits- und Trage-Frames unterscheiden sich vom Stehen', () => {
+    for (const s of sprites.filter((x) => /-(front|back)-[1-7]$/.test(x.name)))
+      expect(s.svg).not.toBe(svg.get(s.name.replace(/-[1-7]$/, '-0')));
+  });
+  it('Arbeits-Frames wechseln die Handhaltung (3 ≠ 4)', () => {
+    const work = sprites.filter((x) => /-(front|back)-3$/.test(x.name));
+    expect(work.length).toBeGreaterThan(0);
+    for (const s of work) expect(s.svg).not.toBe(svg.get(s.name.replace(/-3$/, '-4')));
   });
   it('Sitzpose unterscheidet sich vom Stehen', () => {
     const seated = sprites.filter((x) => /-sit-(front|back)$/.test(x.name));

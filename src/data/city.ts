@@ -70,6 +70,7 @@ export type PropKind =
   | 'bollard'
   | 'cafeSign'
   | 'pedLight'
+  | 'trafficLight'
   | 'parked'
   | 'railing'
   | 'kiosk'
@@ -254,6 +255,8 @@ export interface CityDef {
   roads: { axis: 'u' | 'v'; at: number }[];
   /** Ausflugsdampfer: Kanal (entlang v) und Spree (entlang u). */
   boats: { axis: 'u' | 'v'; at: number; from: number; to: number }[];
+  /** Hier picken Tauben (Gehweg am Café, gegenüber, am Brunnen); sie fliegen auf, wenn jemand vorbeikommt. */
+  pigeons: { x: number; y: number }[];
 }
 
 /**
@@ -327,6 +330,11 @@ function streetProps(): PropDef[] {
     { kind: 'planter', x: 12.25, y: 5.2 },
     { kind: 'pedLight', x: 12.4, y: 14.8, axis: 'u' },
     { kind: 'pedLight', x: 14.8, y: 12.4, axis: 'v' },
+    // Autoampeln an allen vier Ecken der Kreuzung (Lichter zeigen zur Kamera: entlang x nach +x, entlang y nach +y)
+    { kind: 'trafficLight', x: O + ROAD + 0.6, y: O - 0.6, axis: 'u' },
+    { kind: 'trafficLight', x: O + ROAD + 0.6, y: O + ROAD + 0.6, axis: 'v' },
+    { kind: 'trafficLight', x: O - 0.6, y: O + ROAD + 0.6, axis: 'u' },
+    { kind: 'trafficLight', x: O - 0.6, y: O - 0.6, axis: 'v' },
     { kind: 'busstop', x: 4, y: far + 0.7, axis: 'u' },
     { kind: 'busstop', x: far + 0.7, y: -3, axis: 'v' },
     { kind: 'mailbox', x: 11, y: far - 0.4 },
@@ -600,6 +608,19 @@ function buildCity(): CityDef {
       { axis: 'v', at: (CANAL.x0 + CANAL.x1) / 2, from: -60, to: RIVER_FROM + 4 },
       { axis: 'u', at: RIVER_FROM + 5, from: -70, to: 80 },
     ],
+    pigeons: [
+      { x: 1.2, y: 14.75 },
+      { x: 1.8, y: 14.6 },
+      { x: -3.2, y: 14.7 },
+      { x: 14.7, y: 4.4 },
+      { x: 14.55, y: 5.1 },
+      { x: 8.5, y: 20.9 },
+      { x: 9.1, y: 21.1 },
+      { x: 3.6, y: 28.1 },
+      { x: 4.0, y: 29.4 },
+      { x: 7.3, y: 28.2 },
+      { x: 7.0, y: 29.5 },
+    ],
   };
 }
 
@@ -621,6 +642,11 @@ export const STREET_LIFE = {
   /** Ampel: Grünphase je Achse, danach alles Rot, damit die Kreuzung frei wird. */
   greenSec: 9,
   allRedSec: 2.5,
+  /** Die letzten Sekunden der Grünphase zeigt die Ampel Gelb, die letzte Sekunde vor Grün Rot-Gelb (Deutschland). */
+  yellowSec: 2,
+  redYellowSec: 1,
+  /** Bei Gelb fährt nur noch, wer schon so nah (Kacheln) an der Haltelinie ist. */
+  yellowCommit: 1.2,
   walkers: 16,
   walkerTilesPerSec: 1.15,
   /** Pause, bevor ein Passant am Ende seines Wegs neu startet (Sekunden, gleichverteilt). */
@@ -631,6 +657,16 @@ export const STREET_LIFE = {
   /** Wendepause am Ende. */
   boatRestSec: 8,
   carTypes: 4,
+  /** Radfahrer im Verkehr: Anteil, Varianten (Frames `car-<carTypes + k>-f|b`), Tempo relativ zu Autos. */
+  bikeShare: 0.28,
+  bikeTypes: 2,
+  bikeSpeed: 0.62,
+  /** Tauben: fliegen auf, wenn ein Passant näher kommt (Kacheln), bleiben eine Weile weg (Sekunden). */
+  pigeonScare: 1.3,
+  pigeonFlySec: 2.2,
+  pigeonAwayMin: 5,
+  pigeonAwayMax: 12,
+  pigeonLandSec: 1.4,
 } as const;
 
 export interface CityPalette {
@@ -841,6 +877,8 @@ export function propFrame(p: PropDef): string {
       return `bench-${p.axis ?? 'u'}`;
     case 'pedLight':
       return 'pedLight-stop';
+    case 'trafficLight':
+      return `tlight-${p.axis ?? 'u'}-red`;
     case 'stall':
       return `stall-${String((p.variant ?? 0) % 4)}`;
     case 'foodtruck':

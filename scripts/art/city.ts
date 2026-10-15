@@ -728,6 +728,56 @@ function pedLight(go: boolean): string {
   return c.svg();
 }
 
+/**
+ * Autoampel am Mast: schwarzes Gehäuse mit weiß umrandeter Kontrastblende, drei Lichter mit Schute. Die Lichter
+ * zeigen zur Kamera: Achse `u` nach +x (Fahrbahn entlang x), `v` nach +y. `state` = was leuchtet.
+ */
+function trafficLight(axis: 'u' | 'v', state: 'red' | 'redYellow' | 'green' | 'yellow'): string {
+  const c = canvasOf(CITY_SPRITE.prop);
+  const head = C.ink;
+  c.shadowDisc(0, 0, 0, 0.09, 0.22);
+  c.cylinder(0, 0, 0, 0.05, 3, IRON, tint(IRON, 0.2));
+  c.cylinder(0, 0, 3, 0.026, 60, IRON, tint(IRON, 0.2));
+  c.shine(0, 0, 3, 0.026, 60, IRON, 0.25);
+  const z0 = 34;
+  const h = 26;
+  // Lichtebene: Fläche u = face (Achse u) bzw. v = face (Achse v); a = Lage entlang der Fläche.
+  const face = 0.075;
+  const disc = (a: number, z: number, r: number, color: string, opacity = 1) => {
+    const pts: Vec3[] = [];
+    for (let i = 0; i < 18; i++) {
+      const t = (i / 18) * Math.PI * 2;
+      const da = Math.cos(t) * r;
+      const dz = Math.sin(t) * r * Z_PER_TILE;
+      pts.push(axis === 'u' ? [face + 0.002, a + da, z + dz] : [a + da, face + 0.002, z + dz]);
+    }
+    c.poly(pts, color, opacity);
+  };
+  const plate = (a0: number, w: number, zz: number, hh: number, color: string, off: number) =>
+    axis === 'u'
+      ? c.wallU(face - off, a0, zz, w, hh, shade(color, 0.7))
+      : c.wallV(a0, face - off, zz, w, hh, shade(color, 0.85));
+  // Kontrastblende (weißer Rand, schwarz), dahinter das Gehäuse
+  plate(-0.1, 0.2, z0 - 3, h + 6, C.white, 0.03);
+  plate(-0.09, 0.18, z0 - 2, h + 4, head, 0.029);
+  if (axis === 'u') c.box(-0.02, -0.06, z0, 0.095, 0.12, h, head);
+  else c.box(-0.06, -0.02, z0, 0.12, 0.095, h, head);
+  const lamps: { z: number; on: boolean; color: string }[] = [
+    { z: z0 + h - 5, on: state === 'red' || state === 'redYellow', color: '#ff4b3e' },
+    { z: z0 + h / 2, on: state === 'yellow' || state === 'redYellow', color: '#ffc42e' },
+    { z: z0 + 5, on: state === 'green', color: '#3ee07a' },
+  ];
+  for (const l of lamps) {
+    if (l.on) disc(0, l.z, 0.075, l.color, 0.3);
+    disc(0, l.z, 0.048, l.on ? l.color : shade(l.color, 0.32));
+    if (l.on) disc(-0.012, l.z + 1.2, 0.016, tint(l.color, 0.7));
+    // Schute über dem Licht
+    if (axis === 'u') c.box(face, -0.05, l.z + 3.2, 0.03, 0.1, 1, shade(head, 1.2));
+    else c.box(-0.05, face, l.z + 3.2, 0.1, 0.03, 1, shade(head, 1.2));
+  }
+  return c.svg();
+}
+
 /** Brückengeländer: Sandstein-Pfosten mit Eisenstäben, 1,5 Kacheln entlang u. */
 function railing(): string {
   const c = canvasOf(CITY_SPRITE.railing);
@@ -802,6 +852,100 @@ function car(style: CarStyle, heading: 'f' | 'b'): string {
     c.box(-0.06, -0.06, top, 0.12, 0.12, 3, C.gold);
     c.flat(-0.06, -0.06, top + 3, 0.12, 0.12, tint(C.gold, 0.4));
   }
+  return c.svg();
+}
+
+/** Radfahrer entlang u: Fahrrad mit dünnen Rädern, Figur mit Helm; „f“ = fährt nach +u. */
+interface BikeStyle {
+  frame: string;
+  jacket: string;
+  helmet: string;
+  pants: string;
+  bag?: string;
+}
+const BIKES: BikeStyle[] = [
+  { frame: C.cobalt, jacket: '#f2c14e', helmet: C.white, pants: C.ink },
+  { frame: C.red, jacket: '#77c4b1', helmet: C.ink, pants: '#5a6b8c', bag: C.orange },
+];
+
+function bike(style: BikeStyle, heading: 'f' | 'b'): string {
+  const c = canvasOf(CITY_SPRITE.car);
+  const s = heading === 'f' ? 1 : -1;
+  const r = 0.12;
+  const wz = r * Z_PER_TILE;
+  c.shadow(-0.34, -0.06, 0, 0.68, 0.12, 0.26, 1.2);
+  const ring = (u: number) => {
+    const pts: Vec3[] = [];
+    const inner: Vec3[] = [];
+    for (let i = 0; i < 18; i++) {
+      const a = (i / 18) * Math.PI * 2;
+      pts.push([u + Math.cos(a) * r, 0, wz + Math.sin(a) * wz]);
+      inner.push([u + Math.cos(a) * r * 0.78, 0.001, wz + Math.sin(a) * wz * 0.78]);
+    }
+    c.poly(pts, C.ink);
+    c.poly(inner, '#b9c1cf', 0.55);
+    c.disc(u, 0.002, wz, 0.012, C.stainlessDark);
+  };
+  const back = -0.22 * s;
+  const front = 0.22 * s;
+  ring(back);
+  ring(front);
+  // Rahmen als dünne Streben (Bildschirmlinien)
+  const line = (a: Vec3, b: Vec3, color: string, w = 1.1) => {
+    const [x0, y0] = c.p(a);
+    const [x1, y1] = c.p(b);
+    c.raw(
+      `<line x1="${x0.toFixed(2)}" y1="${y0.toFixed(2)}" x2="${x1.toFixed(2)}" y2="${y1.toFixed(2)}" stroke="${color}" stroke-width="${String(w)}" stroke-linecap="round"/>`,
+    );
+  };
+  const seat: Vec3 = [-0.06 * s, 0, 9.5];
+  const bar: Vec3 = [0.16 * s, 0, 11];
+  const crank: Vec3 = [0, 0, wz];
+  line([back, 0, wz], crank, style.frame);
+  line([back, 0, wz], seat, style.frame);
+  line(crank, seat, style.frame);
+  line(crank, [0.14 * s, 0, 9.4], style.frame);
+  line([0.14 * s, 0, 9.4], seat, style.frame);
+  line([front, 0, wz], bar, style.frame);
+  line(bar, [0.13 * s, 0, 11.6], C.ink, 1.4);
+  // Fahrer: Bein, Rumpf, Arm, Kopf mit Helm
+  line(seat, [0.04 * s, 0.02, wz + 1.2], style.pants, 2.2);
+  c.box(-0.11 * s - 0.05, -0.05, 9.5, 0.1, 0.1, 9, style.jacket);
+  if (style.bag) c.box(-0.11 * s - 0.09, -0.06, 11, 0.06, 0.12, 6, style.bag);
+  line([-0.06 * s, 0.04, 17], [0.13 * s, 0.04, 11.6], style.jacket, 1.8);
+  c.box(-0.07 * s - 0.045, -0.045, 18.5, 0.09, 0.09, 6, C.skin);
+  c.dome(-0.07 * s, 0, 23.6, 0.065, 3.2, style.helmet);
+  // Licht vorn bzw. Rücklicht
+  const [lx, ly] = c.p([(heading === 'f' ? 0.17 : 0.27) * s, 0.01, 10.4]);
+  c.raw(
+    `<circle cx="${lx.toFixed(2)}" cy="${ly.toFixed(2)}" r="0.9" fill="${heading === 'f' ? C.led : C.red}"/>`,
+  );
+  return c.svg();
+}
+
+/** Taube: grau mit grün schimmerndem Hals; stehend, pickend, fliegend (Flügel oben/unten). */
+function pigeon(pose: 'stand' | 'peck' | 'fly0' | 'fly1'): string {
+  const c = new IsoCanvas(20, 18, 10, 13);
+  const grey = '#8d93a6';
+  if (pose === 'stand' || pose === 'peck') c.shadowDisc(0, 0, 0, 0.06, 0.2, 0.8);
+  const z = pose === 'fly0' || pose === 'fly1' ? 3 : 0;
+  c.box(-0.06, -0.025, z + 1.2, 0.12, 0.05, 2.6, grey);
+  c.box(-0.11, -0.015, z + 2, 0.05, 0.03, 1, shade(grey, 0.75));
+  const head: Vec3 = pose === 'peck' ? [0.08, 0, z + 1.4] : [0.065, 0, z + 4.2];
+  c.box(head[0] - 0.025, -0.02, head[2], 0.045, 0.04, 2, '#5f7a7a');
+  c.box(head[0] + 0.02, -0.006, head[2] + 0.6, 0.02, 0.012, 0.6, '#d9b38c');
+  if (pose === 'stand' || pose === 'peck') {
+    c.box(-0.01, -0.012, 0, 0.012, 0.012, 1.2, '#d97a6a');
+    c.box(0.02, -0.012, 0, 0.012, 0.012, 1.2, '#d97a6a');
+    return c.svg();
+  }
+  const [wx, wy] = c.p([0, 0, z + 3.6]);
+  const up = pose === 'fly0';
+  const n = (v: number) => v.toFixed(2);
+  c.raw(
+    `<path d="M${n(wx - 1)},${n(wy)} Q${n(wx - 4)},${n(wy + (up ? -5 : 3))} ${n(wx - 8)},${n(wy + (up ? -6 : 4))} L${n(wx)},${n(wy + 1)} Z" fill="${shade(grey, 0.9)}"/>` +
+      `<path d="M${n(wx + 1)},${n(wy)} Q${n(wx + 4)},${n(wy + (up ? -5 : 3))} ${n(wx + 8)},${n(wy + (up ? -6 : 4))} L${n(wx)},${n(wy + 1)} Z" fill="${tint(grey, 0.15)}"/>`,
+  );
   return c.svg();
 }
 
@@ -1152,6 +1296,12 @@ export function citySprites(): SpriteDef[] {
     { name: 'cafeSign', svg: cafeSign() },
     { name: 'pedLight-stop', svg: pedLight(false) },
     { name: 'pedLight-go', svg: pedLight(true) },
+    ...(['u', 'v'] as const).flatMap((axis) =>
+      (['red', 'redYellow', 'green', 'yellow'] as const).map((st) => ({
+        name: `tlight-${axis}-${st}`,
+        svg: trafficLight(axis, st),
+      })),
+    ),
     { name: 'railing', svg: railing() },
     { name: 'boat-f', svg: boat('f') },
     { name: 'boat-b', svg: boat('b') },
@@ -1173,5 +1323,13 @@ export function citySprites(): SpriteDef[] {
     out.push({ name: `car-${String(i)}-f`, svg: car(s, 'f') });
     out.push({ name: `car-${String(i)}-b`, svg: car(s, 'b') });
   });
+  // Radfahrer: Typen nach den Autos (`STREET_LIFE.bikeTypes`)
+  BIKES.forEach((s, i) => {
+    const t = CARS.length + i;
+    out.push({ name: `car-${String(t)}-f`, svg: bike(s, 'f') });
+    out.push({ name: `car-${String(t)}-b`, svg: bike(s, 'b') });
+  });
+  for (const pose of ['stand', 'peck', 'fly0', 'fly1'] as const)
+    out.push({ name: `pigeon-${pose}`, svg: pigeon(pose) });
   return out;
 }
