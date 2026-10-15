@@ -13,7 +13,7 @@ Design vom Laden, dass das am Ende ein richtig mega fancy designter, detailreich
 des Session-Plans (wie PR #14–#16); S12 bleibt die nächste Plan-Session. Basis ist `main` mit PR #16.
 
 ## Fertig
-### Bugjagd Stadt & Szene (parallel, PR folgt)
+### Bugjagd Stadt & Szene (parallel, PR #18)
 Vorgabe Vincent (2026-10-15): „Nach Bugs suchen, z. B. die Bushaltestelle ist in die falsche Richtung ausgerichtet,
 davor steht ein Baum, Boote fließen durch die Straße, Autos fahren aus der Map raus usw.“ Ad-hoc-Session außerhalb des
 Session-Plans, parallel zu „Café-Grundriss“ und „Deko & Stadt-Objekte neu gezeichnet“ (Branch `fix/bugjagd-stadt`).
