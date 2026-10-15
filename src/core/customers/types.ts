@@ -1,4 +1,10 @@
-import { CUSTOMER_SHARE_SHIFT, CUSTOMER_TYPES, type CustomerTypeId } from '@data/customerTypes';
+import {
+  CUSTOMER_EFFECTS,
+  CUSTOMER_SHARE_SHIFT,
+  CUSTOMER_TYPES,
+  type CustomerTypeId,
+} from '@data/customerTypes';
+import { BALANCE } from '@data/balance';
 
 /** Normierte Anteile der Kundentypen für einen Standort (GAME_DESIGN § 7.5). */
 export function customerTypeShares(locationId: string): Record<CustomerTypeId, number> {
@@ -21,4 +27,37 @@ export function pickCustomerType(
     if (roll < acc) return t.id;
   }
   return last;
+}
+
+/**
+ * Zufriedenheits-Anteil am Trinkgeld (0..1+): Kritiker zählen die Abweichung vom neutralen Wert doppelt,
+ * positiv wie negativ (GAME_DESIGN § 7.5); negatives Trinkgeld gibt es nicht.
+ */
+export function tipSatisfactionTerm(satisfaction: number, criticShare: number): number {
+  const s = satisfaction / 100;
+  const neutral = BALANCE.satisfaction.base / 100;
+  const critic = Math.max(0, neutral + (s - neutral) * CUSTOMER_EFFECTS.criticSatisfactionWeight);
+  return (1 - criticShare) * s + criticShare * critic;
+}
+
+/** Faktor auf das gesamte Trinkgeld durch Stammgäste. */
+export function regularTipMult(regularShare: number): number {
+  return 1 + CUSTOMER_EFFECTS.regularTipBonus * regularShare;
+}
+
+/**
+ * Erwarteter Spawn-Faktor durch Influencer-Hype: Influencer kommen als Poisson-Strom mit `rate`/s, jeder
+ * hält 5 s Hype. Anteil der Zeit mit Hype = 1 − e^(−rate·5 s); überlappende Hypes stapeln nicht.
+ */
+export function influencerHypeMult(influencerRate: number): number {
+  const h = CUSTOMER_EFFECTS.influencerHype;
+  if (!(influencerRate > 0)) return 1;
+  return 1 + (h.spawnMult - 1) * (1 - Math.exp(-influencerRate * h.durationSec));
+}
+
+/** Gewicht einer Station bei der Verteilung der Kunden (Touristen kaufen eher Merch). */
+export function stationDemandWeight(stationId: string, touristShare: number): number {
+  return stationId === CUSTOMER_EFFECTS.merchStationId
+    ? 1 + CUSTOMER_EFFECTS.touristMerchBonus * touristShare
+    : 1;
 }

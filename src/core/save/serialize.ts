@@ -3,6 +3,7 @@ import { getCalendarEventDef, getRandomEventDef } from '@data/events';
 import { BOOST_RULES, LEAF_DROPS, getSkinDef } from '@data/leaves';
 import { FREE_BOOST } from '@data/monetization';
 import { AUDIO_DEFAULTS } from '@data/audio';
+import { TUTORIAL_STEPS } from '@data/tutorial';
 import { hashString } from '../math/random';
 import { D, Decimal, isDecimalNaN } from '../math/bignum';
 import {
@@ -256,5 +257,13 @@ export function deserialize(text: string): GameState {
     tap: reviveTap(raw['tap']),
     stats: reviveStats(raw['stats']),
     quests: reviveQuests(raw['quests']),
+    tutorial: reviveTutorial(raw['tutorial']),
   };
+}
+
+/** Kaputter Tutorial-Stand → als erledigt werten (lieber kein Tutorial als eines, das hängt). */
+function reviveTutorial(raw: unknown): GameState['tutorial'] {
+  if (!isObj(raw)) return { step: 0, done: true };
+  const step = Math.max(0, Math.floor(num(raw['step'], 0)));
+  return { step, done: raw['done'] === true || step >= TUTORIAL_STEPS.length };
 }

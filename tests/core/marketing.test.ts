@@ -75,7 +75,6 @@ describe('Aktive Kampagne', () => {
 
   it('läuft 10 min mit ×2 Spawn, danach 30 min Abklingzeit, dann wieder bereit', () => {
     const s = make();
-    const before = computeLocationRates(s, LOC).spawnRate;
     let n = startCampaign(s, LOC);
     expect(loc(n).coins.lt(loc(s).coins)).toBe(true);
     expect(campaignStatus(loc(n), n.playtimeSec)).toEqual({
@@ -83,7 +82,11 @@ describe('Aktive Kampagne', () => {
       remainingSec: M.campaignDurationSec,
     });
     expect(collectModifiers(n, LOC).spawnMult).toBe(M.campaignSpawnMult);
-    expect(computeLocationRates(n, LOC).spawnRate).toBeCloseTo(before * 2);
+    // ×2 auf den Spawn (ohne Influencer-Hype gerechnet, der nur die Nachfrage hebt).
+    const off = { influencerHype: false };
+    expect(computeLocationRates(n, LOC, off).spawnRate).toBeCloseTo(
+      computeLocationRates(s, LOC, off).spawnRate * 2,
+    );
     // Während der Kampagne kein zweiter Start.
     expect(startCampaign(n, LOC)).toBe(n);
 

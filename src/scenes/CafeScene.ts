@@ -66,7 +66,9 @@ const OVERLAY_SIZE = 20_000;
 /** Tiefe nach Grid-Position; Feinsortierung innerhalb einer Diagonale über `bias`. */
 const isoDepth = (x: number, y: number, bias = 0): number => (x + y) * 10 + bias;
 
-const reducedMotion = (): boolean => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+// Einmal abfragen, `matches` folgt Änderungen live (vorher lief `matchMedia` in jedem Frame).
+const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+const reducedMotion = (): boolean => motionQuery.matches;
 
 /** Blickrichtung einer Figur aus einem Bewegungs-/Blickvektor im Grid. */
 function facing(dx: number, dy: number): { dir: 'front' | 'back'; flip: boolean } {
@@ -185,11 +187,6 @@ export class CafeScene extends Phaser.Scene {
     );
     this.rings = this.add.graphics().setDepth(DEPTH.label - 2);
     this.createStaff();
-    for (let i = 0; i < POPUP_POOL; i++) {
-      this.popups.push(
-        this.makeText(12, UI_THEME.goldCss).setVisible(false).setDepth(DEPTH.overlay),
-      );
-    }
     for (let i = 0; i < EMOTE_POOL; i++) {
       this.emotes.push(
         this.sprite(0, 0, FRAME.emote('heart'))
@@ -229,12 +226,17 @@ export class CafeScene extends Phaser.Scene {
     this.input.on('pointerup', (p: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) =>
       this.onPointerUp(p, over),
     );
-    if (import.meta.env.DEV) this.input.keyboard?.on('keydown-B', () => this.debugBuy());
+    // Debug-Taste über das DOM: der schlanke Phaser-Build (src/phaserCustom.js) hat kein Keyboard-Plugin.
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'b' || e.key === 'B') this.debugBuy();
+    };
+    if (import.meta.env.DEV) window.addEventListener('keydown', onKey);
     const onLang = (): void => this.relabel();
     this.game.events.on(UI_EVENTS.langChanged, onLang);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.game.events.off(UI_EVENTS.langChanged, onLang);
       this.scale.off('resize', onResize);
+      window.removeEventListener('keydown', onKey);
     });
     this.refreshStations(state, false);
   }
@@ -845,10 +847,24 @@ export class CafeScene extends Phaser.Scene {
     this.game.events.emit(UI_EVENTS.sfx, 'coin');
   }
 
+  /**
+   * Pool wächst bei Bedarf bis `POPUP_POOL`: jeder Text ist ein eigenes Canvas mit GPU-Textur, 24 davon
+   * beim Start anzulegen kostete auf schwachen Geräten einen spürbaren Teil des Szenen-Aufbaus.
+   */
+  private freePopup(): Phaser.GameObjects.Text | null {
+    const free = this.popups.find((p) => !p.visible);
+    if (free || this.popups.length >= POPUP_POOL) return free ?? null;
+    const popup = this.makeText(12, UI_THEME.goldCss).setVisible(false).setDepth(DEPTH.overlay);
+    popup.setScale(Phaser.Math.Clamp(1 / this.cameras.main.zoom, 1, LABEL_MAX_SCALE));
+    this.popups.push(popup);
+    return popup;
+  }
+
   private coinPopup(gx: number, gy: number): void {
-    const popup = this.popups.find((p) => !p.visible);
     const r = this.rates;
-    if (!popup || !r || r.served <= 0) return;
+    if (!r || r.served <= 0) return;
+    const popup = this.freePopup();
+    if (!popup) return;
     // Anzeige: durchschnittlicher Umsatz pro bedientem Kunden; die Gutschrift passiert im Rate-Modell.
     const perCustomer = r.incomePerSec.div(new Decimal(r.served));
     const state = this.store.getState();

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createInitialState, getLocation, SCHEMA_VERSION } from '@core/GameState';
 import { D } from '@core/math';
+import { cafeLevelThreshold } from '@core/economy';
 import { tick } from '@core/GameLoop';
 import {
   SAVE_KEY,
@@ -8,6 +9,7 @@ import {
   deserialize,
   exportFilename,
   exportSave,
+  forwardTime,
   importSave,
   loadGame,
   loadWithOffline,
@@ -159,7 +161,7 @@ describe('Storage und Export', () => {
     delete v1['tap'];
     st.setItem('mce.save.v1', JSON.stringify(v1));
     expect(loadGame(st)?.tap.hype).toBe(0);
-    expect(SAVE_KEY).toBe('mce.save.v7');
+    expect(SAVE_KEY).toBe('mce.save.v8');
   });
   it('Laden bringt Offline-Einnahmen und setzt lastSavedAt', () => {
     const st = new MemStorage();
@@ -219,5 +221,70 @@ describe('Save v7 (Lautstärke, S8)', () => {
     const s = deserialize(JSON.stringify(raw)).settings;
     expect(s).toMatchObject({ lang: 'en', sfx: true, sfxVolume: 1, musicVolume: 0 });
     expect(s.numberFormat).toBe('short');
+  });
+});
+
+describe('Save v8 (Tutorial, Café-Level-Stufen, S9)', () => {
+  const v7 = (): Record<string, unknown> => {
+    const raw = JSON.parse(serialize(createInitialState(0))) as Record<string, unknown>;
+    raw['schemaVersion'] = 7;
+    delete raw['tutorial'];
+    return raw;
+  };
+  it('Neues Spiel startet mit Tutorial-Schritt 0', () => {
+    expect(createInitialState(0).tutorial).toEqual({ step: 0, done: false });
+  });
+  it('Migration v7 → v8: Bestandsspieler haben das Tutorial erledigt', () => {
+    const s = deserialize(JSON.stringify(v7()));
+    expect(s.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(s.tutorial).toEqual({ step: 0, done: true });
+  });
+  it('Migration v7 → v8 berechnet das Café-Level neu, der Bestwert bleibt', () => {
+    const raw = v7();
+    const locs = raw['locations'] as Record<string, Record<string, unknown>>;
+    const berlin = locs['berlin'] ?? {};
+    const stations = berlin['stations'] as Record<string, { level: number; unlocked: boolean }>;
+    stations['matchaBar'] = { level: cafeLevelThreshold(4), unlocked: true };
+    berlin['level'] = 9;
+    berlin['bestLevel'] = 9;
+    const loc = getLocation(deserialize(JSON.stringify(raw)), 'berlin');
+    expect(loc.level).toBe(4);
+    expect(loc.bestLevel).toBe(9);
+  });
+  it('liest den alten v7-Schlüssel', () => {
+    const st = new MemStorage();
+    st.setItem('mce.save.v7', JSON.stringify(v7()));
+    expect(loadGame(st)?.tutorial.done).toBe(true);
+  });
+  it('Härtung: kaputter Tutorial-Stand gilt als erledigt, Schritt geklemmt', () => {
+    const raw = JSON.parse(serialize(createInitialState(0))) as Record<string, unknown>;
+    raw['tutorial'] = 'kaputt';
+    expect(deserialize(JSON.stringify(raw)).tutorial.done).toBe(true);
+    raw['tutorial'] = { step: -3, done: false };
+    expect(deserialize(JSON.stringify(raw)).tutorial).toEqual({ step: 0, done: false });
+    raw['tutorial'] = { step: 999, done: false };
+    expect(deserialize(JSON.stringify(raw)).tutorial.done).toBe(true);
+  });
+});
+
+describe('Uhr-Manipulation (S9)', () => {
+  it('Uhr vor- und zurückstellen bringt die Offline-Zeit nicht zweimal', () => {
+    const st = new MemStorage();
+    saveGame(st, createInitialState(0), 1000);
+    const day = 24 * 3_600_000;
+    // Uhr +1 Tag: einmal Offline-Einnahmen (gedeckelt), dann wird bei „zurückgestellter“ Uhr gespeichert.
+    const first = loadWithOffline(st, 1000 + day);
+    expect(first?.offline.earned.gt(0)).toBe(true);
+    if (!first) throw new Error('kein Stand');
+    saveGame(st, first.state, 2000);
+    expect(loadGame(st)?.lastSavedAt).toBe(1000 + day);
+    // Wieder +1 Tag ab der echten Zeit: der Zeitstempel steht schon dort, also nichts.
+    const again = loadWithOffline(st, 1000 + day);
+    expect(again?.offline.earned.toNumber()).toBe(0);
+  });
+  it('forwardTime ignoriert ungültige Uhrzeiten', () => {
+    expect(forwardTime(500, Number.NaN)).toBe(500);
+    expect(forwardTime(500, 400)).toBe(500);
+    expect(forwardTime(500, 600)).toBe(600);
   });
 });

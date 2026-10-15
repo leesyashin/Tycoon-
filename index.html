@@ -4,14 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#1d457b" />
-    <link rel="manifest" href="/Tycoon-/manifest.webmanifest" />
-    <link rel="icon" href="/Tycoon-/assets/ui/icon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/assets/ui/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/assets/ui/icon-192.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="description" content="Idle tycoon game: build a matcha café empire." />
     <title>Matcha Café Empire</title>
   </head>
   <body>
     <div id="app">
       <div id="game"></div>
       <div id="ui"></div>
+    </div>
+    <div id="splash" class="splash" aria-hidden="true">
+      <img src="/assets/ui/icon.svg" alt="" width="96" height="96" />
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

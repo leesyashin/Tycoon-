@@ -26,12 +26,15 @@ import { createManageTabs, type ManageTab } from './manageTabs';
 import { createStatsPanel } from './statsPanel';
 import { createAmbienceObjectPanel, type ObjectRef } from './stationPanel';
 import { createPanelHost, type PanelContent, type PanelRequest } from './panel';
-import { clearIndexedDbBackups, startPersistence } from './persistence';
+import { clearIndexedDbBackups, listIndexedDbBackups, startPersistence } from './persistence';
 import { createSettingsPanel } from './settingsPanel';
 import { createShopPanel } from './shopPanel';
 import { createStationPanel } from './stationPanel';
 import { unlockLabel } from './labels';
 import { createToaster } from './toast';
+import { createTutorial } from './tutorial';
+import type { PwaHooks } from './pwa';
+import { restartTutorial } from '@core/tutorial';
 import { fmt, fmtTime } from './format';
 import type { OfflineResult } from '@core/economy';
 import { UI_CONFIG } from '@data/ui';
@@ -52,6 +55,9 @@ export interface App {
   openStation(id: string): void;
   showOffline(result: OfflineResult): void;
   toastError(text: string): void;
+  /** Nach einem kaputten Spielstand: neueste lesbare Sicherung anbieten (PLAN S9 „Robustheit“). */
+  offerBackupAfterLoadFailure(): Promise<void>;
+  pwa: PwaHooks;
 }
 
 export function applyDocumentLang(lang: Lang): void {
@@ -69,7 +75,8 @@ export function startApp(o: AppOptions): App {
   const navSlot = h('div', { class: 'nav-host' });
   const panels = createPanelHost(store);
   const toaster = createToaster();
-  root.append(hudSlot, eventSlot, panels.el, navSlot, toaster.el);
+  const tutorialSlot = h('div', { class: 'tutorial-slot' });
+  root.append(hudSlot, eventSlot, panels.el, navSlot, tutorialSlot, toaster.el);
   // Einziger Weg zu Werbung/Käufen; mit `MONETIZATION_ENABLED = false` immer der No-op-Provider.
   const monetization = createMonetizationProvider();
 
@@ -117,7 +124,24 @@ export function startApp(o: AppOptions): App {
   const settingsReq = screen('settings', () =>
     createSettingsPanel(
       store,
-      { exportSave: doExport, importSave: doImport, deleteSave: () => void doDelete() },
+      {
+        exportSave: doExport,
+        importSave: doImport,
+        deleteSave: () => void doDelete(),
+        restartTutorial: () => {
+          store.dispatch(restartTutorial);
+          panels.close();
+        },
+        listBackups: async () =>
+          (await readableBackups()).map((b) => ({ savedAt: b.savedAt, label: backupLabel(b) })),
+        restoreBackup: (savedAt) => void doRestore(savedAt),
+        canInstall: () => installApp !== null,
+        install: () => {
+          void installApp?.().then((ok) => {
+            if (ok) toaster.show(t('toast.installed'), 'success');
+          });
+        },
+      },
       o.version,
     ),
   );
@@ -155,6 +179,7 @@ export function startApp(o: AppOptions): App {
   let unmountHud: (() => void) | null = null;
   let unmountCard: (() => void) | null = null;
   let unmountNav: (() => void) | null = null;
+  let unmountTutorial: (() => void) | null = null;
   let nav: Nav | null = null;
   const build = (): void => {
     unmountHud?.();
@@ -178,6 +203,13 @@ export function startApp(o: AppOptions): App {
     nav = createNav((id) => toggle(requests[id]));
     nav.setBadge('achievements', claimableQuests(store.getState()));
     unmountNav = mount(navSlot, nav, store);
+    // Nach der Leiste, damit die Ziel-Elemente schon im DOM stehen.
+    unmountTutorial?.();
+    unmountTutorial = mount(
+      tutorialSlot,
+      createTutorial(store, () => panels.current() !== null),
+      store,
+    );
   };
   build();
 
@@ -205,6 +237,72 @@ export function startApp(o: AppOptions): App {
     store.dispatch(() => imported);
     persistence.save();
     toaster.show(t('toast.imported'), 'success');
+  }
+
+  let installApp: (() => Promise<boolean>) | null = null;
+  let updateOffered = false;
+  const pwa: PwaHooks = {
+    onUpdate(apply) {
+      if (updateOffered) return;
+      updateOffered = true;
+      void showDialog(root, {
+        title: t('dialog.update.title'),
+        body: [t('dialog.update.body')],
+        confirm: t('dialog.update.confirm'),
+        cancel: t('dialog.update.later'),
+        testId: 'dialog-update',
+      }).then((yes) => {
+        if (!yes) return;
+        // Erst sichern: das Neuladen kommt sonst dem nächsten Autosave zuvor.
+        persistence.save();
+        apply();
+      });
+    },
+    onOfflineReady: () => toaster.show(t('toast.offlineReady'), 'success'),
+    onInstallable(fn) {
+      installApp = fn;
+    },
+  };
+
+  /** Sicherungen, die sich auch wirklich laden lassen (kaputte fallen still heraus). */
+  async function readableBackups(): Promise<{ savedAt: number; state: GameState; text: string }[]> {
+    const list = await listIndexedDbBackups().catch(() => []);
+    const out: { savedAt: number; state: GameState; text: string }[] = [];
+    for (const b of list) {
+      try {
+        out.push({ savedAt: b.savedAt, state: importSave(b.text), text: b.text });
+      } catch {
+        // unlesbar → nicht anbieten
+      }
+    }
+    return out;
+  }
+
+  function backupLabel(b: { savedAt: number; state: GameState }): string {
+    const date = new Date(b.savedAt).toLocaleString(getLang(), {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    });
+    const level = getLocation(b.state, b.state.activeLocationId).level;
+    return t('settings.backupLabel', { date, level });
+  }
+
+  async function doRestore(savedAt: number): Promise<void> {
+    const b = (await readableBackups()).find((x) => x.savedAt === savedAt);
+    if (!b) {
+      toaster.show(t('toast.importFailed'), 'error');
+      return;
+    }
+    const yes = await showDialog(root, {
+      title: t('dialog.restore.title'),
+      body: [t('dialog.restore.body', { label: backupLabel(b) })],
+      confirm: t('dialog.restore.confirm'),
+      cancel: t('ui.cancel'),
+      testId: 'dialog-restore',
+    });
+    if (!yes) return;
+    doImport(b.text);
+    panels.close();
   }
 
   /** Franchise-Reset mit Vorschau (GAME_DESIGN § 11): was verloren geht, wie viel Zen, was es bringt. */
@@ -437,6 +535,25 @@ export function startApp(o: AppOptions): App {
     toastError: (text) => {
       o.sfx?.('error');
       toaster.show(text, 'error');
+    },
+    pwa,
+    async offerBackupAfterLoadFailure() {
+      // Sonst schöbe der frische Spielstand die guten Sicherungen nach 3 Autosaves hinaus.
+      persistence.holdBackups(true);
+      const newest = (await readableBackups())[0];
+      if (!newest) {
+        persistence.holdBackups(false);
+        return;
+      }
+      const yes = await showDialog(root, {
+        title: t('dialog.corrupt.title'),
+        body: [t('dialog.corrupt.body', { label: backupLabel(newest) })],
+        confirm: t('dialog.restore.confirm'),
+        cancel: t('dialog.corrupt.fresh'),
+        testId: 'dialog-corrupt',
+      });
+      if (yes) doImport(newest.text);
+      persistence.holdBackups(false);
     },
   };
 }

@@ -1,4 +1,4 @@
-/** Kundentypen nach GAME_DESIGN § 7.5. Aussehen: Sprites aus `scripts/art/sprites.ts`; Effekte kommen ins Rate-Modell (siehe STATUS „Offen“). */
+/** Kundentypen nach GAME_DESIGN § 7.5. Aussehen: Sprites aus `scripts/art/sprites.ts`; Effekte als Erwartungswert im Rate-Modell. */
 export type CustomerTypeId = 'student' | 'tourist' | 'regular' | 'influencer' | 'critic';
 
 export interface CustomerTypeDef {
@@ -25,3 +25,19 @@ export const CUSTOMER_SHARE_SHIFT: Readonly<
   newyork: { critic: 1.6, tourist: 1.2 },
   bali: { tourist: 1.8 },
 };
+
+/**
+ * Kleine Effekte der Kundentypen (GAME_DESIGN § 7.5). Das Rate-Modell rechnet sie als Erwartungswert über die
+ * Anteile am Standort; die Figuren in der Szene bleiben kosmetisch.
+ */
+export const CUSTOMER_EFFECTS = {
+  /** Merch-Station bekommt bei Touristen +50 % Gewicht in der Verteilung der Kunden. */
+  merchStationId: 'merchShelf',
+  touristMerchBonus: 0.5,
+  /** Stammgäste geben +10 % Trinkgeld. */
+  regularTipBonus: 0.1,
+  /** Kritiker: Abweichung der Zufriedenheit vom neutralen Wert zählt beim Trinkgeld doppelt. */
+  criticSatisfactionWeight: 2,
+  /** Influencer lösen je 5 s „Hype“ aus (Spawn ×1.5); überlappende Hypes verlängern nicht. */
+  influencerHype: { spawnMult: 1.5, durationSec: 5 },
+} as const;

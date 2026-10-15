@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 test('Café-Szene läuft ohne Fehler, auch bei 100 Kunden/s', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto('?lang=de&debugSpawn=100');
+  await page.goto('?lang=de&tutorial=0&debugSpawn=100');
   await expect(page.locator('#game canvas')).toBeVisible();
   await expect(page.getByTestId('hud-income')).toContainText('pro Sek.');
   await page.waitForTimeout(3000);

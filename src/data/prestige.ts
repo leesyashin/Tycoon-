@@ -3,7 +3,7 @@ export const PRESTIGE = {
   /** Reset ist ab diesem Café-Level des Standorts möglich (§ 11.1). */
   resetMinCafeLevel: 10,
   /** zenGain = floor(factor × sqrt(earnedThisRun / (divisor × locationScale)) × (1 + prestigeCount × perPrestige)) */
-  zen: { factor: 3, divisor: 1e6, perPrestige: 0.1 },
+  zen: { factor: 1.8, divisor: 1e6, perPrestige: 0.1 },
 } as const;
 
 export type MetaUpgradeId =

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { BALANCE } from '@data/balance';
 import { STATIONS, getStationDef } from '@data/stations';
 import { createInitialState, getLocation, withLocation } from '@core/GameState';
 import { D } from '@core/math';
@@ -6,6 +7,8 @@ import {
   buyStation,
   collectModifiers,
   computeCafeLevel,
+  cafeLevelProgress,
+  cafeLevelThreshold,
   getBulkCost,
   getCheckoutThroughput,
   getMaxAffordable,
@@ -115,17 +118,32 @@ describe('Preis und Durchsatz', () => {
 });
 
 describe('Café-Level und Käufe', () => {
-  it('Café-Level = floor(Σ Level / 25) + 1, max 50', () => {
+  it('Café-Level aus Σ Stations-Level über die Stufen-Tabelle, max 50', () => {
     const loc = getLocation(fresh(), 'berlin');
+    const at = (level: number) => ({ ...loc, stations: { matchaBar: { level, unlocked: true } } });
+    const { steps, stepAfter } = BALANCE.cafeLevel;
     expect(computeCafeLevel(loc)).toBe(1);
-    const big = { ...loc, stations: { matchaBar: { level: 24, unlocked: true } } };
-    expect(computeCafeLevel(big)).toBe(1);
-    expect(
-      computeCafeLevel({ ...big, stations: { matchaBar: { level: 25, unlocked: true } } }),
-    ).toBe(2);
-    expect(
-      computeCafeLevel({ ...big, stations: { matchaBar: { level: 99999, unlocked: true } } }),
-    ).toBe(50);
+    expect(cafeLevelThreshold(1)).toBe(0);
+    expect(cafeLevelThreshold(2)).toBe(steps[0]);
+    expect(cafeLevelThreshold(3)).toBe((steps[0] ?? 0) + (steps[1] ?? 0));
+    const sumSteps = steps.reduce((a, b) => a + b, 0);
+    expect(cafeLevelThreshold(steps.length + 3)).toBe(sumSteps + 2 * stepAfter);
+    for (const lv of [2, 3, 5, 10, 14, 20]) {
+      expect(computeCafeLevel(at(cafeLevelThreshold(lv) - 1))).toBe(lv - 1);
+      expect(computeCafeLevel(at(cafeLevelThreshold(lv)))).toBe(lv);
+    }
+    expect(computeCafeLevel(at(99999))).toBe(50);
+  });
+  it('Fortschritt zum nächsten Café-Level', () => {
+    const loc = getLocation(fresh(), 'berlin');
+    const at = (level: number) => ({ ...loc, stations: { matchaBar: { level, unlocked: true } } });
+    const t3 = cafeLevelThreshold(3);
+    expect(cafeLevelProgress(at(t3 + 4))).toEqual({
+      done: 4,
+      need: cafeLevelThreshold(4) - t3,
+    });
+    const max = cafeLevelProgress(at(99999));
+    expect(max.done).toBe(max.need);
   });
   it('Kauf zieht Münzen ab und erhöht das Level', () => {
     const s = buyStation(withCoins(100), 'berlin', 'matchaBar', 1);
@@ -161,7 +179,14 @@ describe('Café-Level und Käufe', () => {
   });
   it('Café-Level-Aufstieg schaltet Stationen frei', () => {
     let s = withCoins('1e30');
-    s = buyStation(s, 'berlin', 'matchaBar', 100);
+    // Matcha-Bar startet auf Level 1; ein Kauf fehlt noch bis Café-Level 5.
+    const base = getLocation(s, 'berlin');
+    const level = cafeLevelThreshold(5) - 1;
+    s = withLocation(s, 'berlin', {
+      ...base,
+      stations: { ...base.stations, matchaBar: { level, unlocked: true } },
+    });
+    s = buyStation(s, 'berlin', 'matchaBar', 1);
     const loc = getLocation(s, 'berlin');
     expect(loc.level).toBe(5);
     expect(loc.stations['bakery']?.unlocked).toBe(true);

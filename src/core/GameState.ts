@@ -7,7 +7,7 @@ import { FREE_BOOST } from '@data/monetization';
 import { AUDIO_DEFAULTS } from '@data/audio';
 import { hashString, rng } from './math/random';
 
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 export interface Settings {
   lang: 'de' | 'en';
@@ -71,6 +71,12 @@ export interface QuestState {
   date: string;
   items: QuestItem[];
   bonusClaimed: boolean;
+}
+
+/** Onboarding-Fortschritt (S9); `done` auch nach „Überspringen“. Logik in `core/tutorial`. */
+export interface TutorialState {
+  step: number;
+  done: boolean;
 }
 
 /** Lebenslange Zähler für Statistik, Achievements und Quests (überleben später auch Prestige). */
@@ -161,6 +167,7 @@ export interface GameState {
   quests: QuestState;
   tap: TapState;
   stats: Stats;
+  tutorial: TutorialState;
 }
 
 /** Neuer Standort im Startzustand; Start-Münzen skalieren wie alle Preise mit dem Standort. */
@@ -247,6 +254,7 @@ export function createInitialState(now: number, lang: 'de' | 'en' = 'en'): GameS
     quests: { date: '', items: [], bonusClaimed: false },
     tap: createTapState(),
     stats: createStats(),
+    tutorial: { step: 0, done: false },
   };
 }
 

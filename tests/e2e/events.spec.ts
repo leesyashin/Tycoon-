@@ -56,7 +56,7 @@ const leavesInHud = async (page: Page): Promise<string> =>
   (await page.getByTestId('hud-leaves').innerText()).replace(/\D+/g, '');
 
 test('Blätter-Shop: Zeitsprung, Boost, Skin – über das „+“ am Blätter-Stand', async ({ page }) => {
-  await page.goto('?lang=de');
+  await page.goto('?lang=de&tutorial=0');
   await expect(page.getByTestId('hud')).toBeVisible();
   await reloadWithSave(page, { leaves: '40' });
   await page.getByTestId('hud-leaf-shop').click();
@@ -78,7 +78,7 @@ test('Blätter-Shop: Zeitsprung, Boost, Skin – über das „+“ am Blätter-S
 });
 
 test('Skin kaufen, ablegen, anlegen', async ({ page }) => {
-  await page.goto('?lang=de');
+  await page.goto('?lang=de&tutorial=0');
   await expect(page.getByTestId('hud')).toBeVisible();
   await reloadWithSave(page, { leaves: '30' });
   await page.getByTestId('hud-leaf-shop').click();
@@ -93,7 +93,7 @@ test('Skin kaufen, ablegen, anlegen', async ({ page }) => {
 test('Event: Karte, Detail, Lieferengpass beheben (+5 🍃), axe', async ({ page }) => {
   // Die Karte wippt sonst endlos und ist für Playwright nie „stabil“ klickbar.
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('?lang=de');
+  await page.goto('?lang=de&tutorial=0');
   await expect(page.getByTestId('hud')).toBeVisible();
   await reloadWithSave(page, {
     leaves: '0',
@@ -115,7 +115,7 @@ test('Event: Karte, Detail, Lieferengpass beheben (+5 🍃), axe', async ({ page
 });
 
 test('Event endet während der Abwesenheit und wird beim Laden abgeschlossen', async ({ page }) => {
-  await page.goto('?lang=de');
+  await page.goto('?lang=de&tutorial=0');
   await expect(page.getByTestId('hud')).toBeVisible();
   await reloadWithSave(page, {
     leaves: '0',
@@ -139,7 +139,7 @@ test('Gratis-Boost über den No-op-Provider; kein Netzwerk-Call außer der eigen
     if (!url.startsWith(origin) && !url.startsWith('data:') && !url.startsWith('blob:'))
       foreign.push(url);
   });
-  await page.goto('?lang=de');
+  await page.goto('?lang=de&tutorial=0');
   await expect(page.getByTestId('hud')).toBeVisible();
   await expect(page.getByTestId('hud-free-boost')).toBeHidden();
   await reloadWithSave(page, { freeBoostAt: 0 });

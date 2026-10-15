@@ -3,6 +3,7 @@ import { SCHEMA_VERSION, createEventSchedule, createStats } from '../GameState';
 import { FREE_BOOST } from '@data/monetization';
 import { AUDIO_DEFAULTS } from '@data/audio';
 import { hashString } from '../math/random';
+import { cafeLevelFromSum } from '../economy/cafeLevel';
 
 type Json = Record<string, unknown>;
 
@@ -111,6 +112,23 @@ export const migrations: ((raw: Json) => Json)[] = [
         musicVolume: AUDIO_DEFAULTS.musicVolume,
       },
     };
+  },
+  // v7 → v8 (S9): Tutorial-Fortschritt; bestehende Spieler kennen das Spiel schon. Café-Level folgt
+  // jetzt einer Stufen-Tabelle, daher aus den Stations-Leveln neu berechnet (Bestwert bleibt).
+  (raw) => {
+    const locations = (raw['locations'] as Record<string, Json> | undefined) ?? {};
+    const next: Record<string, Json> = {};
+    for (const [id, loc] of Object.entries(locations)) {
+      const stations = (loc['stations'] as Record<string, { level?: unknown }> | undefined) ?? {};
+      let sum = 0;
+      for (const st of Object.values(stations)) {
+        if (typeof st.level === 'number' && Number.isFinite(st.level)) sum += Math.max(0, st.level);
+      }
+      const level = cafeLevelFromSum(sum);
+      const best = typeof loc['bestLevel'] === 'number' ? loc['bestLevel'] : level;
+      next[id] = { ...loc, level, bestLevel: Math.max(best, level) };
+    }
+    return { ...raw, schemaVersion: 8, locations: next, tutorial: { step: 0, done: true } };
   },
 ];
 

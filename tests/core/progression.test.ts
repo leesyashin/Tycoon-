@@ -91,8 +91,9 @@ describe('Matcha-Qualität (GAME_DESIGN § 8)', () => {
 describe('Freischalt-Tabelle und Café-Level (GAME_DESIGN § 5.3)', () => {
   it('sammelt Stationen, Ambiente, Personal, Qualität und Marketing je Level', () => {
     const at3 = getUnlocksAt(3).map((u) => `${u.kind}:${u.id}`);
-    expect(at3).toEqual(expect.arrayContaining(['station:icedBar', 'staff:cleaner', 'quality:1']));
-    expect(getUnlocksAt(2).map((u) => u.kind)).toContain('marketing');
+    expect(at3).toEqual(expect.arrayContaining(['station:icedBar', 'quality:1']));
+    const at2 = getUnlocksAt(2).map((u) => `${u.kind}:${u.id}`);
+    expect(at2).toEqual(expect.arrayContaining(['marketing:campaign', 'staff:cleaner']));
     expect(getUnlocksAt(8).map((u) => u.id)).toContain('terrace');
     expect(getUnlocksAt(999)).toEqual([]);
     expect(getNextUnlockLevel(1)).toBe(2);
@@ -305,6 +306,8 @@ describe('Daily Quests (GAME_DESIGN § 13.2)', () => {
     expect(midnight.quests.date).toBe('2026-03-11');
     s = refreshQuests(s, T - 3_000_000, berlin); // 22:40 UTC = 23:40 Berlin, gleicher Tag
     expect(refreshQuests(s, T - 3_000_000, berlin)).toBe(s);
+    // Uhr einen Tag zurück: keine neuen Aufgaben (S9).
+    expect(refreshQuests(midnight, T - 3_600_000 - 86_400_000, berlin)).toBe(midnight);
     // Derselbe Zeitpunkt ist in New York noch der 10. → kein Reset.
     const ny = refreshQuests(fresh(), T - 3_600_000, 300);
     expect(refreshQuests(ny, T, 300)).toBe(ny);

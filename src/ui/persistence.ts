@@ -51,6 +51,33 @@ export async function backupToIndexedDb(state: GameState): Promise<void> {
   }
 }
 
+export interface BackupEntry {
+  savedAt: number;
+  text: string;
+}
+
+/** Sicherungen aus IndexedDB, neueste zuerst; ohne IndexedDB leer. */
+export async function listIndexedDbBackups(): Promise<BackupEntry[]> {
+  if (typeof indexedDB === 'undefined') return [];
+  const db = await openDb();
+  try {
+    const all = await new Promise<unknown[]>((resolve, reject) => {
+      const req = db.transaction(DB_STORE, 'readonly').objectStore(DB_STORE).getAll();
+      req.onsuccess = () => resolve(req.result as unknown[]);
+      req.onerror = () => reject(req.error ?? new Error('IndexedDB read failed'));
+    });
+    const out: BackupEntry[] = [];
+    for (const e of all) {
+      if (typeof e !== 'object' || e === null) continue;
+      const { savedAt, text } = e as Partial<BackupEntry>;
+      if (typeof savedAt === 'number' && typeof text === 'string') out.push({ savedAt, text });
+    }
+    return out.sort((a, b) => b.savedAt - a.savedAt);
+  } finally {
+    db.close();
+  }
+}
+
 export async function clearIndexedDbBackups(): Promise<void> {
   if (typeof indexedDB === 'undefined') return;
   const db = await openDb();
@@ -71,6 +98,8 @@ export interface Persistence {
   /** Stoppt Autosave, z. B. direkt vor dem Löschen, damit `pagehide` nichts zurückschreibt. */
   pause(): void;
   resume(): void;
+  /** Keine neuen IndexedDB-Sicherungen, solange die alten noch gebraucht werden (kaputter Spielstand). */
+  holdBackups(hold: boolean): void;
 }
 
 /** Autosave alle 10 s und bei `visibilitychange`/`pagehide` (PLAN § 2.3). */
@@ -81,6 +110,7 @@ export function startPersistence(
 ): Persistence {
   let paused = false;
   let failed = false;
+  let backupsHeld = false;
   const save = (): boolean => {
     if (!storage || paused) return false;
     try {
@@ -92,10 +122,16 @@ export function startPersistence(
       failed = true;
       return false;
     }
-    backupToIndexedDb(store.getState()).catch(() => undefined);
+    if (!backupsHeld) backupToIndexedDb(store.getState()).catch(() => undefined);
     return true;
   };
-  window.setInterval(save, UI_CONFIG.autosaveMs);
+  // Regelmäßiges Autosave im Leerlauf (serialisieren kostet bei großen Ständen einige ms); beim
+  // Verlassen der Seite dagegen sofort.
+  window.setInterval(() => {
+    if (typeof window.requestIdleCallback === 'function') {
+      window.requestIdleCallback(() => save(), { timeout: UI_CONFIG.autosaveIdleTimeoutMs });
+    } else save();
+  }, UI_CONFIG.autosaveMs);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') save();
   });
@@ -107,6 +143,9 @@ export function startPersistence(
     },
     resume: () => {
       paused = false;
+    },
+    holdBackups: (hold) => {
+      backupsHeld = hold;
     },
   };
 }

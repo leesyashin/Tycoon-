@@ -28,6 +28,7 @@ export function accrueLeafDrops(state: GameState, expected: number): GameState {
 
 /** Neuer lokaler Tag → Zähler zurück (Aufruf aus `progressionStep`, der die Wanduhr kennt). */
 export function refreshLeafDropDay(state: GameState, dateKey: string): GameState {
-  if (state.leafDrops.date === dateKey) return state;
+  // Nur vorwärts, sonst setzte Zurückstellen der Uhr den Tagesdeckel zurück.
+  if (state.leafDrops.date >= dateKey) return state;
   return { ...state, leafDrops: { date: dateKey, count: 0, fraction: state.leafDrops.fraction } };
 }

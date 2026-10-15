@@ -13,3 +13,4 @@ export * from './progression';
 export * from './events';
 export * from './leaves';
 export * from './monetization';
+export * from './tutorial';

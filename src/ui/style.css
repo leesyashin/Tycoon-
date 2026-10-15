@@ -91,6 +91,8 @@
   --z-panel: 20;
   --z-screen: 30;
   --z-dialog: 40;
+  /* Tutorial über Panels, unter Toasts (Abweichung von § 2.4, S9). */
+  --z-tutorial: 45;
   --z-toast: 50;
 
   --actionbar-h: calc(var(--size-btn-round-lg) + var(--edge) * 2);
@@ -982,6 +984,18 @@ button.chip {
   height: 24px;
   accent-color: var(--c-primary);
 }
+.backup-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.backup-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  padding: 4px 0;
+}
 .field-range {
   display: grid;
   grid-template-columns: 1fr;
@@ -1288,12 +1302,116 @@ legend {
 }
 
 /* ---------- Bewegung reduzieren ---------- */
+/* ---------- Splash (S9): deckt nur die Szene ab, bis sie steht; HUD ist schon bedienbar ---------- */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--c-navy);
+  transition: opacity 0.3s;
+}
+.splash--hide {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ---------- Fehler-Boundary (S9) ---------- */
+.error-boundary {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-toast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--c-scrim);
+}
+.error-card {
+  display: block;
+  width: min(100%, 380px);
+}
+.error-detail {
+  font-size: var(--fs-label);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Tutorial (S9, UI_STYLE § 3.5 „Onboarding-Tooltip“) ---------- */
+.tutorial {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-tutorial);
+  pointer-events: none;
+}
+.tutorial--dim:has(.tutorial-ring[hidden]) {
+  background: var(--c-scrim);
+}
+.tutorial-ring {
+  position: fixed;
+  border: 3px solid var(--c-gem);
+  border-radius: var(--r-card);
+  animation: tutorial-pulse 1.4s ease-in-out infinite;
+}
+.tutorial--dim .tutorial-ring {
+  box-shadow: 0 0 0 100vmax var(--c-scrim);
+}
+.tutorial-bubble {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(calc(100vw - 32px), 360px);
+  padding: 14px 16px;
+  border-radius: var(--r-card);
+  background: var(--c-surface);
+  color: var(--c-ink);
+  box-shadow: var(--shadow-float);
+  pointer-events: auto;
+}
+.tutorial-bubble[data-pos='top'] {
+  top: calc(var(--safe-top) + var(--edge) + 56px);
+}
+.tutorial-bubble[data-pos='center'] {
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+.tutorial-count {
+  margin: 0;
+  color: var(--c-ink-muted);
+  font-size: var(--fs-label);
+  font-weight: 500;
+}
+.tutorial-title {
+  margin: 2px 0 6px;
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: 400;
+}
+.tutorial-text {
+  margin: 0;
+  font-size: var(--fs-body);
+}
+.tutorial-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--gap);
+  margin-top: 12px;
+}
+@keyframes tutorial-pulse {
+  50% {
+    border-color: var(--c-surface);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .toast,
-  .event-card {
+  .event-card,
+  .tutorial-ring {
     animation: none;
   }
   .hud-hype-fill,
+  .splash,
   .btn,
   .btn-round {
     transition: none;
