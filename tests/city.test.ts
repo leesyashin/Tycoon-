@@ -256,6 +256,17 @@ describe('Stadtviertel: Ausrichtung der Fahrzeuge und Ampeln', () => {
       expect(axis === 'v' ? dy : dx, label(p)).toBe(lane?.dir);
     }
   });
+
+  it('Fußgängerampeln zeigen quer über ihre Fahrbahn zu den Wartenden gegenüber', () => {
+    const lights = CITY.props.filter((p) => p.kind === 'pedLight');
+    expect(lights.length).toBeGreaterThan(0);
+    for (const p of lights) {
+      const [dx, dy] = propFacing(p) ?? [0, 0];
+      // axis = Fahrbahn, über die der Überweg führt: Blick quer dazu und zur Fahrbahn hin
+      expect(Math.abs(p.axis === 'v' ? dx : dy), label(p)).toBe(1);
+      expect(groundAt(p.x + dx, p.y + dy), label(p)).toBe('road');
+    }
+  });
 });
 
 describe('Stadtviertel: Kamera und Wege', () => {

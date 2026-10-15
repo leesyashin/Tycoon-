@@ -1169,6 +1169,8 @@ export function propFrame(p: PropDef): string {
 
 /** Objekte, die quer gestellt (entlang v) gespiegelt gezeichnet werden. */
 export const FLIP_ON_V: readonly PropKind[] = [
+  // Fußgängerampel: Lichter nach +v; an der Fahrbahn entlang y müssen sie nach +x über die Straße zeigen
+  'pedLight',
   'parked',
   'bikes',
   'scooters',
