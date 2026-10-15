@@ -7,6 +7,9 @@ import {
   STREET_LIFE,
   UPPER_CELLS,
   buildingHeight,
+  busStopClearance,
+  crossingApproaches,
+  doorFronts,
   groundAllows,
   groundAt,
   groundCellFor,
@@ -50,6 +53,12 @@ function samples(r: GridRect): [number, number][] {
   const ys = [r.y0 + e, (r.y0 + r.y1) / 2, r.y1 - e];
   return xs.flatMap((x) => ys.map((y): [number, number] => [x, y]));
 }
+const grow = (r: GridRect, d: number): GridRect => ({
+  x0: r.x0 - d,
+  y0: r.y0 - d,
+  x1: r.x1 + d,
+  y1: r.y1 + d,
+});
 const label = (p: { kind: string; x: number; y: number }) =>
   `${p.kind} (${p.x.toFixed(2)}, ${p.y.toFixed(2)})`;
 
@@ -102,6 +111,39 @@ describe('Stadtviertel: Grundriss', () => {
           if (r.axis !== (p.axis ?? 'u') && overlap(f, r)) bad.add(`${label(p)} auf der Kreuzung`);
     }
     expect([...bad]).toEqual([]);
+  });
+
+  it('keine zwei Objekte auf derselben Stelle', () => {
+    const all = [...CITY.props, ...CITY.backProps];
+    const bad: string[] = [];
+    all.forEach((a, i) => {
+      const fa = grow(propFootprint(a), 0.04);
+      for (const b of all.slice(i + 1)) {
+        if (a.kind === 'railing' && b.kind === 'railing') continue;
+        if (overlap(fa, propFootprint(b))) bad.push(`${label(a)} / ${label(b)}`);
+      }
+    });
+    expect(bad).toEqual([]);
+  });
+
+  it('vor Haltestellen, Haus- und Ladentüren und an den Überwegen bleibt Platz', () => {
+    const zones = [
+      ...CITY.props
+        .filter((p) => p.kind === 'busstop')
+        .map((p) => ({ owner: p, rect: busStopClearance(p), what: 'vor der Haltestelle' })),
+      ...doorFronts().map((rect) => ({ owner: null, rect, what: 'vor einer Tür' })),
+      ...crossingApproaches().map((rect) => ({ owner: null, rect, what: 'am Überweg' })),
+    ];
+    // Ampeln und Poller gehören an den Überweg
+    const crossingFurniture = ['pedLight', 'trafficLight', 'bollard'];
+    const bad: string[] = [];
+    for (const p of CITY.props)
+      for (const z of zones) {
+        if (z.owner === p || (z.what === 'am Überweg' && crossingFurniture.includes(p.kind)))
+          continue;
+        if (overlap(propFootprint(p), z.rect)) bad.push(`${label(p)} ${z.what}`);
+      }
+    expect(bad).toEqual([]);
   });
 
   it('Passanten bleiben auf Gehwegen und Überwegen', () => {

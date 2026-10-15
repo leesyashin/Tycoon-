@@ -10,6 +10,7 @@ import {
   groundCellFor,
   hash01,
   isLitWindow,
+  isStreetTile,
   propCanvas,
   propFrame,
   roofHeight,
@@ -61,9 +62,6 @@ function P(x: number, y: number, z = 0): { x: number; y: number } {
 
 type V3 = readonly [number, number, number];
 
-const inRect = (r: GridRect, x: number, y: number): boolean =>
-  x >= r.x0 && x < r.x1 && y >= r.y0 && y < r.y1;
-
 /** Ursprung eines Sprites aus seiner Leinwand (Bodenpunkt). */
 function originOf(s: { w: number; h: number; ox: number; oy: number }): [number, number] {
   return [s.ox / s.w, s.oy / s.h];
@@ -93,8 +91,6 @@ export class CityView {
   private clock = 0;
   /** Höhe (px) belegter Kacheln: Häuser und die Café-Box; daraus der Verdeckungstest der Fassaden-Module. */
   private readonly occupied = new Map<string, number>();
-  /** Bebaute Blöcke (Fläche ohne Gehweg): Was nicht darin liegt und kein Wasser/Park ist, gilt als Gehweg. */
-  private readonly blocks: GridRect[];
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -107,9 +103,6 @@ export class CityView {
     this.palette = getCityPalette(locationId);
     scene.cameras.main.setBackgroundColor(this.palette.haze);
     this.layer = scene.add.layer().setDepth(LAYER_DEPTH);
-    this.blocks = CITY.ground
-      .filter((a) => a.kind !== 'sidewalk' && a.kind !== 'road' && a.kind !== 'bridge')
-      .map((a) => a.rect);
     for (let x = cafe.x0; x < cafe.x1; x++)
       for (let y = cafe.y0; y < cafe.y1; y++)
         this.occupied.set(`${String(x)},${String(y)}`, CITY_STYLE.cafeH);
@@ -353,12 +346,9 @@ export class CityView {
   // ---------------------------------------------------------------------------------------------
   // Häuser
   // ---------------------------------------------------------------------------------------------
-  /** Liegt vor dieser Fassadenachse ein Gehweg (dann Läden statt Hochparterre)? */
+  /** Liegt vor dieser Fassadenachse ein Gehweg (dann Läden statt Hochparterre)? Wie `doorFronts` in den Daten. */
   private isStreet(x: number, y: number): boolean {
-    return (
-      !this.blocks.some((r) => inRect(r, x + 0.5, y + 0.5)) &&
-      !this.occupied.has(`${String(x)},${String(y)}`)
-    );
+    return isStreetTile(x, y) && !this.occupied.has(`${String(x)},${String(y)}`);
   }
 
   /**
