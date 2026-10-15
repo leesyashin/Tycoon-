@@ -4,7 +4,7 @@ current: -
 branch: session/s10-service
 started: -
 next: S12
-## Letzte Session: Ausstattung im Hotel-Empire-Look (2026-10-15, Branch `art/ausstattung-stufen`, PR folgt)
+## Letzte Session: Ausstattung im Hotel-Empire-Look (2026-10-15, Branch `art/ausstattung-stufen`, PR #15)
 Vorgabe Vincent (2026-10-15): „Bitte alle aktuellen Utensilien wie Theke, Küche, Café-Maschine, Matcha-Station usw.
 besser im Stil von Idle Hotel Empire Tycoon neu machen. Die Geräte sollen schöner, besser und eleganter werden,
 wenn man sie hochlevelt.“ Umgesetzt als Ad-hoc-Session außerhalb des Session-Plans (wie PR #14 „Figuren“); S12
