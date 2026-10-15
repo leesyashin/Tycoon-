@@ -7,9 +7,9 @@
  */
 import { DECOR_BIG } from '../../src/data/art';
 import { STATION_CANVAS, TABLE_TIERS, drawTable } from './equipment';
-import { IsoCanvas, SHADE, SHADOW, Z_PER_TILE, shade, tint, type Vec3 } from './iso';
+import { IsoCanvas, SHADOW, Z_PER_TILE, shade, tint, type Vec3 } from './iso';
 import { C } from './palette';
-import { crown, facetBall, facetLight, lit, polyline, strut } from './shapes';
+import { crown, facetBall, flatLeaf, polyline, strut, umbrella } from './shapes';
 import { WALL, type SpriteDef } from './sprites';
 
 /** Zeichenfläche einer Wandkachel; `f` legt eine Fläche in Wandebene + `d` (Abstand zur Wand) an. */
@@ -669,64 +669,6 @@ function canvas(): IsoCanvas {
   return new IsoCanvas(STATION_CANVAS.w, STATION_CANVAS.h, STATION_CANVAS.ox, STATION_CANVAS.oy);
 }
 
-/**
- * Flaches Blatt in einer geneigten Ebene: Basis b, Richtung `ang` (Bogenmaß in u/v), Länge `len` (Kacheln),
- * Neigung `tilt` (Pixel Höhenänderung zur Spitze, negativ = hängt), Breite relativ zur Länge. Zwei Hälften mit
- * leicht verschiedener Helligkeit (Mittelrippe als Falz); `slits` schneidet Schlitze (Monstera).
- */
-function flatLeaf(
-  c: IsoCanvas,
-  b: Vec3,
-  ang: number,
-  len: number,
-  tilt: number,
-  width: number,
-  color: string,
-  slits = 0,
-) {
-  const du = Math.cos(ang) * len;
-  const dv = Math.sin(ang) * len;
-  const pu = -Math.sin(ang) * len * width;
-  const pv = Math.cos(ang) * len * width;
-  const P = (s: number, q: number): Vec3 => [
-    b[0] + du * s + pu * q,
-    b[1] + dv * s + pv * q,
-    b[2] + tilt * s,
-  ];
-  const nz = len * len * width;
-  const n: Vec3 = [
-    (-tilt / Z_PER_TILE) * Math.cos(ang) * len * width,
-    (-tilt / Z_PER_TILE) * Math.sin(ang) * len * width,
-    nz,
-  ];
-  const nl = Math.hypot(n[0], n[1], n[2]) || 1;
-  const L = facetLight([n[0] / nl, n[1] / nl, n[2] / nl]);
-  const half = (q: number, s: number) =>
-    Math.sin(Math.min(1, s * 1.04) * Math.PI) * 0.5 * q * (s < 0.15 ? 0.55 + s * 3 : 1);
-  for (const side of [1, -1]) {
-    const col = lit(color, L + (side > 0 ? 0.07 : -0.07));
-    const pts: Vec3[] = [P(0, 0)];
-    for (let k = 0; k <= 8; k++) {
-      const t = k / 8;
-      pts.push(P(t, side * half(1, t)));
-    }
-    c.poly(pts, col);
-    // Schlitze vom Rand zur Mittelrippe (dunkle Keile)
-    for (let g = 1; g <= slits; g++) {
-      const t = g / (slits + 1);
-      c.poly(
-        [
-          P(t - 0.025, side * half(1, t - 0.025)),
-          P(t + 0.03, side * half(1, t + 0.03)),
-          P(t + 0.01, side * 0.12),
-        ],
-        lit(color, L - 0.28),
-      );
-    }
-  }
-  strut(c, P(0, 0), P(0.92, 0), lit(color, L + 0.18), 0.35);
-}
-
 const FLOOR_ITEMS: Record<string, (c: IsoCanvas) => void> = {
   // Berber-Teppich unter den Wintergarten-Tischen: Fransen, Bordüren, Rautenband
   'deco-rug': (c) => {
@@ -1053,50 +995,6 @@ function stools(c: IsoCanvas) {
     c.cylinder(u, 0.5, 18.4, 0.127, 0.5, C.cobaltDeep, C.cobaltLight);
     c.disc(u - 0.02, 0.49, 19.01, 0.06, tint(C.cobaltLight, 0.25));
   }
-}
-
-/**
- * Sonnenschirm über einem Terrassen-Tisch: acht Bahnen mit Rippen, Volant mit Bögen, Mast mit Kurbel und Spitze.
- */
-function umbrella(c: IsoCanvas, a: string, b: string, z: number, r = 25) {
-  c.cylinder(0.5, 0.5, 15.5, 0.018, z - 15.5, C.white);
-  c.shine(0.5, 0.5, 15.5, 0.018, z - 15.5, C.white, 0.4);
-  c.cylinder(0.5, 0.5, 30, 0.03, 2, C.stainlessDark);
-  const [cx, cy] = c.p([0.5, 0.5, z]);
-  const f = (n: number) => n.toFixed(1);
-  const rim = (t: number): [number, number] => [cx + Math.cos(t) * r, cy + Math.sin(t) * r * 0.5];
-  for (let i = 0; i < 8; i++) {
-    const a0 = (i / 8) * Math.PI * 2;
-    const a1 = ((i + 1) / 8) * Math.PI * 2;
-    const litSide = Math.sin((a0 + a1) / 2) > 0;
-    const col = i % 2 ? b : a;
-    const [x0, y0] = rim(a0);
-    const [x1, y1] = rim(a1);
-    c.raw(
-      `<polygon points="${f(cx)},${f(cy - 6.5)} ${f(x0)},${f(y0)} ${f(x1)},${f(y1)}" fill="${litSide ? col : shade(col, SHADE.left)}"/>`,
-    );
-    if (litSide) {
-      // Volant: Bogenkante unter dem Saum
-      const pts: string[] = [];
-      for (let k = 0; k <= 5; k++) {
-        const t = a0 + ((a1 - a0) * k) / 5;
-        const [x, y] = rim(t);
-        pts.push(`${f(x)},${f(y + 2.4 + Math.sin((k / 5) * Math.PI) * 1.3)}`);
-      }
-      c.raw(
-        `<polygon points="${f(x0)},${f(y0)} ${f(x1)},${f(y1)} ${pts.reverse().join(' ')}" fill="${shade(col, 0.78)}"/>`,
-      );
-    }
-  }
-  for (let i = 0; i < 8; i++) {
-    const t = (i / 8) * Math.PI * 2;
-    if (Math.sin(t) < -0.2) continue;
-    const [x, y] = rim(t);
-    c.raw(
-      `<line x1="${f(cx)}" y1="${f(cy - 6.5)}" x2="${f(x)}" y2="${f(y)}" stroke="${C.white}" stroke-width="0.35" stroke-opacity="0.55"/>`,
-    );
-  }
-  c.raw(`<circle cx="${f(cx)}" cy="${f(cy - 7)}" r="1.4" fill="${shade(a, 0.8)}"/>`);
 }
 
 const UMBRELLAS: Record<1 | 2 | 3 | 4, [string, string]> = {
