@@ -4,7 +4,7 @@ current: -
 branch: session/s10-service
 started: -
 next: S12
-## Letzte Session: Kiez-Café im LAP-Stil und Stadtviertel (2026-10-15, Branch `art/lap-cafe-kiez`)
+## Letzte Session: Kiez-Café im LAP-Stil und Stadtviertel (2026-10-15, Branch `art/lap-cafe-kiez`, PR #16)
 Vorgabe Vincent (2026-10-15): „Bitte setze das Café in einem viel besseren Stil um, orientiere dich an Lap Coffee
 (https://www.lap.coffee), so soll der Coffee-Laden aussehen. Optik wie Hotel Empire Tycoon heißt nicht nur das Café
 selbst, sondern auch Straßen und Gebäude drum herum.“ Ad-hoc-Session außerhalb des Session-Plans (wie PR #14/#15);
