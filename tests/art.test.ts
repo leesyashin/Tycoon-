@@ -27,12 +27,18 @@ describe('Atlas (pnpm art)', () => {
         for (const f of ['a', 'b'])
           expect(common.frames[`station-${s.id}-${String(tier)}-${f}`]).toBeDefined();
   });
-  it('enthält Ambiente, Kunden-Typen und Personal mit 2 Richtungen × 2 Frames', () => {
+  it('enthält Ambiente, Kunden-Typen (plus Sitzpose) und Personal mit 2 Richtungen × 2 Frames', () => {
     for (const a of AMBIENCE) expect(common.frames[`ambience-${a.id}`]).toBeDefined();
     const walk = ['front-0', 'front-1', 'back-0', 'back-1'];
-    for (const c of CUSTOMER_TYPES)
+    for (const c of CUSTOMER_TYPES) {
       for (const w of walk) expect(common.frames[`customer-${c.id}-${w}`]).toBeDefined();
+      expect(common.frames[`customer-${c.id}-sit`]).toBeDefined();
+    }
     for (const r of STAFF_ROLES)
       for (const w of walk) expect(common.frames[`staff-${r.id}-${w}`]).toBeDefined();
+  });
+  it('enthält Thekenmodul, Tisch mit Tischdecke und Schmutz-Marker (Phase 2)', () => {
+    for (const f of ['counter-a', 'counter-b', 'ambience-seats-2', 'fx-dirt', 'station-ghost'])
+      expect(common.frames[f]).toBeDefined();
   });
 });

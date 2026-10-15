@@ -23,7 +23,7 @@ Lokal eingebunden (`src/ui/style.css`, `font-display: swap`), kein Request an Go
 
 | Datei | Herkunft | Lizenz |
 |---|---|---|
-| `common.png` / `common.json` (Stationen in 3 Ausbaustufen × 2 Blickrichtungen, Bauplatz, Ambiente, Kunden-Typen und Personal mit 2 Richtungen × 2 Lauf-Frames, Smileys, Münze, Blatt, Partikel, Emotes, Licht) | selbst gezeichnet als Code (`scripts/art/iso.ts`, `scripts/art/sprites.ts`), mit `pnpm art` per Chromium als PNG 2× gerendert und gepackt | CC0 |
+| `common.png` / `common.json` (Phase 2: neun Ausstattungen – Kasse, Matcha-Station, Kaffeemaschine, Kühl-/Eisfach, Ofen, Kuchenvitrine, Steinmühle, Zeremonie-Set, Ausgabe-Station – in 3 Ausbaustufen × 2 Blickrichtungen, Thekenmodul, Bauplatz, Ambiente mit Tisch/Tischdecke und Schmutz-Marker, Kunden-Typen mit 2 Richtungen × 2 Lauf-Frames und Sitzpose, Personal mit Rollen-Outfit (Verkäufer, Barista, Bedienung mit Tablett, Putzkraft mit Mopp, Filialleiter, Social Media), Smileys, Münze, Blatt, Partikel, Emotes, Licht) | selbst gezeichnet als Code (`scripts/art/iso.ts`, `scripts/art/sprites.ts`), mit `pnpm art` per Chromium als PNG 2× gerendert und gepackt; Kontaktbogen zum Prüfen: `scripts/art/contact-sheet.ts` | CC0 |
 | `theme-<standort>.png` / `.json` (Boden, Wände mit Fenster, niedrige Vorderwände, Eingang, Terrasse je Standort) | wie oben (`themeSprites()`) | CC0 |
 | `icons/*.png` (Kacheln/Detailkarte im Stations-Panel, Filialleiter-Portrait) | Ausschnitte derselben Sprites (`pnpm art`) | CC0 |
 

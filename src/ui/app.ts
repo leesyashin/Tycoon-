@@ -514,7 +514,10 @@ export function startApp(o: AppOptions): App {
   }
 
   return {
-    openStation: (id) => panels.open(stationReq(id)),
+    openStation: (id) =>
+      panels.open(
+        id.startsWith('ambience:') ? ambienceReq(id.slice('ambience:'.length)) : stationReq(id),
+      ),
     showOffline(result) {
       const elapsedSec = result.elapsedMs / 1000;
       if (elapsedSec < UI_CONFIG.offlineDialogMinSec || result.earned.lte(0)) return;
