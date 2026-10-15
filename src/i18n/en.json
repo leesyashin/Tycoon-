@@ -39,6 +39,8 @@
   "station.panel.customers": "Customers",
   "station.panel.perSec": "{amount}/s",
   "station.panel.nextMilestone": "Next milestone: lv {level} ({effect})",
+  "station.panel.nextLook": "New look at lv {level}",
+  "station.panel.finestLook": "Finest finish reached",
   "station.panel.milestone.speed": "speed ×2",
   "station.panel.milestone.price": "price ×2",
   "station.panel.staff": "Staff: {role}",

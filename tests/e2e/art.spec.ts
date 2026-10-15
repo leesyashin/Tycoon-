@@ -99,6 +99,31 @@ test('Stations-Panel: Icon-Grid und Pfeile wechseln das Objekt, Ambiente kaufbar
   await expect(page.getByTestId('tile-ambience-seats')).toContainText('1');
 });
 
+test('Ausstattung wird mit dem Level edler: Panel zeigt die nächste Optik, Bild wechselt', async ({
+  page,
+}) => {
+  await page.goto('?lang=de&tutorial=0');
+  await expect(page.getByTestId('hud')).toBeVisible();
+  await seedCoins(page, '100000');
+  await page.getByTestId('nav-shop').click();
+  await page.getByTestId('shop-station-matchaStation').click();
+  const look = page.getByTestId('station-look');
+  const icon = page.locator('.station-card-icon');
+  await expect(look).toHaveText('Neues Design ab Lv 10');
+  await expect(icon).toHaveAttribute('src', /station-matchaStation-1\.png$/);
+  await page.getByTestId('buy-10').click();
+  await expect(page.getByTestId('station-level')).toHaveText('Level 11');
+  await expect(look).toHaveText('Neues Design ab Lv 25');
+  await expect(icon).toHaveAttribute('src', /station-matchaStation-2\.png$/);
+  await expect
+    .poll(() => icon.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0))
+    .toBe(true);
+  // Tische: eigene Optik-Stufen, Vorschau im selben Panel
+  await page.getByTestId('tile-ambience-seats').click();
+  await page.getByTestId('ambience-buy-seats').click();
+  await expect(page.getByTestId('ambience-look')).toHaveText('Neues Design ab Lv 13');
+});
+
 test('Verwaltung: Karten-Tabs wechseln Shop, Marketing, Personal, Statistik', async ({ page }) => {
   await page.goto('?lang=de&tutorial=0');
   await page.getByTestId('nav-shop').click();
