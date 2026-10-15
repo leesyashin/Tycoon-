@@ -22,7 +22,7 @@ type Tab = 'achievements' | 'quests' | 'stats';
 const TABS: Tab[] = ['achievements', 'quests', 'stats'];
 const ROMAN = ['I', 'II', 'III', 'IV', 'V'];
 
-/** „Münzsammler III“: Stufe aus der Ziffer am Ende der ID. */
+/** „Großverdiener III“: Stufe aus der Ziffer am Ende der ID. */
 export function achievementName(def: AchievementDef): string {
   const n = Number(/\d+$/.exec(def.id)?.[0] ?? '1');
   return t(`achievement.${def.kind}.name`, { tier: ROMAN[n - 1] ?? String(n) });

@@ -102,20 +102,22 @@ test('Ambiente lässt sich im Shop kaufen', async ({ page }) => {
 
 test('Sprachwechsel ändert Texte und Zahlenformat sofort', async ({ page }) => {
   await page.goto('?lang=de&tutorial=0');
+  // Geld kommt erst beim Bezahlen: ein Betrag mit Nachkommastellen, statt auf den ersten Gast zu warten.
+  await reloadWithSave(page, { coins: '1234.56' });
   // Bottom-Bar ohne sichtbare Beschriftung (UI_STYLE § 6.2): Name steckt im aria-label.
   await expect(page.getByTestId('nav-settings')).toHaveAttribute('aria-label', 'Einstellungen');
   await expect(page.getByTestId('hud-coins')).toContainText(/\d,\d/);
   await page.getByTestId('nav-settings').click();
   await page.getByTestId('settings-lang').selectOption('en');
   await expect(page.getByTestId('nav-settings')).toHaveAttribute('aria-label', 'Settings');
-  await expect(page.getByTestId('hud')).toContainText('Coins');
+  await expect(page.getByTestId('hud')).toContainText('Cash');
   await expect(page.getByTestId('hud-income')).toContainText('per sec');
   await expect(page.getByTestId('hud-coins')).toContainText(/\d\.\d/);
   await expect(page.getByTestId('panel-settings')).toContainText('Language');
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
   await page.getByTestId('settings-number-format').selectOption('scientific');
   await page.getByTestId('settings-lang').selectOption('de');
-  await expect(page.getByTestId('hud')).toContainText('Münzen');
+  await expect(page.getByTestId('hud')).toContainText('Geld');
 });
 
 test('Offline-Dialog nach längerer Abwesenheit', async ({ page }) => {

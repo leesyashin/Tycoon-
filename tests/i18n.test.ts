@@ -19,7 +19,7 @@ describe('i18n', () => {
     setLang('de');
     expect(t('scene.grid', { size: 12 })).toBe('Café-Raster 12×12');
     setLang('en');
-    expect(t('hud.coins')).toBe('Coins');
+    expect(t('hud.coins')).toBe('Cash');
   });
 });
 

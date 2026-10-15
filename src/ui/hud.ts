@@ -23,6 +23,8 @@ export interface HudActions {
 
 /** Boosts mit eigener Pille (Hype hat seine Pille in der Bottom-Bar). */
 const BOOST_PILLS = [BOOSTS.leaf, BOOSTS.free];
+/** Dauer des Aufleuchtens, wenn Geld hereinkommt (wie `.hud-cash-in` in style.css). */
+const CASH_IN_MS = 450;
 /** Sauberkeit erscheint im HUD erst unter diesem Wert (§ 3.2). */
 const CLEANLINESS_HINT_BELOW = 70;
 const MOOD_ICON: Record<string, IconName> = {
@@ -48,7 +50,7 @@ export function createHud(actions: HudActions): View {
     );
     return { el, value };
   };
-  const coins = currency('hud-coins', t('hud.coins'), 'coffee', 'icon-coin');
+  const coins = currency('hud-coins', t('hud.coins'), 'banknote', 'icon-cash');
   const leaves = currency('hud-leaves', t('hud.goldenLeaves'), 'leaf', 'icon-leaf');
   const leafShop = h(
     'button',
@@ -164,11 +166,25 @@ export function createHud(actions: HudActions): View {
   );
   if (import.meta.env.DEV) el.append(h('div', { class: 'hud-hint', text: t('scene.debugHint') }));
   const root = h('div', { class: 'hud-root' }, el, quality);
+  // Geld kommt erst, wenn ein Gast bezahlt hat (GAME_DESIGN § 7.2): dann leuchtet der Betrag kurz auf – bei
+  // vielen Gästen nicht öfter, als die Animation dauert.
+  let paidSeen = { location: '', paid: 0 };
+  let cashInAt = -Infinity;
+  const cashIn = (): void => {
+    const now = performance.now();
+    if (now - cashInAt < CASH_IN_MS) return;
+    cashInAt = now;
+    coins.el.classList.remove('hud-cash-in');
+    void coins.el.offsetWidth;
+    coins.el.classList.add('hud-cash-in');
+  };
 
   return {
     el: root,
     update(s: GameState) {
       const loc = getLocation(s, s.activeLocationId);
+      if (paidSeen.location === s.activeLocationId && loc.till.paid > paidSeen.paid) cashIn();
+      paidSeen = { location: s.activeLocationId, paid: loc.till.paid };
       setText(
         location,
         `${t(`location.${s.activeLocationId}.name`)} · ${t('hud.cafeLevel', { level: loc.level })}`,
