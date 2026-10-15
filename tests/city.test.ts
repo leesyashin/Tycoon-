@@ -344,6 +344,47 @@ describe('Stadtviertel: Ränder', () => {
     }
   });
 
+  it('Dampfer fahren nur auf dem Wasser (oder unter Brücken) und begegnen sich nicht', () => {
+    const area = (b: (typeof CITY.boats)[number]) => {
+      const [a0, a1] = [Math.min(b.from, b.to) - 1.3, Math.max(b.from, b.to) + 1.3];
+      return b.axis === 'u'
+        ? { x0: a0, x1: a1, y0: b.at - 0.45, y1: b.at + 0.45 }
+        : { x0: b.at - 0.45, x1: b.at + 0.45, y0: a0, y1: a1 };
+    };
+    CITY.boats.forEach((b, i) => {
+      // Rumpf ±1,25 entlang, ±0,4 quer
+      for (let t = b.from - 1.25; t <= b.to + 1.25; t += 0.25)
+        for (const d of [-0.4, 0, 0.4]) {
+          const [x, y] = b.axis === 'u' ? [t, b.at + d] : [b.at + d, t];
+          expect(
+            ['water', 'bridge'],
+            `Boot ${String(i)} bei ${x.toFixed(2)},${y.toFixed(2)}`,
+          ).toContain(groundAt(x, y));
+        }
+      CITY.boats.forEach((o, j) => {
+        if (j > i) expect(overlap(area(b), area(o)), `Boote ${String(i)}/${String(j)}`).toBe(false);
+      });
+    });
+  });
+
+  it('Dampfer wenden außerhalb des Bilds oder verdeckt unter einer Brücke', () => {
+    // Aufbauten bis ~24 px hoch: ihr Bild fällt bis 0,75 Kacheln nach hinten (−x/−y) auf den Boden
+    const hidden = (x: number, y: number, axis: 'u' | 'v') =>
+      CITY.bridges.some((br) => {
+        const r = br.rect;
+        const [hx, hy] = axis === 'u' ? [1.25, 0.4] : [0.4, 1.25];
+        return x - hx - 0.75 >= r.x0 && x + hx <= r.x1 && y - hy - 0.75 >= r.y0 && y + hy <= r.y1;
+      });
+    for (const b of CITY.boats)
+      for (const end of [b.from, b.to]) {
+        const [x, y] = b.axis === 'u' ? [end, b.at] : [b.at, end];
+        expect(
+          offView(x, y, CITY_SPRITE.boat) || hidden(x, y, b.axis),
+          `${b.axis} ${String(end)}`,
+        ).toBe(true);
+      }
+  });
+
   it('Passanten starten und enden außerhalb des Bilds', () => {
     for (const w of CITY.walks)
       for (const p of [w.points[0], w.points[w.points.length - 1]])

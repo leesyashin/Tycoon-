@@ -259,7 +259,10 @@ export interface CityDef {
   bridges: { rect: GridRect; axis: 'u' | 'v'; at: number }[];
   /** Fahrbahnen (Anfang `at`, Breite `CITY_GRID.road`), für Mittellinien und Bordsteine. */
   roads: { axis: 'u' | 'v'; at: number }[];
-  /** Ausflugsdampfer: Kanal (entlang v) und Spree (entlang u). */
+  /**
+   * Ausflugsdampfer: Kanal (entlang v) und Spree (entlang u). Sie wenden außerhalb des Bilds oder verdeckt unter einer
+   * Brücke, ihre Strecken kreuzen sich nicht.
+   */
   boats: { axis: 'u' | 'v'; at: number; from: number; to: number }[];
   /** Hier picken Tauben (Gehweg am Café, gegenüber, am Brunnen); sie fliegen auf, wenn jemand vorbeikommt. */
   pigeons: { x: number; y: number }[];
@@ -989,7 +992,8 @@ function buildCity(): CityDef {
     crossings: CROSSINGS,
     roads,
     boats: [
-      { axis: 'v', at: (CANAL.x0 + CANAL.x1) / 2, from: -60, to: RIVER_FROM + 4 },
+      // Kanal: wendet verdeckt unter der letzten Brücke vor der Spree (dort fährt der zweite Dampfer)
+      { axis: 'v', at: (CANAL.x0 + CANAL.x1) / 2, from: -60, to: roadAt(1) + ROAD / 2 },
       { axis: 'u', at: RIVER_FROM + 5, from: -70, to: 80 },
     ],
     pigeons: [

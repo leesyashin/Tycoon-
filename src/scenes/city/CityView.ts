@@ -31,12 +31,17 @@ import { TILE_H, isoDepth, toScreen } from '../iso/iso';
 import { StreetLife } from './streetLife';
 
 /**
- * Tiefen innerhalb der Stadt-Ebene (`Layer`, liegt komplett hinter dem Café): Boden, ferne Häuser (Flächen),
- * Fassaden-Module und Hofobjekte nach Position, zuletzt alle Dächer. Die Ebene wird nur beim Aufbau sortiert –
- * die bewegten Figuren der Szene lösen kein Umsortieren der vielen Stadt-Sprites aus.
+ * Tiefen der Stadt (alles hinter dem Café): unten der Boden, darüber die Dampfer, darüber noch einmal die
+ * Brückendecks (die Dampfer fahren darunter durch statt darüber), darüber die Häuser-Ebene (`Layer`: ferne Häuser,
+ * Fassaden-Module und Hofobjekte nach Position, zuletzt alle Dächer), die auch vor ihnen liegende Dampfer verdeckt.
+ * Die Ebene wird nur beim Aufbau sortiert – die bewegten Figuren der Szene lösen kein Umsortieren der vielen
+ * Stadt-Sprites aus.
  */
-const LAYER = { ground: -1e7, lod: -1e7 + 1, roofs: 1e7 } as const;
-const LAYER_DEPTH = -9000;
+const LAYER = { lod: -1e7 + 1, roofs: 1e7 } as const;
+const GROUND_DEPTH = -9000;
+const BOAT_DEPTH = GROUND_DEPTH + 1;
+const DECK_DEPTH = GROUND_DEPTH + 2;
+const HOUSE_DEPTH = GROUND_DEPTH + 3;
 /** Helligkeit der sichtbaren Seiten (UI_STYLE § 4): links (+y) 85 %, rechts (+x) 70 %; Dachflächen eigene Stufen. */
 const SHADE_A = 0.85;
 const SHADE_B = 0.7;
@@ -104,7 +109,7 @@ export class CityView {
   ) {
     this.palette = getCityPalette(locationId);
     scene.cameras.main.setBackgroundColor(this.palette.haze);
-    this.layer = scene.add.layer().setDepth(LAYER_DEPTH);
+    this.layer = scene.add.layer().setDepth(HOUSE_DEPTH);
     for (let x = cafe.x0; x < cafe.x1; x++)
       for (let y = cafe.y0; y < cafe.y1; y++)
         this.occupied.set(`${String(x)},${String(y)}`, CITY_STYLE.cafeH);
@@ -116,6 +121,7 @@ export class CityView {
         }
 
     this.drawGround();
+    this.drawDecks();
     const visible = CITY.buildings.filter((b) => this.inView(b));
     const lod = scene.add.graphics();
     this.addToLayer(lod, LAYER.lod);
@@ -208,8 +214,7 @@ export class CityView {
   }
 
   private drawGround(): void {
-    const g = this.scene.add.graphics();
-    this.addToLayer(g, LAYER.ground);
+    const g = this.scene.add.graphics().setDepth(GROUND_DEPTH);
     for (const a of CITY.ground) {
       this.fillRect(g, a.rect, this.groundColor(a.kind));
       const r = {
@@ -238,29 +243,52 @@ export class CityView {
     }
   }
 
-  /** Bordsteine, Mittellinien (nur auf Fahrbahn und Brücken, nicht auf Kreuzungen), Haltelinien, Zebrastreifen. */
-  private roadMarks(g: Phaser.GameObjects.Graphics): void {
-    const p = this.palette;
-    const curb = hex(p.curb);
-    const curbDark = shadeNum(hex(p.road), 0.8);
-    const mark = hex(p.roadMark);
-    const R = CITY_GRID.road;
-    for (const r of CITY.roads) {
-      for (const s of roadMarkTiles(r, DETAIL.x0, DETAIL.x1)) {
-        const seg = (a0: number, a1: number, color: number) =>
-          this.fillRect(
-            g,
-            r.axis === 'u'
-              ? { x0: s, x1: s + 1, y0: a0, y1: a1 }
-              : { x0: a0, x1: a1, y0: s, y1: s + 1 },
-            color,
-          );
-        seg(r.at - 0.12, r.at + 0.02, curb);
-        seg(r.at + 0.02, r.at + 0.1, curbDark);
-        seg(r.at + R - 0.1, r.at + R + 0.12, curb);
-        if (s % 2 === 0) seg(r.at + R / 2 - 0.05, r.at + R / 2 + 0.05, mark);
-      }
+  /** Brückendecks noch einmal über den Dampfern (`DECK_DEPTH`): so fahren sie unter den Brücken durch. */
+  private drawDecks(): void {
+    const g = this.scene.add.graphics().setDepth(DECK_DEPTH);
+    for (const b of CITY.bridges) {
+      this.fillRect(g, b.rect, this.groundColor('bridge'));
+      const [from, to] = b.axis === 'u' ? [b.rect.x0, b.rect.x1] : [b.rect.y0, b.rect.y1];
+      this.drawRoadMarks(
+        g,
+        b,
+        Math.max(Math.floor(from), DETAIL.x0),
+        Math.min(Math.ceil(to), DETAIL.x1),
+      );
     }
+  }
+
+  /** Bordsteine und Mittellinie einer Fahrbahn auf den Kacheln [from, to) (nur Fahrbahn/Brücke, keine Kreuzung). */
+  private drawRoadMarks(
+    g: Phaser.GameObjects.Graphics,
+    r: { axis: 'u' | 'v'; at: number },
+    from: number,
+    to: number,
+  ): void {
+    const curb = hex(this.palette.curb);
+    const curbDark = shadeNum(hex(this.palette.road), 0.8);
+    const mark = hex(this.palette.roadMark);
+    const R = CITY_GRID.road;
+    for (const s of roadMarkTiles(r, from, to)) {
+      const seg = (a0: number, a1: number, color: number) =>
+        this.fillRect(
+          g,
+          r.axis === 'u'
+            ? { x0: s, x1: s + 1, y0: a0, y1: a1 }
+            : { x0: a0, x1: a1, y0: s, y1: s + 1 },
+          color,
+        );
+      seg(r.at - 0.12, r.at + 0.02, curb);
+      seg(r.at + 0.02, r.at + 0.1, curbDark);
+      seg(r.at + R - 0.1, r.at + R + 0.12, curb);
+      if (s % 2 === 0) seg(r.at + R / 2 - 0.05, r.at + R / 2 + 0.05, mark);
+    }
+  }
+
+  /** Bordsteine, Mittellinien, Haltelinien, Zebrastreifen. */
+  private roadMarks(g: Phaser.GameObjects.Graphics): void {
+    const mark = hex(this.palette.roadMark);
+    for (const r of CITY.roads) this.drawRoadMarks(g, r, DETAIL.x0, DETAIL.x1);
     for (const lane of CITY.lanes) {
       const a = lane.stopAt;
       const h0 = lane.at - 0.5;
@@ -790,10 +818,10 @@ export class CityView {
       const p = P(pos.x, pos.y);
       const f = FRAME.boat(b.dir > 0);
       if (s.frame.name !== f) s.setFrame(f);
-      // Entlang v (Kanal): Sprite entlang u gespiegelt.
+      // Entlang v (Kanal): Sprite entlang u gespiegelt. Tiefe in der Wasser-Ebene (unter Brücken und Häusern).
       s.setFlipX(route.axis === 'v')
         .setPosition(p.x, p.y)
-        .setDepth(isoDepth(pos.x - 0.5, pos.y - 0.5, 4));
+        .setDepth(BOAT_DEPTH + isoDepth(pos.x - 0.5, pos.y - 0.5) * 1e-5);
     });
     life.pigeons.forEach((pg, i) => {
       const s = this.pigeonSprites[i];
