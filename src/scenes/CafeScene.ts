@@ -1,9 +1,11 @@
 import Phaser from 'phaser';
 import {
   getLayout,
+  inRoom,
   layoutExtent,
   visibleTables,
   type CafeLayout,
+  type DecorItem,
   type GridPos,
   type StationPlacement,
   type TablePlacement,
@@ -14,6 +16,8 @@ import {
   CHAR_FRAMES,
   CHAR_WALK,
   CUSTOMER_LOOKS,
+  DECOR_BIG,
+  DECOR_BIG_FRAMES,
   SCENE_FX,
   counterLookTier,
   counterPropsAt,
@@ -45,6 +49,8 @@ import { REGISTRY, UI_EVENTS, getStore } from './registry';
 
 const WALL_H = 64;
 const FRONT_WALL_H = 16;
+/** Glaswände des Wintergartens (höher als die Vorderwand, durchsichtig). */
+const GLASS_H = 40;
 /** Jede wievielte Wandkachel ein Fenster hat. */
 const WINDOW_EVERY = 3;
 const STATION_TOP = 40;
@@ -290,8 +296,8 @@ export class CafeScene extends Phaser.Scene {
     this.createEventFx();
     this.createNight();
     this.createSteam();
-    // Schwenken über das Viertel; die Startansicht passt weiter auf den Raum (`fitCamera`).
-    this.controls = new CameraControls(this, CityView.panBounds());
+    // Schwenken über das Viertel, ohne je einen Rand zu sehen; die Startansicht passt auf den Raum (`fitCamera`).
+    this.controls = new CameraControls(this, CityView.viewLimits());
     this.fitCamera();
     const onResize = (): void => this.fitCamera();
     this.scale.on('resize', onResize);
@@ -350,6 +356,7 @@ export class CafeScene extends Phaser.Scene {
       waiters: getStaffLevel(loc, 'waiter'),
       cleaners: getStaffLevel(loc, 'cleaner'),
       tables: loc.ambience['seats'] ?? 0,
+      terrace: loc.ambience['terrace'] ?? 0,
       cleanliness: loc.cleanliness,
     });
     this.syncAgents(mood(loc.satisfaction));
@@ -427,23 +434,31 @@ export class CafeScene extends Phaser.Scene {
     );
   }
 
-  /** Boden, hohe Rückwände mit Fenstern, niedrige Vorderwände (Dollhouse-Schnitt, UI_STYLE § 4). */
+  /**
+   * Boden, hohe Rückwände mit Leuchtkasten/Fenstern, niedrige Vorderwände (Dollhouse-Schnitt, UI_STYLE § 4).
+   * Der Grundriss ist ein L: Raster plus Wintergarten vorn links mit Holzboden und Glaswänden; Wände entstehen
+   * überall dort, wo eine Raumkachel an eine Nicht-Raumkachel grenzt.
+   */
   private drawRoom(): void {
     const n = this.layout.gridSize;
     const theme = ATLAS.theme(this.locationId);
-    const { entrance } = this.layout;
-    for (let gy = 0; gy < n; gy++) {
-      for (let gx = 0; gx < n; gx++) {
+    const { entrance, annex } = this.layout;
+    const inAnnex = (x: number, y: number) =>
+      x >= annex.from.x && x <= annex.to.x && y >= annex.from.y && y <= annex.to.y;
+    const w = Math.max(n, annex.to.x + 1);
+    const h = Math.max(n, annex.to.y + 1);
+    for (let gy = 0; gy < h; gy++) {
+      for (let gx = 0; gx < w; gx++) {
+        if (!inRoom(this.layout, gx, gy)) continue;
         const p = toScreen(gx, gy);
         const isEntrance = gx === entrance.x && gy === entrance.y;
-        this.sprite(
-          p.x,
-          p.y,
-          isEntrance ? 'entrance' : (gx + gy) % 2 ? 'floor-a' : 'floor-b',
-          theme,
-        )
-          .setOrigin(0.5, 0)
-          .setDepth(DEPTH.floor);
+        const checker = (gx + gy) % 2 ? 'a' : 'b';
+        const frame = isEntrance
+          ? 'entrance'
+          : inAnnex(gx, gy)
+            ? `floor-wg-${checker}`
+            : `floor-${checker}`;
+        this.sprite(p.x, p.y, frame, theme).setOrigin(0.5, 0).setDepth(DEPTH.floor);
       }
     }
     for (let i = 0; i < n; i++) {
@@ -457,7 +472,7 @@ export class CafeScene extends Phaser.Scene {
         .setOrigin(0, 0)
         .setDepth(DEPTH.wall);
       if (window) {
-        // Fensterlicht nachts (additiv, Alpha folgt der Tageszeit).
+        // Licht nachts (additiv, Alpha folgt der Tageszeit).
         this.glows.push(
           this.sprite(pu.x + TILE_W / 4, pu.y - 30, FRAME.glow)
             .setBlendMode(Phaser.BlendModes.ADD)
@@ -469,18 +484,29 @@ export class CafeScene extends Phaser.Scene {
             .setAlpha(0),
         );
       }
-      // Vorderwände auf 25 % Höhe, Lücke am Eingang und an Möbeln.
-      if (i !== entrance.x) {
-        const pf = toScreen(i, n - 1);
-        this.sprite(pf.x - TILE_W / 2, pf.y - FRONT_WALL_H - 2, 'front-u', theme)
-          .setOrigin(0, 0)
-          .setDepth(isoDepth(i, n - 1, 9));
-      }
-      if (!this.furnitureAt(n - 1, i) && !(entrance.x === n - 1 && entrance.y === i)) {
-        const pf = toScreen(n - 1, i);
-        this.sprite(pf.x - TILE_W / 2, pf.y - FRONT_WALL_H - 2, 'front-v', theme)
-          .setOrigin(0, 0)
-          .setDepth(isoDepth(n - 1, i, 9));
+    }
+    // Wintergarten: hohe Glaswand an der linken Seite (x = 0), sie verdeckt den Gehweg dahinter nicht.
+    for (let y = annex.from.y; y <= annex.to.y; y++) {
+      const pv = toScreen(0, y);
+      this.sprite(pv.x - TILE_W / 2, pv.y - WALL_H - 4, 'glass-back-v', theme)
+        .setOrigin(0, 0)
+        .setDepth(DEPTH.wall);
+    }
+    // Vorderwände (25 %) bzw. Glaswände des Wintergartens an allen offenen Kanten, Lücke am Eingang und an Möbeln.
+    for (let gy = 0; gy < h; gy++) {
+      for (let gx = 0; gx < w; gx++) {
+        if (!inRoom(this.layout, gx, gy)) continue;
+        const glass = inAnnex(gx, gy);
+        const pf = toScreen(gx, gy);
+        const wallH = glass ? GLASS_H : FRONT_WALL_H;
+        if (!inRoom(this.layout, gx, gy + 1) && !(gx === entrance.x && gy === entrance.y))
+          this.sprite(pf.x - TILE_W / 2, pf.y - wallH - 2, glass ? 'glass-u' : 'front-u', theme)
+            .setOrigin(0, 0)
+            .setDepth(isoDepth(gx, gy, 9));
+        if (!inRoom(this.layout, gx + 1, gy) && !this.furnitureAt(gx, gy))
+          this.sprite(pf.x - TILE_W / 2, pf.y - wallH - 2, glass ? 'glass-v' : 'front-v', theme)
+            .setOrigin(0, 0)
+            .setDepth(isoDepth(gx, gy, 9));
       }
     }
   }
@@ -565,7 +591,7 @@ export class CafeScene extends Phaser.Scene {
   private createTables(): void {
     for (const p of this.layout.tables) {
       const w = this.world(p.tile);
-      const sprite = this.sprite(w.x, w.y + TILE_H, FRAME.table(0), ATLAS.furniture)
+      const sprite = this.sprite(w.x, w.y + TILE_H, this.tableFrame(p, 0), ATLAS.furniture)
         .setOrigin(0.5, 1)
         .setDepth(isoDepth(p.tile.x, p.tile.y, 5))
         .setVisible(false)
@@ -591,7 +617,11 @@ export class CafeScene extends Phaser.Scene {
   /** Zeichnet Ambiente (Deko, Musik, WLAN, Terrasse) neu, sobald sich ein Level ändert. */
   private createAmbience(state: GameState): void {
     const loc = getLocation(state, this.locationId);
-    const key = this.layout.ambience.map((a) => loc.ambience[a.id] ?? 0).join(',');
+    const key = [
+      ...this.layout.ambience.map((a) => loc.ambience[a.id] ?? 0),
+      loc.ambience['decor'] ?? 0,
+      loc.ambience['terrace'] ?? 0,
+    ].join(',');
     if (key === this.ambienceKey) return;
     const first = this.ambienceKey === '';
     const terraceLevel = loc.ambience['terrace'] ?? 0;
@@ -624,7 +654,36 @@ export class CafeScene extends Phaser.Scene {
         .setDepth(isoDepth(a.tile.x, a.tile.y, 5));
       this.ambienceImages.push(img);
     }
+    // Deko nach Level: Bilder, Neon und Regale an den Wänden, Pflanzen, Leuchten und Teppich im Raum.
+    const decor = loc.ambience['decor'] ?? 0;
+    for (const d of this.layout.decor) {
+      if (decor < d.minLevel) continue;
+      const img = this.decorSprite(d);
+      this.ambienceImages.push(img);
+    }
     if (!first) this.plop(this.ambienceImages[this.ambienceImages.length - 1]);
+  }
+
+  /** Wand-Deko liegt bündig auf der Rückwand (gleiche Leinwand wie die Wandkachel), sonst wie ein Möbel. */
+  private decorSprite(d: DecorItem): Phaser.GameObjects.Image {
+    if (d.wall === 'u') {
+      const p = toScreen(d.tile.x, 0);
+      return this.sprite(p.x, p.y - WALL_H - 4, d.frame + '-u', ATLAS.furniture)
+        .setOrigin(0, 0)
+        .setDepth(DEPTH.wall + 2);
+    }
+    if (d.wall === 'v') {
+      const p = toScreen(0, d.tile.y);
+      return this.sprite(p.x - TILE_W / 2, p.y - WALL_H - 4, d.frame + '-v', ATLAS.furniture)
+        .setOrigin(0, 0)
+        .setDepth(DEPTH.wall + 2);
+    }
+    const w = this.world(d.tile);
+    // Große Deko (Läufer, Hocker): Ursprung an der unteren Kachelecke innerhalb der größeren Leinwand
+    const big = DECOR_BIG_FRAMES.includes(d.frame);
+    return this.sprite(w.x, w.y + TILE_H, d.frame, ATLAS.furniture)
+      .setOrigin(0.5, big ? (DECOR_BIG.oy + TILE_H) / DECOR_BIG.h : 1)
+      .setDepth(d.floor ? DEPTH.floor + 1 : isoDepth(d.tile.x, d.tile.y, 5));
   }
 
   /**
@@ -632,16 +691,20 @@ export class CafeScene extends Phaser.Scene {
    * Optik-Stufe (`TABLE_LOOK_LEVELS`), ploppen alle Tische nacheinander im neuen Design.
    */
   private refreshTables(state: GameState, animate: boolean): void {
-    const level = getLocation(state, this.locationId).ambience['seats'] ?? 0;
-    if (level === this.shownTables) return;
+    const loc = getLocation(state, this.locationId);
+    const level = loc.ambience['seats'] ?? 0;
+    const terrace = loc.ambience['terrace'] ?? 0;
+    const key = level * 10 + terrace;
+    if (key === this.shownTables) return;
     const before = this.shownTables;
-    this.shownTables = level;
-    const visible = new Set(visibleTables(this.layout, level));
-    const frame = FRAME.table(level);
-    const upgrade = animate && before > 0 && tableLookTier(level) > tableLookTier(before);
+    const levelBefore = Math.floor(before / 10);
+    this.shownTables = key;
+    const visible = new Set(visibleTables(this.layout, level, terrace));
+    const upgrade = animate && before > 0 && tableLookTier(level) > tableLookTier(levelBefore);
     let wave = 0;
     for (const v of this.tables) {
       const show = visible.has(v.placement);
+      const frame = this.tableFrame(v.placement, level);
       if (v.sprite.frame.name !== frame) v.sprite.setFrame(frame);
       const appears = v.sprite.visible !== show && show;
       if (v.sprite.visible !== show) v.sprite.setVisible(show);
@@ -651,6 +714,11 @@ export class CafeScene extends Phaser.Scene {
     }
     const first = this.tables.find((v) => v.sprite.visible);
     if (upgrade && first) this.newLook(this.restBounds(first.sprite));
+  }
+
+  /** Tisch drinnen oder Terrassen-Tisch mit Schirm, jeweils in der Stufe nach Anzahl der Tische. */
+  private tableFrame(p: TablePlacement, seatsLevel: number): string {
+    return p.outside ? FRAME.tableOut(seatsLevel) : FRAME.table(seatsLevel);
   }
 
   /** Nach Sprachwechsel alle Stations-Texte neu setzen. */

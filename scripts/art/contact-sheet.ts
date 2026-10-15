@@ -12,6 +12,7 @@ import { writeFileSync } from 'node:fs';
 import { chromium } from '@playwright/test';
 import { ambienceSprites, themeSprites, type SpriteDef } from './sprites';
 import { citySprites, facadeSprites } from './city';
+import { decorSprites, tableOutSprites } from './decor';
 import { EQUIPMENT_IDS, TIERS, stationIconSvg, stationSprites, tableSprites } from './equipment';
 import { characterSprites } from './figures';
 
@@ -31,6 +32,7 @@ const sets: Record<string, { list: () => SpriteDef[]; scale: number; cols: numbe
   furniture: { list: () => [...tableSprites(), ...ambienceSprites()], scale: 3, cols: 4 },
   figures: { list: characterSprites, scale: 4, cols: 10 },
   city: { list: citySprites, scale: 2, cols: 6 },
+  decor: { list: () => [...tableOutSprites(), ...decorSprites()], scale: 3, cols: 8 },
   facade: { list: () => facadeSprites('berlin'), scale: 2.5, cols: 12 },
   theme: { list: () => themeSprites('berlin'), scale: 3, cols: 5 },
 };

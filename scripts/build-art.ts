@@ -24,6 +24,7 @@ import {
 } from './art/equipment';
 import { characterSprites, staffPortrait } from './art/figures';
 import { citySprites, facadeSprites } from './art/city';
+import { decorSprites, tableOutSprites } from './art/decor';
 import { encodePalettePng } from './art/png';
 
 const OUT = 'public/assets/sprites';
@@ -212,7 +213,16 @@ for (const f of readdirSync(`${OUT}/icons`)) rmSync(`${OUT}/icons/${f}`);
 const ambience = ambienceSprites();
 const tables = tableSprites();
 writeAtlas('common', await pack([...characterSprites(), ...fxSprites()]));
-writeAtlas('furniture', await pack([...stationSprites(), ...tables, ...ambience]));
+writeAtlas(
+  'furniture',
+  await pack([
+    ...stationSprites(),
+    ...tables,
+    ...tableOutSprites(),
+    ...ambience,
+    ...decorSprites(),
+  ]),
+);
 for (const loc of LOCATIONS)
   writeAtlas(`theme-${loc}`, await pack([...themeSprites(loc), ...facadeSprites(loc)], 2048));
 writeAtlas('city', await pack(citySprites(), 2048));

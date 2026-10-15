@@ -9,11 +9,12 @@ import {
   buildingHeight,
   groundCellFor,
   hash01,
+  propFrame,
   upperCellFor,
   type GridRect,
 } from '@data/city';
 import { LOCATIONS } from '@data/locations';
-import { getLayout } from '@data/layouts';
+import { getLayout, pathToTable, waiterPathToTable } from '@data/layouts';
 import { StreetLife } from '../src/scenes/city/streetLife';
 import { CustomerCrowd } from '../src/scenes/agents/crowd';
 import { citySprites } from '../scripts/art/city';
@@ -40,7 +41,9 @@ const CAFE: GridRect = { x0: 0, y0: 0, x1: 14, y1: 14 };
 
 describe('Stadtviertel: Grundriss', () => {
   it('Häuser überlappen sich nicht und stehen weder auf dem Café-Grundstück noch auf Straße oder Gehweg', () => {
-    const open = CITY.ground.filter((g) => g.kind !== 'courtyard').map((g) => g.rect);
+    const open = CITY.ground
+      .filter((g) => !['courtyard', 'sidewalk', 'yard', 'grass'].includes(g.kind))
+      .map((g) => g.rect);
     CITY.buildings.forEach((a, i) => {
       expect(overlap(a.rect, CAFE), `Haus ${String(i)} auf dem Café`).toBe(false);
       for (const r of open) expect(overlap(a.rect, r), `Haus ${String(i)}`).toBe(false);
@@ -104,6 +107,39 @@ describe('Stadtviertel: Grundriss', () => {
   });
 });
 
+describe('Stadtviertel: Kamera und Wege', () => {
+  it('die Kamera-Grenzen liegen ganz in der gezeichneten Fläche (kein Rand sichtbar)', () => {
+    const v = CITY.view;
+    const e = CITY.extent;
+    // Bildschirm (sx, sy) → Grid: u − v = sx / 32, u + v = sy / 16
+    for (const [sx, sy] of [
+      [v.left, v.top],
+      [v.right, v.top],
+      [v.left, v.bottom],
+      [v.right, v.bottom],
+    ] as const) {
+      const d = sx / 32;
+      const sum = sy / 16;
+      const x = (sum + d) / 2;
+      const y = (sum - d) / 2;
+      expect(x).toBeGreaterThan(e.x0);
+      expect(y).toBeGreaterThan(e.y0);
+      expect(x).toBeLessThan(e.x1);
+      expect(y).toBeLessThan(e.y1);
+    }
+  });
+
+  it('Terrassen-Gäste und Bedienungen gehen durch die Tür nach draußen', () => {
+    const layout = getLayout('berlin');
+    const out = layout.tables.find((t) => t.outside);
+    if (!out) throw new Error('no terrace table');
+    const through = (path: readonly { x: number; y: number }[]) =>
+      path.some((p) => p.x === layout.entrance.x && p.y === layout.entrance.y);
+    expect(through(pathToTable(layout, layout.order.access, out))).toBe(true);
+    expect(through(waiterPathToTable(layout, out))).toBe(true);
+  });
+});
+
 describe('Stadtviertel: Fassaden und Atlanten', () => {
   it('jeder Standort hat eine Palette mit genug Fassadenfarben', () => {
     const maxFacade = Math.max(...CITY.buildings.map((b) => b.facade));
@@ -131,9 +167,8 @@ describe('Stadtviertel: Fassaden und Atlanten', () => {
     for (const s of citySprites()) expect(frames[s.name], s.name).toBeDefined();
     for (let t = 0; t < STREET_LIFE.carTypes; t++)
       for (const f of ['f', 'b']) expect(frames[`car-${String(t)}-${f}`]).toBeDefined();
-    for (const p of CITY.props)
-      if (!['parked', 'bench', 'pedLight'].includes(p.kind))
-        expect(frames[p.kind], p.kind).toBeDefined();
+    for (const p of [...CITY.props, ...CITY.backProps])
+      expect(frames[propFrame(p)], propFrame(p)).toBeDefined();
   });
 
   it('Läden nur zur Straße, Balkone nie im obersten Geschoss, Höhe aus den Geschossen', () => {

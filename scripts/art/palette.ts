@@ -68,10 +68,10 @@ export const C = {
 
   // Kiez-Café im Stil der Berliner Third-Wave-Kettenläden (Vorgabe Vincent: knallblaue Fassade, Edelstahl,
   // Weiß, minimal): Kobaltblau als Lack und Glasur, gebürsteter Edelstahl, heller Terrazzo.
-  cobalt: '#2a4ee6',
-  cobaltDeep: '#1b35b0',
-  cobaltLight: '#5d7ff2',
-  cobaltTile: '#3159ea',
+  cobalt: '#2146f2',
+  cobaltDeep: '#1631b8',
+  cobaltLight: '#6483ff',
+  cobaltTile: '#2a51f6',
   stainless: '#cdd5e0',
   stainlessLight: '#e6ebf2',
   stainlessDark: '#9ea9bb',

@@ -32,6 +32,8 @@ export interface Walker {
 }
 
 export interface Boat {
+  /** Index in `CityDef.boats` (Kanal oder Spree). */
+  route: number;
   pos: number;
   dir: 1 | -1;
   rest: number;
@@ -43,7 +45,7 @@ export type Signal = 'u' | 'v' | 'none';
 export class StreetLife {
   readonly cars: Car[];
   readonly walkers: Walker[];
-  readonly boat: Boat;
+  readonly boats: Boat[];
   private clock = 0;
   private readonly spawnIn: number[];
 
@@ -70,7 +72,12 @@ export class StreetLife {
       rest: i * 0.8,
       seed: 0,
     }));
-    this.boat = { pos: STREET_LIFE.laneFrom, dir: 1, rest: 0 };
+    this.boats = city.boats.map((r, i) => ({
+      route: i,
+      pos: r.from + (r.to - r.from) * (0.3 + 0.4 * i),
+      dir: i % 2 ? -1 : 1,
+      rest: 0,
+    }));
     // Schon belebt starten: Autos und Passanten über die Strecke verteilen.
     for (let i = 0; i < 40; i++) this.update(0.5);
   }
@@ -210,16 +217,26 @@ export class StreetLife {
   }
 
   private updateBoat(dt: number): void {
-    const b = this.boat;
-    if (b.rest > 0) {
-      b.rest -= dt;
-      return;
+    for (const b of this.boats) {
+      const r = this.city.boats[b.route];
+      if (!r) continue;
+      if (b.rest > 0) {
+        b.rest -= dt;
+        continue;
+      }
+      b.pos += b.dir * STREET_LIFE.boatTilesPerSec * dt;
+      if (b.pos > r.to || b.pos < r.from) {
+        b.dir = b.dir > 0 ? -1 : 1;
+        b.pos = b.dir > 0 ? r.from : r.to;
+        b.rest = STREET_LIFE.boatRestSec;
+      }
     }
-    b.pos += b.dir * STREET_LIFE.boatTilesPerSec * dt;
-    if (b.pos > STREET_LIFE.laneTo || b.pos < STREET_LIFE.laneFrom) {
-      b.dir = b.dir > 0 ? -1 : 1;
-      b.pos = b.dir > 0 ? STREET_LIFE.laneFrom : STREET_LIFE.laneTo;
-      b.rest = STREET_LIFE.boatRestSec;
-    }
+  }
+
+  /** Weltposition eines Dampfers (Grid-Punkt der Mitte). */
+  boatPosition(b: Boat): { x: number; y: number } {
+    const r = this.city.boats[b.route];
+    if (!r) return { x: 0, y: 0 };
+    return r.axis === 'u' ? { x: b.pos, y: r.at } : { x: r.at, y: b.pos };
   }
 }

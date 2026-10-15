@@ -1,12 +1,18 @@
 /**
- * Stadtviertel um das Café (Vorgabe Vincent, 2026-10-15: „Optik wie Hotel Empire Tycoon heißt nicht nur das Café
- * selbst, sondern auch Straßen und Gebäude drum herum“). Das Café ist ein Eckladen: Gehwege auf seinen beiden
- * Straßenseiten (vorn y ≥ 12, rechts x ≥ 12), dahinter Fahrbahnen mit Kreuzung, gegenüber ein Kiezpark und ein
- * Kanal; hinter und neben dem Café stehen Altbauten, deren Obergeschosse über die Café-Wände ragen.
+ * Stadtviertel um das Café (Vorgabe Vincent, 2026-10-15): „Optik wie Hotel Empire Tycoon heißt nicht nur das Café
+ * selbst, sondern auch Straßen und Gebäude drum herum“ – und (zweite Runde) „die Häuser sind einfach aneinander, als
+ * ob da nicht eine Straße wäre … es soll mehr drum herum, kleine Läden, Geschäfte … die Map soll nicht so
+ * abgeschnitten sein an den Rändern“.
  *
- * Alles rein kosmetisch (UI_STYLE § 4), keine Spielbalance. Koordinaten in Grid-Kacheln wie `layouts.ts`, Rechtecke
- * halb offen (`x0 ≤ x < x1`). Farben als Hex-Strings: Die Szene zeichnet Boden und Dächer als Flächen, die
- * Fassaden-Module rendert `pnpm art` (`scripts/art/city.ts`) in den Themen-Atlas.
+ * Darum ein **Straßenraster**: Fahrbahnen alle 29 Kacheln in beiden Richtungen, dazwischen Berliner Blöcke mit
+ * Eckhäusern, Häuserzeilen und Innenhof. Das Café ist der Eckladen seines Blocks; vor ihm liegen Kiezpark,
+ * Wochenmarkt am Kanal, Sportplatz und am Ende die Spree. Hohe Häuser stehen nur hinter bzw. neben dem Café
+ * (die Kamera blickt von +x/+y, Häuser davor würden Straße und Café verdecken). Weit hinten werden die Häuser
+ * einfacher und dunstig (LOD), die Kamera bleibt innerhalb von `CITY.view`, sodass man nie einen Rand sieht.
+ *
+ * Alles rein kosmetisch (UI_STYLE § 4), keine Spielbalance. Koordinaten in Grid-Punkten (Kachel x reicht von x bis
+ * x + 1), Rechtecke halb offen. Farben als Hex-Strings: Boden, Dächer und ferne Häuser zeichnet die Szene als
+ * Flächen, die Fassaden-Module rendert `pnpm art` (`scripts/art/city.ts`) in den Themen-Atlas.
  */
 
 export interface GridRect {
@@ -17,12 +23,25 @@ export interface GridRect {
 }
 
 export type GroundKind =
-  'courtyard' | 'sidewalk' | 'road' | 'grass' | 'path' | 'quay' | 'water' | 'bridge';
+  | 'courtyard'
+  | 'yard'
+  | 'sidewalk'
+  | 'road'
+  | 'grass'
+  | 'path'
+  | 'plaza'
+  | 'pitch'
+  | 'sand'
+  | 'quay'
+  | 'water'
+  | 'bridge';
 
 export interface GroundArea {
   kind: GroundKind;
   rect: GridRect;
 }
+
+export type RoofKind = 'gable-u' | 'gable-v' | 'hip';
 
 export interface BuildingDef {
   rect: GridRect;
@@ -30,8 +49,13 @@ export interface BuildingDef {
   floors: number;
   /** Index in `CityPalette.facades`. */
   facade: number;
+  /** Index in `CityPalette.roofs`. */
+  roof: number;
+  roofKind: RoofKind;
   /** Würfelt Balkone, Läden und erleuchtete Fenster (deterministisch). */
   seed: number;
+  /** Fern: nur Flächen (Wand, Fensterbänder, Dach) im Dunst, keine Fassaden-Module. */
+  lod: boolean;
 }
 
 export type PropKind =
@@ -47,13 +71,24 @@ export type PropKind =
   | 'cafeSign'
   | 'pedLight'
   | 'parked'
-  | 'railing';
+  | 'railing'
+  | 'kiosk'
+  | 'stall'
+  | 'foodtruck'
+  | 'playground'
+  | 'fountain'
+  | 'icecart'
+  | 'goal'
+  | 'busstop'
+  | 'mailbox'
+  | 'scooters'
+  | 'bistro';
 
 export interface PropDef {
   kind: PropKind;
   x: number;
   y: number;
-  /** Variante (Auto-Farbe, Blickrichtung des Geländers …). */
+  /** Variante (Auto-Farbe, Markisenfarbe …). */
   variant?: number;
   /** Achse, an der das Objekt ausgerichtet ist (Autos, Bänke, Geländer): `u` = entlang x. */
   axis?: 'u' | 'v';
@@ -84,346 +119,33 @@ export const CITY_STYLE = {
   litShare: 0.4,
   /** Ab dieser Nacht-Stärke (0..1) gehen die Fenster an. */
   litFrom: 0.35,
+  /** Dachhöhe (Satteldach/Walmdach) je Kachel Haustiefe, höchstens `roofMax`. */
+  roofPerTile: 6.5,
+  roofMax: 40,
+  /** Anteil, mit dem ferne Häuser in den Dunst gemischt werden. */
+  hazeMix: 0.38,
 } as const;
 
-/** Bodenflächen in Zeichenreihenfolge (spätere liegen oben). */
-const GROUND: GroundArea[] = [
-  // Block-Innenhof als Grundton unter allen Häusern
-  { kind: 'courtyard', rect: { x0: -16, y0: -16, x1: 15, y1: 15 } },
-  // Gehwege am Café (Terrasse steht darauf) und gegenüber
-  { kind: 'sidewalk', rect: { x0: -16, y0: 12, x1: 15, y1: 15 } },
-  { kind: 'sidewalk', rect: { x0: 12, y0: -16, x1: 15, y1: 15 } },
-  { kind: 'sidewalk', rect: { x0: -16, y0: 19, x1: 21, y1: 21 } },
-  { kind: 'sidewalk', rect: { x0: 19, y0: -16, x1: 21, y1: 21 } },
-  // Kiezpark gegenüber (vorn) mit Wegen
-  { kind: 'grass', rect: { x0: -16, y0: 21, x1: 21, y1: 32 } },
-  { kind: 'path', rect: { x0: 4.5, y0: 21, x1: 6.5, y1: 32 } },
-  { kind: 'path', rect: { x0: -16, y0: 25, x1: 21, y1: 26.5 } },
-  // Kanal rechts mit Ufermauern, dahinter Grün
-  { kind: 'quay', rect: { x0: 21, y0: -16, x1: 22, y1: 32 } },
-  { kind: 'water', rect: { x0: 22, y0: -16, x1: 26, y1: 32 } },
-  { kind: 'quay', rect: { x0: 26, y0: -16, x1: 27, y1: 32 } },
-  { kind: 'grass', rect: { x0: 27, y0: -16, x1: 32, y1: 32 } },
-  // Fahrbahnen zuletzt (Brücke über den Kanal)
-  { kind: 'road', rect: { x0: -16, y0: 15, x1: 32, y1: 19 } },
-  { kind: 'road', rect: { x0: 15, y0: -16, x1: 19, y1: 32 } },
-  { kind: 'bridge', rect: { x0: 21, y0: 14.6, x1: 27, y1: 19.4 } },
-];
-
-/** Altbauten; Reihenfolge = Zeichenreihenfolge (hinten zuerst). */
-const BUILDINGS: BuildingDef[] = [
-  { rect: { x0: -16, y0: -16, x1: -5, y1: 4 }, floors: 5, facade: 3, seed: 11 },
-  { rect: { x0: -5, y0: -16, x1: 4, y1: -5 }, floors: 4, facade: 1, seed: 12 },
-  { rect: { x0: 4, y0: -16, x1: 12, y1: -10 }, floors: 5, facade: 0, seed: 13 },
-  { rect: { x0: 4, y0: -10, x1: 12, y1: -5 }, floors: 4, facade: 2, seed: 14 },
-  { rect: { x0: -5, y0: -5, x1: 0, y1: 0 }, floors: 5, facade: 3, seed: 15 },
-  { rect: { x0: 0, y0: -5, x1: 6, y1: 0 }, floors: 5, facade: 1, seed: 16 },
-  { rect: { x0: 6, y0: -5, x1: 12, y1: 0 }, floors: 5, facade: 4, seed: 17 },
-  { rect: { x0: -16, y0: 4, x1: -10, y1: 12 }, floors: 5, facade: 2, seed: 18 },
-  { rect: { x0: -10, y0: 4, x1: -5, y1: 12 }, floors: 4, facade: 4, seed: 19 },
-  { rect: { x0: -5, y0: 0, x1: 0, y1: 12 }, floors: 5, facade: 0, seed: 20 },
-];
-
-/** Linden am Bordstein (nicht direkt vor dem Café, damit der Blick frei bleibt). */
-const TREES: PropDef[] = [
-  ...[-14, -10, -6].map((x) => ({ kind: 'linden' as const, x, y: 14.45 })),
-  ...[-14, -10, -6].map((y) => ({ kind: 'linden' as const, x: 14.45, y })),
-  ...[-12, -6, 0, 6].map((x) => ({ kind: 'linden' as const, x, y: 19.55 })),
-  ...[-12, -6, 0, 6].map((y) => ({ kind: 'linden' as const, x: 19.55, y })),
-  // Park
-  { kind: 'linden', x: -12, y: 23 },
-  { kind: 'lindenSmall', x: -8, y: 28.5 },
-  { kind: 'linden', x: 0, y: 23.2 },
-  { kind: 'lindenSmall', x: 2, y: 29 },
-  { kind: 'linden', x: 9.5, y: 23 },
-  { kind: 'lindenSmall', x: 13, y: 28.5 },
-  { kind: 'linden', x: 17, y: 23.5 },
-  { kind: 'linden', x: -4, y: 29.5 },
-  // Am anderen Kanalufer
-  ...[-12, -6, 0, 6, 12, 24].map((y) => ({ kind: 'linden' as const, x: 28.5, y })),
-];
-
-const PROPS: PropDef[] = [
-  ...TREES,
-  // Laternen
-  ...[-12, -3, 3.5, 10].map((x) => ({ kind: 'lamp' as const, x, y: 14.75 })),
-  ...[-12, -3, 3.5, 10].map((y) => ({ kind: 'lamp' as const, x: 14.75, y })),
-  ...[-9, 3, 15].map((x) => ({ kind: 'lamp' as const, x, y: 19.25 })),
-  ...[-9, 3].map((y) => ({ kind: 'lamp' as const, x: 19.25, y })),
-  // Fahrräder, Litfaßsäule, Mülleimer, Poller
-  { kind: 'bikes', x: -8.2, y: 14.4, axis: 'u' },
-  { kind: 'bikes', x: 14.4, y: -8.2, axis: 'v' },
-  { kind: 'bikes', x: 14.4, y: 1.2, axis: 'v' },
-  { kind: 'litfass', x: -1.6, y: 14.2 },
-  { kind: 'bin', x: -4.6, y: 14.6 },
-  { kind: 'bin', x: 14.6, y: -4.6 },
-  { kind: 'bin', x: 7.2, y: 19.6 },
-  ...[13.6, 14.3].map((x) => ({ kind: 'bollard' as const, x, y: 14.8 })),
-  // Café: Nasenschild am Eingang, blaue Pflanzkübel an der Fassade
-  { kind: 'cafeSign', x: 7.15, y: 12.15 },
-  { kind: 'planter', x: 5.2, y: 12.2 },
-  { kind: 'planter', x: 12.2, y: 5.2 },
-  // Fußgängerampeln an der Ecke
-  { kind: 'pedLight', x: 12.4, y: 14.8, axis: 'u' },
-  { kind: 'pedLight', x: 14.8, y: 12.4, axis: 'v' },
-  // Parkende Autos am Bordstein
-  { kind: 'parked', x: -13, y: 15.5, axis: 'u', variant: 1 },
-  { kind: 'parked', x: -9.5, y: 15.5, axis: 'u', variant: 3 },
-  { kind: 'parked', x: -2.5, y: 15.5, axis: 'u', variant: 0 },
-  { kind: 'parked', x: 15.5, y: -12, axis: 'v', variant: 2 },
-  { kind: 'parked', x: 15.5, y: -5.5, axis: 'v', variant: 1 },
-  { kind: 'parked', x: 18.5, y: 4, axis: 'v', variant: 0 },
-  { kind: 'parked', x: 6, y: 18.5, axis: 'u', variant: 2 },
-  // Park
-  { kind: 'bench', x: -10, y: 24.4, axis: 'u' },
-  { kind: 'bench', x: 1.5, y: 24.4, axis: 'u' },
-  { kind: 'bench', x: 12, y: 24.4, axis: 'u' },
-  { kind: 'bench', x: 3.8, y: 29, axis: 'v' },
-  { kind: 'bin', x: 7, y: 24.5 },
-  // Brückengeländer
-  ...[21.5, 23, 24.5, 26].map((x) => ({
-    kind: 'railing' as const,
-    x,
-    y: 14.8,
-    axis: 'u' as const,
-  })),
-  ...[21.5, 23, 24.5, 26].map((x) => ({
-    kind: 'railing' as const,
-    x,
-    y: 19.2,
-    axis: 'u' as const,
-  })),
-];
-
-const LANES: LaneDef[] = [
-  // Fahrbahn vorn (entlang x): Haltelinien vor den Überwegen an der Kreuzung
-  { axis: 'u', at: 16.5, dir: -1, stopAt: 19.4 },
-  { axis: 'u', at: 17.5, dir: 1, stopAt: 12.3 },
-  // Fahrbahn rechts (entlang y)
-  { axis: 'v', at: 16.5, dir: 1, stopAt: 12.3 },
-  { axis: 'v', at: 17.5, dir: -1, stopAt: 19.4 },
-];
-
-const SIDE_NEAR = 14.05;
-const SIDE_FAR = 20;
-const WALKS: WalkPath[] = [
-  // Ums Café herum (vorn → Ecke → rechts) und zurück
-  {
-    points: [
-      { x: -17, y: SIDE_NEAR },
-      { x: SIDE_NEAR, y: SIDE_NEAR },
-      { x: SIDE_NEAR, y: -17 },
-    ],
-  },
-  {
-    points: [
-      { x: SIDE_NEAR, y: -17 },
-      { x: SIDE_NEAR, y: SIDE_NEAR },
-      { x: -17, y: SIDE_NEAR },
-    ],
-  },
-  // Gegenüber am Park entlang
-  {
-    points: [
-      { x: -17, y: SIDE_FAR },
-      { x: SIDE_FAR, y: SIDE_FAR },
-      { x: SIDE_FAR, y: -17 },
-    ],
-  },
-  {
-    points: [
-      { x: SIDE_FAR, y: -17 },
-      { x: SIDE_FAR, y: SIDE_FAR },
-      { x: -17, y: SIDE_FAR },
-    ],
-  },
-  // Über die Überwege (Ampel)
-  {
-    points: [
-      { x: -17, y: SIDE_NEAR },
-      { x: 13.6, y: SIDE_NEAR },
-      { x: 13.6, y: SIDE_FAR, cross: 'u' },
-      { x: -17, y: SIDE_FAR },
-    ],
-  },
-  {
-    points: [
-      { x: SIDE_FAR, y: -17 },
-      { x: SIDE_FAR, y: 13.6 },
-      { x: SIDE_NEAR, y: 13.6, cross: 'v' },
-      { x: SIDE_NEAR, y: -17 },
-    ],
-  },
-];
-
-export interface CityDef {
-  /** Gezeichnete Fläche; die Kamera darf bis `pan` schwenken. */
-  extent: GridRect;
-  pan: GridRect;
-  ground: GroundArea[];
-  buildings: BuildingDef[];
-  props: PropDef[];
-  lanes: LaneDef[];
-  walks: WalkPath[];
-  /** Zebrastreifen: Rechteck und Achse der Fahrbahn, die er quert. */
-  crossings: { rect: GridRect; axis: 'u' | 'v' }[];
-}
-
-export const CITY: CityDef = {
-  extent: { x0: -16, y0: -16, x1: 32, y1: 32 },
-  pan: { x0: -10, y0: -10, x1: 24, y1: 24 },
-  ground: GROUND,
-  buildings: BUILDINGS,
-  props: PROPS,
-  lanes: LANES,
-  walks: WALKS,
-  crossings: [
-    { rect: { x0: 12.6, y0: 15, x1: 14.6, y1: 19 }, axis: 'u' },
-    { rect: { x0: 15, y0: 12.6, x1: 19, y1: 14.6 }, axis: 'v' },
-  ],
-};
-
-/** Verkehr und Passanten (kosmetisch). */
-export const STREET_LIFE = {
-  carTilesPerSec: 2.6,
-  /** Halbe Wagenlänge: so weit vor der Haltelinie steht die Wagenmitte. */
-  carHalfLength: 0.65,
-  /** Mindestabstand zum Vordermann (Kacheln, Mitte zu Mitte). */
-  carGap: 1.7,
-  /** Neues Auto je Fahrstreifen im Mittel alle … Sekunden. */
-  carEverySec: 4.5,
-  maxCarsPerLane: 4,
-  /** Autos starten/enden außerhalb des Bildes. */
-  laneFrom: -18,
-  laneTo: 34,
-  /** Ampel: Grünphase je Achse, danach alles Rot, damit die Kreuzung frei wird. */
-  greenSec: 9,
-  allRedSec: 2.5,
-  walkers: 9,
-  walkerTilesPerSec: 1.15,
-  /** Pause, bevor ein Passant am Ende seines Wegs neu startet (Sekunden, gleichverteilt). */
-  walkerRestMin: 1,
-  walkerRestMax: 6,
-  /** Ausflugsdampfer auf dem Kanal. */
-  boatTilesPerSec: 0.55,
-  boatAt: 24,
-  /** Wendepause am Ende des Kanals. */
-  boatRestSec: 8,
-  carTypes: 4,
+/** Straßenraster: Fahrbahn k liegt bei [origin + k·pitch, … + road), Gehwege links und rechts davon. */
+export const CITY_GRID = {
+  origin: 15,
+  pitch: 29,
+  road: 4,
+  sidewalk: 3,
+  /** Blöcke i, j in diesem Bereich (Block −1/−1 ist der Café-Block). */
+  blocks: { from: -4, to: 1 },
+  /** Gezeichnete Fläche (Grid). */
+  extent: { x0: -120, y0: -120, x1: 90, y1: 90 },
 } as const;
 
-export interface CityPalette {
-  /** Fassadenfarben der Altbauten (Index = `BuildingDef.facade`). */
-  facades: readonly string[];
-  /** Stuck: Fensterfaschen, Gesimse, Balkonplatten. */
-  stucco: string;
-  /** Erdgeschoss-Sockel (Ladenzone, gequadert). */
-  plinth: string;
-  roof: string;
-  roofRim: string;
-  courtyard: string;
-  sidewalk: string;
-  sidewalkJoint: string;
-  curb: string;
-  road: string;
-  roadMark: string;
-  grass: string;
-  grassDark: string;
-  path: string;
-  quay: string;
-  water: string;
-  waterLight: string;
-  /** Hintergrund der Kamera außerhalb der Stadt. */
-  outside: string;
-}
-
-const BERLIN: CityPalette = {
-  facades: ['#e8c993', '#e6a993', '#b9cfc0', '#b9c5d9', '#efe3c8'],
-  stucco: '#f7f1e6',
-  plinth: '#a59b8f',
-  roof: '#7c7f92',
-  roofRim: '#9b9eb0',
-  courtyard: '#b9b1a4',
-  sidewalk: '#cdc8bf',
-  sidewalkJoint: '#b6b0a6',
-  curb: '#e2ded7',
-  road: '#5d6274',
-  roadMark: '#f3f1ea',
-  grass: '#9ccb7f',
-  grassDark: '#86b56b',
-  path: '#e5d6b4',
-  quay: '#bdb6aa',
-  water: '#5fa8d8',
-  waterLight: '#8cc6ea',
-  outside: '#8f9a86',
-};
-
-export const CITY_PALETTES: Readonly<Record<string, CityPalette>> = {
-  berlin: BERLIN,
-  kyoto: {
-    ...BERLIN,
-    facades: ['#e9dcc0', '#d9c4a0', '#c8b894', '#efe6d2', '#bba582'],
-    plinth: '#6e5340',
-    roof: '#4e5568',
-    roofRim: '#687087',
-    grass: '#a6c98a',
-    grassDark: '#8fb573',
-    water: '#6db0c8',
-  },
-  tokyo: {
-    ...BERLIN,
-    facades: ['#c9ccd8', '#a9afc3', '#d9d3e6', '#9097b2', '#e8e4ef'],
-    plinth: '#3f4362',
-    roof: '#666b84',
-    roofRim: '#80869f',
-    courtyard: '#9da0b0',
-    sidewalk: '#c2c4cf',
-    sidewalkJoint: '#aeb1bd',
-    road: '#4a4f66',
-  },
-  seoul: {
-    ...BERLIN,
-    facades: ['#e7e3db', '#cfd9e3', '#f0dac9', '#c9d7c5', '#dacce1'],
-    plinth: '#8d8f9c',
-  },
-  newyork: {
-    ...BERLIN,
-    facades: ['#a6563f', '#934c3a', '#b96d50', '#c89c7c', '#80584a'],
-    stucco: '#ece5da',
-    plinth: '#3d3d48',
-    roof: '#5d5d69',
-    roofRim: '#777784',
-    sidewalk: '#c4c0ba',
-    road: '#53576a',
-  },
-  bali: {
-    ...BERLIN,
-    facades: ['#efe0bd', '#e3cfa2', '#f2e8d2', '#d9c290', '#e9d9b9'],
-    plinth: '#8a6a3c',
-    roof: '#a3664a',
-    roofRim: '#bd8062',
-    grass: '#8fcf7a',
-    grassDark: '#76bb62',
-    water: '#4fc1c9',
-    waterLight: '#86dbe0',
-    outside: '#86b66f',
-  },
-};
-
-export function getCityPalette(locationId: string): CityPalette {
-  return CITY_PALETTES[locationId] ?? BERLIN;
-}
-
-// ---------------------------------------------------------------------------------------------
-// Fassaden-Raster (geteilt von `scripts/art/city.ts` und der Szene)
-// ---------------------------------------------------------------------------------------------
-
-export type FacadeFace = 'a' | 'b';
-/** Module des Erdgeschosses (Ladenzone, farbunabhängig) und der Obergeschosse (je Fassadenfarbe). */
-export const GROUND_CELLS = ['shop0', 'shop1', 'shop2', 'shop3', 'door', 'base'] as const;
-export const UPPER_CELLS = ['win', 'balc'] as const;
-export type GroundCell = (typeof GROUND_CELLS)[number];
-export type UpperCell = (typeof UPPER_CELLS)[number];
+const { origin: O, pitch: PITCH, road: ROAD, sidewalk: SIDE } = CITY_GRID;
+/** Fahrbahn k: [roadAt(k), roadAt(k) + ROAD). */
+export const roadAt = (k: number): number => O + k * PITCH;
+/** Bebaubare Fläche des Blocks i (in x) bzw. j (in y): zwischen Fahrbahn i und i + 1, ohne Gehwege. */
+export const zoneOf = (i: number): [number, number] => [
+  roadAt(i) + ROAD + SIDE,
+  roadAt(i + 1) - SIDE,
+];
 
 /** Pseudozufall 0..1 aus ganzen Zahlen (stabil zwischen Läufen und Geräten). */
 export function hash01(...n: number[]): number {
@@ -437,17 +159,628 @@ export function hash01(...n: number[]): number {
   return ((h ^ (h >>> 15)) >>> 0) / 4294967296;
 }
 
+export type BlockKind = 'cafe' | 'altbau' | 'canal' | 'park' | 'market' | 'sports' | 'river';
+
+/** Was in Block (i, j) steht: hinten Altbau, vorn Park/Markt/Sport, ganz vorn die Spree, rechts der Kanal. */
+export function blockKind(i: number, j: number): BlockKind {
+  if (i === -1 && j === -1) return 'cafe';
+  if (i >= 1 || j >= 1) return 'river';
+  if (i === 0 && j === 0) return 'market';
+  if (i === 0) return 'canal';
+  if (j === 0) return i === -2 ? 'sports' : 'park';
+  return 'altbau';
+}
+
+/** Fassaden-Module nur für die Blöcke nah am Café; dahinter Flächen-LOD im Dunst. */
+function detailed(i: number, j: number): boolean {
+  return Math.abs(i + 1) + Math.abs(j + 1) <= 1 || (i === -2 && j === -2);
+}
+
+/** Die Spree: alles jenseits der vorderen Uferstraßen. */
+const RIVER_FROM = roadAt(1) + ROAD + SIDE;
+/** Kanal rechts neben dem Café-Block (zwischen Fahrbahn 0 und dem Kanalblock), mit Ufermauern. */
+const CANAL = { quay0: 21, x0: 22, x1: 26, quay1: 27 } as const;
+
+let seedCounter = 100;
+
+function building(rect: GridRect, roofKind: RoofKind, lod: boolean, floors?: number): BuildingDef {
+  const seed = seedCounter++;
+  return {
+    rect,
+    floors: floors ?? (hash01(seed, 1) < 0.55 ? 5 : 4),
+    facade: Math.floor(hash01(seed, 2) * 7) % 7,
+    roof: Math.floor(hash01(seed, 3) * 4) % 4,
+    roofKind,
+    seed,
+    lod,
+  };
+}
+
+/** Teilt eine Strecke [a, b) in Häuser von 3–4 Kacheln Breite (deterministisch). */
+function splitRow(a: number, b: number, seed: number): [number, number][] {
+  const out: [number, number][] = [];
+  let x = a;
+  let k = 0;
+  while (b - x > 0) {
+    const left = b - x;
+    const w = left <= 5 ? left : hash01(seed, k++) < 0.5 ? 3 : 4;
+    out.push([x, x + w]);
+    x += w;
+  }
+  return out;
+}
+
+/** Berliner Block: vier Eckhäuser, Häuserzeilen dazwischen, Innenhof mit Bäumen. */
+function altbauBlock(
+  zone: GridRect,
+  lod: boolean,
+  seed: number,
+): { buildings: BuildingDef[]; yard: GridRect } {
+  const D = 6;
+  const { x0, y0, x1, y1 } = zone;
+  const out: BuildingDef[] = [];
+  // Reihenfolge = Zeichenreihenfolge (hinten zuerst): hintere Zeile, linke/rechte Spalte, vordere Zeile.
+  out.push(building({ x0, y0, x1: x0 + D, y1: y0 + D }, 'hip', lod, 5));
+  for (const [a, b] of splitRow(x0 + D, x1 - D, seed))
+    out.push(building({ x0: a, y0, x1: b, y1: y0 + D }, 'gable-u', lod));
+  out.push(building({ x0: x1 - D, y0, x1, y1: y0 + D }, 'hip', lod, 5));
+  for (const [a, b] of splitRow(y0 + D, y1 - D, seed + 1)) {
+    out.push(building({ x0, y0: a, x1: x0 + D, y1: b }, 'gable-v', lod));
+    out.push(building({ x0: x1 - D, y0: a, x1, y1: b }, 'gable-v', lod));
+  }
+  out.push(building({ x0, y0: y1 - D, x1: x0 + D, y1 }, 'hip', lod, 5));
+  for (const [a, b] of splitRow(x0 + D, x1 - D, seed + 2))
+    out.push(building({ x0: a, y0: y1 - D, x1: b, y1 }, 'gable-u', lod));
+  out.push(building({ x0: x1 - D, y0: y1 - D, x1, y1 }, 'hip', lod, 5));
+  return { buildings: out, yard: { x0: x0 + D, y0: y0 + D, x1: x1 - D, y1: y1 - D } };
+}
+
+export interface CityDef {
+  /** Gezeichnete Fläche (Grid). */
+  extent: GridRect;
+  /** Die Kamera bleibt mit ihrem ganzen Ausschnitt in diesem Rechteck (Welt-Pixel). */
+  view: { left: number; top: number; right: number; bottom: number };
+  ground: GroundArea[];
+  buildings: BuildingDef[];
+  /** Objekte vorn an den Hauptstraßen, im Park, auf dem Markt (vor allen Häusern, mit den Figuren sortiert). */
+  props: PropDef[];
+  /** Objekte zwischen den Häusern (Innenhöfe): mit den Fassaden sortiert, unter den Dächern. */
+  backProps: PropDef[];
+  lanes: LaneDef[];
+  walks: WalkPath[];
+  /** Zebrastreifen: Rechteck und Achse der Fahrbahn, die er quert. */
+  crossings: { rect: GridRect; axis: 'u' | 'v' }[];
+  /** Fahrbahnen (Anfang `at`, Breite `CITY_GRID.road`), für Mittellinien und Bordsteine. */
+  roads: { axis: 'u' | 'v'; at: number }[];
+  /** Ausflugsdampfer: Kanal (entlang v) und Spree (entlang u). */
+  boats: { axis: 'u' | 'v'; at: number; from: number; to: number }[];
+}
+
+/**
+ * Ausschnitt, in dem die Kamera bleiben darf (Welt-Pixel, siehe `toScreen`): Er ist so gewählt, dass überall
+ * Häuser, Park oder Wasser zu sehen sind; herauszoomen geht nur so weit, wie der Ausschnitt hineinpasst.
+ */
+const CITY_VIEW = { left: -1150, top: -1150, right: 1150, bottom: 1500 } as const;
+
+/** Liegt v auf einer Kreuzung (mit Rand) oder über dem Kanal? Dort keine Bäume und keine Parker. */
+function blockedAt(v: number, margin: number): boolean {
+  return (
+    [-2, -1, 0, 1].some((k) => v > roadAt(k) - margin && v < roadAt(k) + ROAD + margin) ||
+    (v > CANAL.quay0 - 1 && v < CANAL.quay1 + 1)
+  );
+}
+
+/** Straßenmöbel an den beiden Hauptstraßen vor dem Café (beide Gehwegseiten) und den Uferstraßen. */
+function streetProps(): PropDef[] {
+  const out: PropDef[] = [];
+  const near = O - 0.55;
+  const far = O + ROAD + 0.55;
+  const outer = roadAt(1);
+  for (let s = -60; s <= 44; s += 1) {
+    if (blockedAt(s, 1.5)) continue;
+    const frontOfCafe = s > -1 && s < 15;
+    // Linden auf beiden Seiten, nicht direkt vor dem Café (Blick frei)
+    if (s % 5 === 0 && !frontOfCafe) {
+      out.push({ kind: 'linden', x: s, y: near + 0.1 });
+      out.push({ kind: 'linden', x: near + 0.1, y: s });
+    }
+    if ((s + 60) % 5 === 2) {
+      out.push({ kind: 'linden', x: s, y: far - 0.1 });
+      out.push({ kind: 'linden', x: far - 0.1, y: s });
+      if (s < outer - 2) {
+        out.push({ kind: 'linden', x: s, y: outer - 0.45 });
+        out.push({ kind: 'linden', x: outer - 0.45, y: s });
+      }
+    }
+    if ((s + 60) % 7 === 3) {
+      out.push({ kind: 'lamp', x: s, y: near + 0.3 });
+      out.push({ kind: 'lamp', x: near + 0.3, y: s });
+      out.push({ kind: 'lamp', x: s + 2, y: far - 0.3 });
+      out.push({ kind: 'lamp', x: far - 0.3, y: s + 2 });
+    }
+    // Leben vor den Läden: Fahrräder, Roller, Briefkasten, Imbiss-Tische, Litfaßsäulen
+    if ((s + 60) % 11 === 5 && !frontOfCafe) {
+      out.push({ kind: 'bikes', x: s, y: near, axis: 'u' });
+      out.push({ kind: 'bikes', x: near, y: s, axis: 'v' });
+    }
+    if ((s + 60) % 13 === 7 && !frontOfCafe) {
+      out.push({ kind: 'bistro', x: s + 0.5, y: O - 2.2, variant: (s + 60) % 2 });
+      out.push({ kind: 'bistro', x: O - 2.2, y: s + 0.5, variant: (s + 61) % 2 });
+    }
+    if ((s + 60) % 17 === 9) {
+      out.push({ kind: 'scooters', x: s, y: far - 0.4, axis: 'u' });
+      out.push({ kind: 'mailbox', x: far - 0.4, y: s - 1.5 });
+    }
+    if ((s + 60) % 23 === 11) {
+      out.push({ kind: 'litfass', x: s, y: far - 0.9 });
+      out.push({ kind: 'litfass', x: near - 0.4, y: s });
+    }
+  }
+  out.push(
+    // Ecke am Café
+    { kind: 'litfass', x: -1.6, y: 14.2 },
+    { kind: 'bin', x: -4.6, y: 14.6 },
+    { kind: 'bin', x: 14.6, y: -4.6 },
+    ...[13.6, 14.3].map((x) => ({ kind: 'bollard' as const, x, y: 14.8 })),
+    { kind: 'cafeSign', x: 7.15, y: 12.15 },
+    { kind: 'planter', x: 5.4, y: 12.25 },
+    { kind: 'planter', x: 12.25, y: 5.2 },
+    { kind: 'pedLight', x: 12.4, y: 14.8, axis: 'u' },
+    { kind: 'pedLight', x: 14.8, y: 12.4, axis: 'v' },
+    { kind: 'busstop', x: 4, y: far + 0.7, axis: 'u' },
+    { kind: 'busstop', x: far + 0.7, y: -3, axis: 'v' },
+    { kind: 'mailbox', x: 11, y: far - 0.4 },
+  );
+  // Parkende Autos am Bordstein (nicht vor dem Café, nicht auf Kreuzungen)
+  for (let s = -58; s < 44; s += 3.4) {
+    const v = Math.floor(hash01(s * 10, 3) * 4);
+    if (blockedAt(s, 2.5)) continue;
+    const notCafe = s < -2 || s > 15;
+    if (hash01(s, 1) < 0.55 && notCafe)
+      out.push({ kind: 'parked', x: s, y: O + 0.5, axis: 'u', variant: v });
+    if (hash01(s, 2) < 0.5)
+      out.push({ kind: 'parked', x: s + 1.2, y: O + ROAD - 0.5, axis: 'u', variant: (v + 1) % 4 });
+    if (hash01(s, 5) < 0.5 && notCafe)
+      out.push({ kind: 'parked', x: O + 0.5, y: s, axis: 'v', variant: (v + 2) % 4 });
+    if (hash01(s, 6) < 0.5)
+      out.push({ kind: 'parked', x: O + ROAD - 0.5, y: s + 1.2, axis: 'v', variant: (v + 3) % 4 });
+  }
+  return out;
+}
+
+const LANES: LaneDef[] = [
+  // Fahrbahn vorn (entlang x): Haltelinien vor den Überwegen an der Kreuzung beim Café
+  { axis: 'u', at: O + 1.5, dir: -1, stopAt: O + ROAD + 0.4 },
+  { axis: 'u', at: O + 2.5, dir: 1, stopAt: 12.3 },
+  // Fahrbahn rechts (entlang y)
+  { axis: 'v', at: O + 1.5, dir: 1, stopAt: 12.3 },
+  { axis: 'v', at: O + 2.5, dir: -1, stopAt: O + ROAD + 0.4 },
+];
+
+const SIDE_NEAR = 14.3;
+const SIDE_FAR = 20.3;
+const FAR_END = -62;
+const WALKS: WalkPath[] = [
+  // Ums Café herum (vorn → Ecke → rechts) und zurück
+  {
+    points: [
+      { x: FAR_END, y: SIDE_NEAR },
+      { x: SIDE_NEAR, y: SIDE_NEAR },
+      { x: SIDE_NEAR, y: FAR_END },
+    ],
+  },
+  {
+    points: [
+      { x: SIDE_NEAR, y: FAR_END },
+      { x: SIDE_NEAR, y: SIDE_NEAR },
+      { x: FAR_END, y: SIDE_NEAR },
+    ],
+  },
+  // Gegenüber am Park bzw. am Kanal entlang
+  {
+    points: [
+      { x: FAR_END, y: SIDE_FAR },
+      { x: SIDE_FAR, y: SIDE_FAR },
+      { x: SIDE_FAR, y: FAR_END },
+    ],
+  },
+  {
+    points: [
+      { x: SIDE_FAR, y: FAR_END },
+      { x: SIDE_FAR, y: SIDE_FAR },
+      { x: FAR_END, y: SIDE_FAR },
+    ],
+  },
+  // Über die Überwege (Ampel), dann in den Park
+  {
+    points: [
+      { x: FAR_END, y: SIDE_NEAR },
+      { x: 13.6, y: SIDE_NEAR },
+      { x: 13.6, y: SIDE_FAR, cross: 'u' },
+      { x: 5.5, y: SIDE_FAR },
+      { x: 5.5, y: 28.75 },
+      { x: -10, y: 28.75 },
+    ],
+  },
+  {
+    points: [
+      { x: SIDE_FAR, y: FAR_END },
+      { x: SIDE_FAR, y: 13.6 },
+      { x: SIDE_NEAR, y: 13.6, cross: 'v' },
+      { x: SIDE_NEAR, y: FAR_END },
+    ],
+  },
+  // Durch den Park
+  {
+    points: [
+      { x: 5.5, y: 42 },
+      { x: 5.5, y: 28.75 },
+      { x: 5.5, y: SIDE_FAR },
+      { x: -40, y: SIDE_FAR },
+    ],
+  },
+];
+
+/** Baut das Viertel deterministisch aus dem Raster (einmal beim Laden). */
+function buildCity(): CityDef {
+  seedCounter = 100;
+  const { blocks, extent } = CITY_GRID;
+  const ground: GroundArea[] = [];
+  const buildings: BuildingDef[] = [];
+  const props: PropDef[] = [];
+  const backProps: PropDef[] = [];
+  const roads: { axis: 'u' | 'v'; at: number }[] = [];
+
+  // Grundton: Gehwegpflaster überall (zwischen den Blöcken), darauf Blöcke, Fahrbahnen, Wasser.
+  ground.push({ kind: 'sidewalk', rect: { ...extent } });
+
+  for (let i: number = blocks.from; i <= blocks.to; i++) {
+    for (let j: number = blocks.from; j <= blocks.to; j++) {
+      const [x0, x1] = zoneOf(i);
+      const [y0, y1] = zoneOf(j);
+      const zone = { x0, y0, x1, y1 };
+      const kind = blockKind(i, j);
+      const lod = !detailed(i, j);
+      const seed = (i + 10) * 31 + (j + 10) * 7;
+      if (kind === 'altbau') {
+        const b = altbauBlock(zone, lod, seed);
+        ground.push({ kind: 'courtyard', rect: zone });
+        ground.push({ kind: 'yard', rect: b.yard });
+        buildings.push(...b.buildings);
+        if (!lod) {
+          // Hofbäume (über die Dächer der Vorderhäuser zu sehen), Fahrräder und Tonnen
+          backProps.push({ kind: 'linden', x: b.yard.x0 + 2, y: b.yard.y0 + 2.5 });
+          backProps.push({ kind: 'lindenSmall', x: b.yard.x1 - 2, y: b.yard.y0 + 2 });
+          backProps.push({ kind: 'bikes', x: b.yard.x0 + 1, y: b.yard.y1 - 1, axis: 'u' });
+          backProps.push({ kind: 'bin', x: b.yard.x1 - 1, y: b.yard.y1 - 1 });
+        }
+      } else if (kind === 'cafe') {
+        ground.push({ kind: 'courtyard', rect: zone });
+        // Café [0, 12)² im vorderen rechten Eck; Häuser dahinter und daneben (Obergeschosse über dem Café).
+        buildings.push(building({ x0, y0, x1: 0, y1: 0 }, 'hip', false, 5));
+        buildings.push(building({ x0: 0, y0, x1: 6, y1: 0 }, 'gable-u', false, 5));
+        buildings.push(building({ x0: 6, y0, x1: 12, y1: 0 }, 'hip', false, 5));
+        buildings.push(building({ x0, y0: 0, x1: 0, y1: 6 }, 'gable-v', false, 5));
+        buildings.push(building({ x0, y0: 6, x1: 0, y1: 12 }, 'hip', false, 5));
+      } else if (kind === 'canal') {
+        ground.push({ kind: 'grass', rect: { x0: CANAL.quay1, y0, x1: 31, y1 } });
+        ground.push({ kind: 'courtyard', rect: { x0: 31, y0, x1, y1 } });
+        const D = 6;
+        buildings.push(building({ x0: 31, y0, x1: x1 - D, y1: y0 + D }, 'gable-u', lod));
+        buildings.push(building({ x0: x1 - D, y0, x1, y1: y0 + D }, 'hip', lod, 5));
+        buildings.push(building({ x0: x1 - D, y0: y0 + D, x1, y1: y1 - D }, 'gable-v', lod));
+        buildings.push(building({ x0: 31, y0: y1 - D, x1: x1 - D, y1 }, 'gable-u', lod));
+        buildings.push(building({ x0: x1 - D, y0: y1 - D, x1, y1 }, 'hip', lod, 5));
+        ground.push({ kind: 'yard', rect: { x0: 31, y0: y0 + D, x1: x1 - D, y1: y1 - D } });
+        if (!lod)
+          for (let y = y0 + 2; y < y1; y += 5) {
+            props.push({ kind: 'linden', x: 29, y });
+            props.push({ kind: 'bench', x: 28, y: y + 2.5, axis: 'v' });
+          }
+      } else if (kind === 'park') {
+        ground.push({ kind: 'grass', rect: zone });
+        if (i === -1) {
+          ground.push({ kind: 'path', rect: { x0: 4.5, y0, x1: 6.5, y1 } });
+          ground.push({ kind: 'path', rect: { x0, y0: 28, x1, y1: 29.5 } });
+          ground.push({ kind: 'sand', rect: { x0: -5, y0: 31, x1: 1, y1: 37 } });
+          props.push({ kind: 'playground', x: -2, y: 34 });
+          props.push({ kind: 'fountain', x: 5.5, y: 28.75 });
+          props.push({ kind: 'kiosk', x: 9.5, y: 24.5 });
+          props.push({ kind: 'icecart', x: 3, y: 26.6 });
+          for (const [x, y] of [
+            [-4, 24],
+            [0, 25],
+            [9, 32],
+            [-5, 39],
+            [2, 39.5],
+            [10, 38],
+            [-2, 30.5],
+          ] as const)
+            props.push({ kind: hash01(x, y) < 0.5 ? 'linden' : 'lindenSmall', x, y });
+          for (const x of [-4, 1.5, 8.5]) props.push({ kind: 'bench', x, y: 27.6, axis: 'u' });
+          props.push({ kind: 'bench', x: 3.6, y: 34, axis: 'v' });
+          props.push({ kind: 'bin', x: 7, y: 27.6 });
+        } else {
+          for (let x = x0 + 2; x < x1; x += 5)
+            for (let y = y0 + 2; y < y1; y += 5)
+              if (hash01(x, y, 4) < 0.7) props.push({ kind: 'linden', x, y });
+        }
+      } else if (kind === 'sports') {
+        ground.push({ kind: 'grass', rect: zone });
+        ground.push({ kind: 'pitch', rect: { x0: x0 + 2, y0: y0 + 3, x1: x1 - 2, y1: y1 - 3 } });
+        props.push({ kind: 'goal', x: (x0 + x1) / 2, y: y0 + 3.4, axis: 'u' });
+        props.push({ kind: 'goal', x: (x0 + x1) / 2, y: y1 - 3.4, axis: 'u' });
+        for (let x = x0 + 1; x < x1; x += 4) props.push({ kind: 'linden', x, y: y0 + 1 });
+        props.push({ kind: 'bench', x: x1 - 1, y: (y0 + y1) / 2, axis: 'v' });
+      } else if (kind === 'market') {
+        ground.push({ kind: 'plaza', rect: { x0: CANAL.quay1, y0, x1, y1 } });
+        // Wochenmarkt: Stände in zwei Reihen, Imbisswagen, Bäume am Rand
+        for (let k = 0; k < 4; k++) {
+          props.push({ kind: 'stall', x: 30 + k * 2.6, y: y0 + 5, variant: k % 4 });
+          props.push({ kind: 'stall', x: 30 + k * 2.6, y: y0 + 9, variant: (k + 2) % 4 });
+        }
+        props.push({ kind: 'foodtruck', x: 31, y: y0 + 14, axis: 'u', variant: 0 });
+        props.push({ kind: 'foodtruck', x: 36, y: y0 + 14.5, axis: 'u', variant: 1 });
+        for (let y = y0 + 1; y < y1; y += 4) props.push({ kind: 'linden', x: x1 - 1, y });
+        for (const x of [29, 33, 37]) props.push({ kind: 'bench', x, y: y1 - 2, axis: 'u' });
+      } else {
+        ground.push({ kind: 'water', rect: zone });
+      }
+    }
+  }
+
+  // Fahrbahnen über die ganze Fläche (bis zur Spree)
+  for (let k: number = blocks.from; k <= blocks.to; k++) {
+    const a = roadAt(k);
+    roads.push({ axis: 'u', at: a }, { axis: 'v', at: a });
+    ground.push({ kind: 'road', rect: { x0: extent.x0, y0: a, x1: RIVER_FROM, y1: a + ROAD } });
+    ground.push({ kind: 'road', rect: { x0: a, y0: extent.y0, x1: a + ROAD, y1: RIVER_FROM } });
+  }
+  // Spree (vorn und rechts) mit Ufermauer, Kanal mit Ufermauern und Brücken
+  const q = 0.6;
+  ground.push({
+    kind: 'quay',
+    rect: { x0: extent.x0, y0: RIVER_FROM - q, x1: RIVER_FROM, y1: RIVER_FROM },
+  });
+  ground.push({
+    kind: 'quay',
+    rect: { x0: RIVER_FROM - q, y0: extent.y0, x1: RIVER_FROM, y1: RIVER_FROM },
+  });
+  ground.push({
+    kind: 'water',
+    rect: { x0: extent.x0, y0: RIVER_FROM, x1: extent.x1, y1: extent.y1 },
+  });
+  ground.push({
+    kind: 'water',
+    rect: { x0: RIVER_FROM, y0: extent.y0, x1: extent.x1, y1: extent.y1 },
+  });
+  ground.push({
+    kind: 'quay',
+    rect: { x0: CANAL.quay0, y0: extent.y0, x1: CANAL.x0, y1: RIVER_FROM },
+  });
+  ground.push({
+    kind: 'water',
+    rect: { x0: CANAL.x0, y0: extent.y0, x1: CANAL.x1, y1: RIVER_FROM },
+  });
+  ground.push({
+    kind: 'quay',
+    rect: { x0: CANAL.x1, y0: extent.y0, x1: CANAL.quay1, y1: RIVER_FROM },
+  });
+  for (let k: number = blocks.from; k <= blocks.to; k++) {
+    const a = roadAt(k);
+    ground.push({
+      kind: 'bridge',
+      rect: { x0: CANAL.quay0, y0: a - 0.4, x1: CANAL.quay1, y1: a + ROAD + 0.4 },
+    });
+    if (k >= -1)
+      for (const x of [21.5, 23, 24.5, 26])
+        for (const y of [a - 0.2, a + ROAD + 0.2]) props.push({ kind: 'railing', x, y, axis: 'u' });
+  }
+  // Ufergeländer an der Spree
+  for (let x = -40; x < RIVER_FROM; x += 1.5)
+    if (!(x > CANAL.quay0 - 1 && x < CANAL.quay1))
+      props.push({ kind: 'railing', x, y: RIVER_FROM - 0.3, axis: 'u' });
+
+  props.push(...streetProps());
+  return {
+    extent: { ...extent },
+    view: CITY_VIEW,
+    ground,
+    buildings,
+    props,
+    backProps,
+    lanes: LANES,
+    walks: WALKS,
+    crossings: [
+      { rect: { x0: 12.6, y0: O, x1: 14.6, y1: O + ROAD }, axis: 'u' },
+      { rect: { x0: O, y0: 12.6, x1: O + ROAD, y1: 14.6 }, axis: 'v' },
+    ],
+    roads,
+    boats: [
+      { axis: 'v', at: (CANAL.x0 + CANAL.x1) / 2, from: -60, to: RIVER_FROM + 4 },
+      { axis: 'u', at: RIVER_FROM + 5, from: -70, to: 80 },
+    ],
+  };
+}
+
+export const CITY: CityDef = buildCity();
+
+/** Verkehr und Passanten (kosmetisch). */
+export const STREET_LIFE = {
+  carTilesPerSec: 2.6,
+  /** Halbe Wagenlänge: so weit vor der Haltelinie steht die Wagenmitte. */
+  carHalfLength: 0.65,
+  /** Mindestabstand zum Vordermann (Kacheln, Mitte zu Mitte). */
+  carGap: 1.7,
+  /** Neues Auto je Fahrstreifen im Mittel alle … Sekunden. */
+  carEverySec: 2.6,
+  maxCarsPerLane: 12,
+  /** Autos starten/enden außerhalb des Bildes. */
+  laneFrom: -70,
+  laneTo: 60,
+  /** Ampel: Grünphase je Achse, danach alles Rot, damit die Kreuzung frei wird. */
+  greenSec: 9,
+  allRedSec: 2.5,
+  walkers: 16,
+  walkerTilesPerSec: 1.15,
+  /** Pause, bevor ein Passant am Ende seines Wegs neu startet (Sekunden, gleichverteilt). */
+  walkerRestMin: 0.5,
+  walkerRestMax: 4,
+  /** Ausflugsdampfer auf Kanal und Spree. */
+  boatTilesPerSec: 0.55,
+  /** Wendepause am Ende. */
+  boatRestSec: 8,
+  carTypes: 4,
+} as const;
+
+export interface CityPalette {
+  /** Fassadenfarben der Altbauten (Index = `BuildingDef.facade`). */
+  facades: readonly string[];
+  /** Diese Fassaden sind Klinker (feine Fugen statt Putz). */
+  bricks: readonly number[];
+  /** Stuck: Fensterfaschen, Gesimse, Balkonplatten. */
+  stucco: string;
+  /** Erdgeschoss-Sockel (Ladenzone, gequadert). */
+  plinth: string;
+  /** Dachfarben (Schiefer, Ziegel, dunkle Ziegel, Zink). */
+  roofs: readonly string[];
+  courtyard: string;
+  yard: string;
+  sidewalk: string;
+  sidewalkJoint: string;
+  curb: string;
+  road: string;
+  roadMark: string;
+  grass: string;
+  grassDark: string;
+  path: string;
+  plaza: string;
+  pitch: string;
+  sand: string;
+  quay: string;
+  water: string;
+  waterLight: string;
+  /** Dunst über fernen Häusern und Hintergrund der Kamera. */
+  haze: string;
+}
+
+const BERLIN: CityPalette = {
+  facades: ['#e8c993', '#e6a993', '#b9cfc0', '#b9c5d9', '#efe3c8', '#b65d43', '#d8b672'],
+  bricks: [5, 6],
+  stucco: '#f7f1e6',
+  plinth: '#a59b8f',
+  roofs: ['#77798c', '#b06a4f', '#8f5a49', '#6d7386'],
+  courtyard: '#b9b1a4',
+  yard: '#a9b597',
+  sidewalk: '#cdc8bf',
+  sidewalkJoint: '#b6b0a6',
+  curb: '#e2ded7',
+  road: '#5d6274',
+  roadMark: '#f3f1ea',
+  grass: '#9ccb7f',
+  grassDark: '#86b56b',
+  path: '#e5d6b4',
+  plaza: '#d9cdb8',
+  pitch: '#7fbf63',
+  sand: '#ecd9a6',
+  quay: '#bdb6aa',
+  water: '#5fa8d8',
+  waterLight: '#8cc6ea',
+  haze: '#c7d1e2',
+};
+
+export const CITY_PALETTES: Readonly<Record<string, CityPalette>> = {
+  berlin: BERLIN,
+  kyoto: {
+    ...BERLIN,
+    facades: ['#e9dcc0', '#d9c4a0', '#c8b894', '#efe6d2', '#bba582', '#8a6247', '#cdb48c'],
+    plinth: '#6e5340',
+    roofs: ['#4e5568', '#5d6377', '#46495a', '#6a6f80'],
+    grass: '#a6c98a',
+    grassDark: '#8fb573',
+    water: '#6db0c8',
+  },
+  tokyo: {
+    ...BERLIN,
+    facades: ['#c9ccd8', '#a9afc3', '#d9d3e6', '#9097b2', '#e8e4ef', '#8b6f78', '#b7a8c4'],
+    plinth: '#3f4362',
+    roofs: ['#666b84', '#565b74', '#7c819a', '#4d5168'],
+    courtyard: '#9da0b0',
+    sidewalk: '#c2c4cf',
+    sidewalkJoint: '#aeb1bd',
+    road: '#4a4f66',
+    haze: '#bcc2dc',
+  },
+  seoul: {
+    ...BERLIN,
+    facades: ['#e7e3db', '#cfd9e3', '#f0dac9', '#c9d7c5', '#dacce1', '#b8705a', '#d4b98e'],
+    plinth: '#8d8f9c',
+  },
+  newyork: {
+    ...BERLIN,
+    facades: ['#a6563f', '#934c3a', '#b96d50', '#c89c7c', '#80584a', '#a4483a', '#c08a5c'],
+    bricks: [0, 1, 2, 5, 6],
+    stucco: '#ece5da',
+    plinth: '#3d3d48',
+    roofs: ['#5d5d69', '#4f4f5c', '#6c6c78', '#585866'],
+    sidewalk: '#c4c0ba',
+    road: '#53576a',
+  },
+  bali: {
+    ...BERLIN,
+    facades: ['#efe0bd', '#e3cfa2', '#f2e8d2', '#d9c290', '#e9d9b9', '#c98a5e', '#dcc7a0'],
+    bricks: [],
+    plinth: '#8a6a3c',
+    roofs: ['#a3664a', '#8f5a42', '#b87458', '#7d4f3c'],
+    grass: '#8fcf7a',
+    grassDark: '#76bb62',
+    water: '#4fc1c9',
+    waterLight: '#86dbe0',
+    haze: '#cfe0d8',
+  },
+};
+
+export function getCityPalette(locationId: string): CityPalette {
+  return CITY_PALETTES[locationId] ?? BERLIN;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Fassaden-Raster (geteilt von `scripts/art/city.ts` und der Szene)
+// ---------------------------------------------------------------------------------------------
+
+export type FacadeFace = 'a' | 'b';
+/**
+ * Läden des Erdgeschosses (farbunabhängig): Gemischtwaren, Blumen, Späti, Bäckerei, Imbiss, Buchladen,
+ * Fahrradladen, Apotheke, Eisdiele, Plattenladen; dazu Haustür und Hochparterre ohne Laden.
+ */
+export const SHOP_TYPES = 10;
+export const GROUND_CELLS: readonly string[] = [
+  ...Array.from({ length: SHOP_TYPES }, (_, i) => `shop${String(i)}`),
+  'door',
+  'base',
+];
+export const UPPER_CELLS = ['win', 'balc'] as const;
+export type UpperCell = (typeof UPPER_CELLS)[number];
+
 /** Gesamthöhe eines Hauses in Pixeln (Erdgeschoss, Obergeschosse, Gesims). */
-export function buildingHeight(b: BuildingDef): number {
+export function buildingHeight(b: Pick<BuildingDef, 'floors'>): number {
   return CITY_STYLE.groundFloorH + (b.floors - 1) * CITY_STYLE.floorH + CITY_STYLE.corniceH;
 }
 
+/** Dachhöhe über dem Gesims (Sattel-/Walmdach) aus der kürzeren Hausseite. */
+export function roofHeight(b: BuildingDef): number {
+  const short = Math.min(b.rect.x1 - b.rect.x0, b.rect.y1 - b.rect.y0);
+  return Math.min(CITY_STYLE.roofMax, short * CITY_STYLE.roofPerTile);
+}
+
 /** Erdgeschoss-Modul einer Fassadenachse zur Straße: meist Läden, dazwischen Haustüren. */
-export function groundCellFor(b: BuildingDef, index: number, street: boolean): GroundCell {
+export function groundCellFor(b: BuildingDef, index: number, street: boolean): string {
   if (!street) return 'base';
   const r = hash01(b.seed, index, 3);
-  if (index % 4 === 2 || r < 0.12) return 'door';
-  return (['shop0', 'shop1', 'shop2', 'shop3'] as const)[Math.floor(r * 4) % 4] ?? 'shop0';
+  if (index % 4 === 2 || r < 0.1) return 'door';
+  // Ein Laden reicht über zwei Achsen (gleiche Würfelzahl je Paar), dann der nächste.
+  const shop = Math.floor(hash01(b.seed, Math.floor(index / 2), 11) * SHOP_TYPES) % SHOP_TYPES;
+  return `shop${String(shop)}`;
 }
 
 /** Obergeschoss-Modul: Balkone in ganzen Achsen (alle Geschosse außer dem obersten). */
@@ -472,9 +805,59 @@ export function isLitWindow(
 export const CITY_SPRITE = {
   tree: { w: 96, h: 168, ox: 48, oy: 148 },
   prop: { w: 64, h: 112, ox: 32, oy: 96 },
+  wide: { w: 160, h: 128, ox: 80, oy: 96 },
   car: { w: 96, h: 64, ox: 48, oy: 40 },
   railing: { w: 96, h: 48, ox: 48, oy: 30 },
   boat: { w: 176, h: 88, ox: 88, oy: 58 },
   /** Fassaden-Modul der Höhe `hc`: Leinwand 64 × (hc + 38), Bodenpunkt (32, hc + 8). */
   cell: (hc: number) => ({ w: 64, h: hc + 38, ox: 32, oy: hc + 8 }),
 } as const;
+
+const WIDE_PROPS: readonly PropKind[] = [
+  'kiosk',
+  'stall',
+  'foodtruck',
+  'playground',
+  'fountain',
+  'busstop',
+  'goal',
+];
+
+/** Leinwand je Objekt-Art. */
+export function propCanvas(kind: PropKind): { w: number; h: number; ox: number; oy: number } {
+  if (kind === 'linden' || kind === 'lindenSmall') return CITY_SPRITE.tree;
+  if (kind === 'parked') return CITY_SPRITE.car;
+  if (kind === 'railing') return CITY_SPRITE.railing;
+  if (WIDE_PROPS.includes(kind)) return CITY_SPRITE.wide;
+  return CITY_SPRITE.prop;
+}
+
+/** Frame-Name eines Objekts im `city`-Atlas (Varianten und Ausrichtung im Namen). */
+export function propFrame(p: PropDef): string {
+  switch (p.kind) {
+    case 'parked':
+      return `car-${String(p.variant ?? 0)}-f`;
+    case 'bench':
+      return `bench-${p.axis ?? 'u'}`;
+    case 'pedLight':
+      return 'pedLight-stop';
+    case 'stall':
+      return `stall-${String((p.variant ?? 0) % 4)}`;
+    case 'foodtruck':
+      return `foodtruck-${String((p.variant ?? 0) % 2)}`;
+    case 'bistro':
+      return `bistro-${String((p.variant ?? 0) % 2)}`;
+    default:
+      return p.kind;
+  }
+}
+
+/** Objekte, die quer gestellt (entlang v) gespiegelt gezeichnet werden. */
+export const FLIP_ON_V: readonly PropKind[] = [
+  'parked',
+  'bikes',
+  'scooters',
+  'goal',
+  'busstop',
+  'foodtruck',
+];

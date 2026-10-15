@@ -4,6 +4,13 @@ Alle nennenswerten Änderungen an Matcha Café Empire. Format angelehnt an [Keep
 
 ## [Unreleased]
 
+### Kiez-Café und Stadtviertel, Runde 2 (2026-10-15)
+
+- Das Café ist kein Viereck mehr: verglaster Wintergarten mit Holzboden vorn links. Draußen kommen mit jeder Terrassen-Stufe mehr Tische mit Sonnenschirmen dazu, und Gäste sitzen dort.
+- Satteres Blau mit glasierten Fliesen. Mit dem Deko-Level kommen Bilder, Neon, Regale, Leuchten, Pflanzen, Teppiche, Barhocker und eine goldene Matcha-Skulptur dazu.
+- Das Viertel ist jetzt ein Straßenraster: Häuserblöcke mit Straßen dazwischen, Eckhäuser, Satteldächer mit Gauben und Schornsteinen, Innenhöfe, zehn Ladentypen. Dazu Kiezpark mit Spielplatz, Brunnen und Kiosk, Sportplatz, Wochenmarkt am Kanal und die Spree.
+- Kein Rand mehr: Die Stadt geht über den Bildrand hinaus, ferne Häuser stehen im Dunst. Die Kamera zeigt immer nur Stadt.
+
 ### Kiez-Café im LAP-Stil und Stadtviertel (2026-10-15)
 
 Vorgabe Vincent: Das Café soll aussehen wie ein Berliner LAP-Coffee-Laden, und wie bei Hotel Empire Tycoon soll

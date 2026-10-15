@@ -7,7 +7,7 @@
  * SHOT_STAGE (`grown` = Standard mit Panels; `start`, `mid`, `lux` = nur das Café in dieser Ausbaustufe, um die
  * Optik-Stufen der Ausstattung zu zeigen: Start / Café-Level 7 / alles über Level 100, Café-Level 16),
  * SHOT_HOUR (Café-Uhrzeit 0–23, z. B. 23 für Nacht), SHOT_ZOOM (Mausrad-Rasten, negativ = heranzoomen, positiv =
- * heraus, um das Stadtviertel zu zeigen), SHOT_TAG (Zusatz im Dateinamen).
+ * heraus, um das Stadtviertel zu zeigen), SHOT_PAN („dx,dy“: Kamera ziehen), SHOT_TAG (Zusatz im Dateinamen).
  */
 import { mkdirSync } from 'node:fs';
 import { chromium } from '@playwright/test';
@@ -22,6 +22,8 @@ const scale = Number(process.env['SHOT_SCALE'] ?? 1);
 const hour = process.env['SHOT_HOUR'] === undefined ? null : Number(process.env['SHOT_HOUR']);
 const zoomSteps = Number(process.env['SHOT_ZOOM'] ?? 0);
 const shotTag = process.env['SHOT_TAG'] ? `-${process.env['SHOT_TAG']}` : '';
+/** Kamera ziehen (Bildschirm-Pixel „dx,dy“), z. B. um die Ränder des Viertels zu prüfen. */
+const pan = (process.env['SHOT_PAN'] ?? '').split(',').map(Number);
 mkdirSync(out, { recursive: true });
 
 interface Seed {
@@ -86,7 +88,7 @@ const STAGES: Record<string, Seed> = {
       servingStation: 25,
     },
     staff: team,
-    ambience: { seats: 14, decor: 3, music: 1, wifi: 1, terrace: 1 },
+    ambience: { seats: 14, decor: 10, music: 1, wifi: 1, terrace: 1 },
     level: 7,
     cleanliness: 90,
   },
@@ -94,7 +96,7 @@ const STAGES: Record<string, Seed> = {
     ...GROWN,
     stations: Object.fromEntries(EQUIPMENT.map((id) => [id, 120])),
     staff: team,
-    ambience: { seats: 45, decor: 3, music: 1, wifi: 1, terrace: 1 },
+    ambience: { seats: 45, decor: 30, music: 20, wifi: 20, terrace: 3 },
     level: 16,
     cleanliness: 90,
     satisfaction: 85,
@@ -158,6 +160,15 @@ async function shoot(lang: 'de' | 'en', width: number, height: number): Promise<
       await page.waitForTimeout(60);
     }
     await page.waitForTimeout(400);
+  }
+  if (pan.length === 2 && pan.every(Number.isFinite)) {
+    const [dx = 0, dy = 0] = pan;
+    await page.mouse.move(width / 2, height / 2);
+    await page.mouse.down();
+    for (let k = 1; k <= 20; k++)
+      await page.mouse.move(width / 2 + (dx * k) / 20, height / 2 + (dy * k) / 20);
+    await page.mouse.up();
+    await page.waitForTimeout(300);
   }
   const tag = `${lang}-${String(width)}${shotTag}`;
   if (stage !== 'grown') {

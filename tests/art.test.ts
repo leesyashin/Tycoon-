@@ -34,6 +34,7 @@ import {
   tableSprites,
 } from '../scripts/art/equipment';
 import { ambienceSprites } from '../scripts/art/sprites';
+import { decorSprites, tableOutSprites } from '../scripts/art/decor';
 
 type Atlas = { frames: Record<string, unknown> };
 const common = JSON.parse(readFileSync('public/assets/sprites/common.json', 'utf8')) as Atlas;
@@ -102,12 +103,27 @@ describe('Möbel-Atlas (pnpm art)', () => {
     for (const tier of TABLE_TIERS) expect(furniture.frames[`table-${String(tier)}`]).toBeDefined();
     for (const f of ['station-ghost', 'fx-dirt']) expect(furniture.frames[f]).toBeDefined();
   });
+  it('enthält Terrassen-Tische je Stufe und jedes Deko-Stück des Grundrisses', () => {
+    for (const tier of TABLE_TIERS)
+      expect(furniture.frames[`table-out-${String(tier)}`]).toBeDefined();
+    for (const layout of Object.values(LAYOUTS))
+      for (const d of layout.decor) {
+        const frame = d.wall ? `${d.frame}-${d.wall}` : d.frame;
+        expect(furniture.frames[frame], frame).toBeDefined();
+      }
+  });
   it('enthält Ambiente (Tische als `table-*`)', () => {
     for (const a of AMBIENCE.filter((x) => x.id !== 'seats'))
       expect(furniture.frames[`ambience-${a.id}`]).toBeDefined();
   });
   it('ist aktuell (nach Änderungen an der Ausstattung `pnpm art`)', () => {
-    const drawn = [...stationSprites(), ...tableSprites(), ...ambienceSprites()].map((s) => s.name);
+    const drawn = [
+      ...stationSprites(),
+      ...tableSprites(),
+      ...tableOutSprites(),
+      ...ambienceSprites(),
+      ...decorSprites(),
+    ].map((s) => s.name);
     expect(Object.keys(furniture.frames).sort()).toEqual(drawn.sort());
   });
   it('Zeichnungen sind gültig und eindeutig benannt', () => {

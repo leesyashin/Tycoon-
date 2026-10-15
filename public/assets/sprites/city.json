@@ -2,8 +2,8 @@
  "frames": {
   "bench-u": {
    "frame": {
-    "x": 390,
-    "y": 2,
+    "x": 2,
+    "y": 598,
     "w": 128,
     "h": 224
    },
@@ -22,8 +22,8 @@
   },
   "bench-v": {
    "frame": {
-    "x": 520,
-    "y": 2,
+    "x": 132,
+    "y": 598,
     "w": 128,
     "h": 224
    },
@@ -42,8 +42,8 @@
   },
   "bikes": {
    "frame": {
-    "x": 650,
-    "y": 2,
+    "x": 262,
+    "y": 598,
     "w": 128,
     "h": 224
    },
@@ -62,8 +62,48 @@
   },
   "bin": {
    "frame": {
-    "x": 780,
-    "y": 2,
+    "x": 392,
+    "y": 598,
+    "w": 128,
+    "h": 224
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 224
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 224
+   }
+  },
+  "bistro-0": {
+   "frame": {
+    "x": 522,
+    "y": 598,
+    "w": 128,
+    "h": 224
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 224
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 224
+   }
+  },
+  "bistro-1": {
+   "frame": {
+    "x": 652,
+    "y": 598,
     "w": 128,
     "h": 224
    },
@@ -82,8 +122,8 @@
   },
   "boat-b": {
    "frame": {
-    "x": 2,
-    "y": 340,
+    "x": 132,
+    "y": 824,
     "w": 352,
     "h": 176
    },
@@ -102,8 +142,8 @@
   },
   "boat-f": {
    "frame": {
-    "x": 356,
-    "y": 340,
+    "x": 486,
+    "y": 824,
     "w": 352,
     "h": 176
    },
@@ -122,8 +162,8 @@
   },
   "bollard": {
    "frame": {
-    "x": 910,
-    "y": 2,
+    "x": 782,
+    "y": 598,
     "w": 128,
     "h": 224
    },
@@ -140,10 +180,30 @@
     "h": 224
    }
   },
+  "busstop": {
+   "frame": {
+    "x": 390,
+    "y": 2,
+    "w": 320,
+    "h": 256
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 320,
+    "h": 256
+   },
+   "sourceSize": {
+    "w": 320,
+    "h": 256
+   }
+  },
   "cafeSign": {
    "frame": {
-    "x": 1040,
-    "y": 2,
+    "x": 912,
+    "y": 598,
     "w": 128,
     "h": 224
    },
@@ -162,8 +222,8 @@
   },
   "car-0-b": {
    "frame": {
-    "x": 710,
-    "y": 340,
+    "x": 840,
+    "y": 824,
     "w": 192,
     "h": 128
    },
@@ -182,8 +242,8 @@
   },
   "car-0-f": {
    "frame": {
-    "x": 904,
-    "y": 340,
+    "x": 1034,
+    "y": 824,
     "w": 192,
     "h": 128
    },
@@ -202,8 +262,8 @@
   },
   "car-1-b": {
    "frame": {
-    "x": 1098,
-    "y": 340,
+    "x": 1228,
+    "y": 824,
     "w": 192,
     "h": 128
    },
@@ -222,8 +282,8 @@
   },
   "car-1-f": {
    "frame": {
-    "x": 1292,
-    "y": 340,
+    "x": 1422,
+    "y": 824,
     "w": 192,
     "h": 128
    },
@@ -242,8 +302,8 @@
   },
   "car-2-b": {
    "frame": {
-    "x": 1486,
-    "y": 340,
+    "x": 1616,
+    "y": 824,
     "w": 192,
     "h": 128
    },
@@ -262,8 +322,8 @@
   },
   "car-2-f": {
    "frame": {
-    "x": 1680,
-    "y": 340,
+    "x": 1810,
+    "y": 824,
     "w": 192,
     "h": 128
    },
@@ -283,7 +343,7 @@
   "car-3-b": {
    "frame": {
     "x": 2,
-    "y": 518,
+    "y": 1050,
     "w": 192,
     "h": 128
    },
@@ -303,7 +363,7 @@
   "car-3-f": {
    "frame": {
     "x": 196,
-    "y": 518,
+    "y": 1050,
     "w": 192,
     "h": 128
    },
@@ -320,10 +380,130 @@
     "h": 128
    }
   },
+  "foodtruck-0": {
+   "frame": {
+    "x": 712,
+    "y": 2,
+    "w": 320,
+    "h": 256
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 320,
+    "h": 256
+   },
+   "sourceSize": {
+    "w": 320,
+    "h": 256
+   }
+  },
+  "foodtruck-1": {
+   "frame": {
+    "x": 1034,
+    "y": 2,
+    "w": 320,
+    "h": 256
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 320,
+    "h": 256
+   },
+   "sourceSize": {
+    "w": 320,
+    "h": 256
+   }
+  },
+  "fountain": {
+   "frame": {
+    "x": 1356,
+    "y": 2,
+    "w": 320,
+    "h": 256
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 320,
+    "h": 256
+   },
+   "sourceSize": {
+    "w": 320,
+    "h": 256
+   }
+  },
+  "goal": {
+   "frame": {
+    "x": 1678,
+    "y": 2,
+    "w": 320,
+    "h": 256
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 320,
+    "h": 256
+   },
+   "sourceSize": {
+    "w": 320,
+    "h": 256
+   }
+  },
+  "icecart": {
+   "frame": {
+    "x": 1042,
+    "y": 598,
+    "w": 128,
+    "h": 224
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 224
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 224
+   }
+  },
+  "kiosk": {
+   "frame": {
+    "x": 2,
+    "y": 340,
+    "w": 320,
+    "h": 256
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 320,
+    "h": 256
+   },
+   "sourceSize": {
+    "w": 320,
+    "h": 256
+   }
+  },
   "lamp": {
    "frame": {
-    "x": 1170,
-    "y": 2,
+    "x": 1172,
+    "y": 598,
     "w": 128,
     "h": 224
    },
@@ -382,8 +562,28 @@
   },
   "litfass": {
    "frame": {
-    "x": 1300,
-    "y": 2,
+    "x": 1302,
+    "y": 598,
+    "w": 128,
+    "h": 224
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 224
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 224
+   }
+  },
+  "mailbox": {
+   "frame": {
+    "x": 1432,
+    "y": 598,
     "w": 128,
     "h": 224
    },
@@ -402,8 +602,8 @@
   },
   "pedLight-go": {
    "frame": {
-    "x": 1430,
-    "y": 2,
+    "x": 1562,
+    "y": 598,
     "w": 128,
     "h": 224
    },
@@ -422,8 +622,8 @@
   },
   "pedLight-stop": {
    "frame": {
-    "x": 1560,
-    "y": 2,
+    "x": 1692,
+    "y": 598,
     "w": 128,
     "h": 224
    },
@@ -442,8 +642,8 @@
   },
   "planter": {
    "frame": {
-    "x": 1690,
-    "y": 2,
+    "x": 1822,
+    "y": 598,
     "w": 128,
     "h": 224
    },
@@ -460,10 +660,30 @@
     "h": 224
    }
   },
+  "playground": {
+   "frame": {
+    "x": 324,
+    "y": 340,
+    "w": 320,
+    "h": 256
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 320,
+    "h": 256
+   },
+   "sourceSize": {
+    "w": 320,
+    "h": 256
+   }
+  },
   "railing": {
    "frame": {
     "x": 390,
-    "y": 518,
+    "y": 1050,
     "w": 192,
     "h": 96
    },
@@ -479,13 +699,113 @@
     "w": 192,
     "h": 96
    }
+  },
+  "scooters": {
+   "frame": {
+    "x": 2,
+    "y": 824,
+    "w": 128,
+    "h": 224
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 224
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 224
+   }
+  },
+  "stall-0": {
+   "frame": {
+    "x": 646,
+    "y": 340,
+    "w": 320,
+    "h": 256
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 320,
+    "h": 256
+   },
+   "sourceSize": {
+    "w": 320,
+    "h": 256
+   }
+  },
+  "stall-1": {
+   "frame": {
+    "x": 968,
+    "y": 340,
+    "w": 320,
+    "h": 256
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 320,
+    "h": 256
+   },
+   "sourceSize": {
+    "w": 320,
+    "h": 256
+   }
+  },
+  "stall-2": {
+   "frame": {
+    "x": 1290,
+    "y": 340,
+    "w": 320,
+    "h": 256
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 320,
+    "h": 256
+   },
+   "sourceSize": {
+    "w": 320,
+    "h": 256
+   }
+  },
+  "stall-3": {
+   "frame": {
+    "x": 1612,
+    "y": 340,
+    "w": 320,
+    "h": 256
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 320,
+    "h": 256
+   },
+   "sourceSize": {
+    "w": 320,
+    "h": 256
+   }
   }
  },
  "meta": {
   "image": "city.png",
   "size": {
-   "w": 1874,
-   "h": 648
+   "w": 2004,
+   "h": 1180
   },
   "scale": "2"
  }

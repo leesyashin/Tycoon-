@@ -37,6 +37,8 @@ export const FRAME = {
   ambience: (id: string) => `ambience-${id}`,
   /** Tisch mit zwei Stühlen in der Stufe nach Anzahl der Tische (`TABLE_LOOK_LEVELS`). */
   table: (seatsLevel: number) => `table-${String(tableLookTier(seatsLevel))}`,
+  /** Terrassen-Tisch mit Schirm in derselben Stufe. */
+  tableOut: (seatsLevel: number) => `table-out-${String(tableLookTier(seatsLevel))}`,
   // Atlas `common`
   coin: 'coin',
   leaf: 'leaf',

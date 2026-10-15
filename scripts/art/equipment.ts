@@ -2307,7 +2307,7 @@ function chair(c: IsoCanvas, u: number, v: number, back: 'left' | 'right', style
 }
 
 /** Runder Tisch auf Säulenfuß mit zwei Stühlen (links/rechts) je Stufe. */
-function table(c: IsoCanvas, tier: 1 | 2 | 3 | 4) {
+export function drawTable(c: IsoCanvas, tier: 1 | 2 | 3 | 4) {
   const style: ChairStyle =
     (['steel', 'cushion', 'bentwood', 'armchair'] as const)[tier - 1] ?? 'steel';
   chair(c, 0.02, 0.42, 'left', style);
@@ -2450,7 +2450,7 @@ export function tableSprites(): SpriteDef[] {
       STATION_CANVAS.ox,
       STATION_CANVAS.oy,
     );
-    table(c, tier);
+    drawTable(c, tier);
     return { name: `table-${String(tier)}`, svg: c.svg() };
   });
 }

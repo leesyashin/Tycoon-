@@ -443,10 +443,11 @@ describe('Save v4', () => {
 });
 
 describe('Terrasse im Layout (GAME_DESIGN § 5.2)', () => {
-  it('erweitert die Fläche 12×12 → 12×14 → 14×14', async () => {
+  it('erweitert die Fläche 12×14 (Wintergarten) → 14×14', async () => {
     const { getLayout, layoutExtent } = await import('@data/layouts');
     const l = getLayout('berlin');
-    expect(layoutExtent(l, 0)).toEqual({ w: 12, h: 12 });
+    // Der Wintergarten vorn links gehört immer zum Raum (L-Grundriss), die Terrasse kommt dazu.
+    expect(layoutExtent(l, 0)).toEqual({ w: 12, h: 14 });
     expect(layoutExtent(l, 1)).toEqual({ w: 12, h: 14 });
     expect(layoutExtent(l, 2)).toEqual({ w: 14, h: 14 });
     expect(layoutExtent(l, 3)).toEqual({ w: 14, h: 14 });

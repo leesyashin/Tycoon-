@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CROWD, getLayout, LAYOUTS, visibleTables } from '@data/layouts';
+import { CROWD, getLayout, inRoom, LAYOUTS, visibleTables } from '@data/layouts';
 import { STATIONS } from '@data/stations';
 import { CUSTOMER_TYPES } from '@data/customerTypes';
 import { createInitialState, getLocation, type GameState } from '@core/GameState';
@@ -42,20 +42,42 @@ describe('Grundriss (Phase 2)', () => {
       const inGrid = (p: { x: number; y: number }) =>
         p.x >= 0 && p.y >= 0 && p.x < layout.gridSize && p.y < layout.gridSize;
       for (const s of layout.stations) expect(inGrid(s.tile) && inGrid(s.workSpot)).toBe(true);
+      expect(inRoom(layout, 0, 12)).toBe(true);
+      expect(inRoom(layout, 8, 12)).toBe(false);
       for (const c of layout.counter) expect(inGrid(c)).toBe(true);
       for (const w of layout.order.path) expect(inGrid(w)).toBe(true);
       expect(Math.abs(layout.order.queueDir.x) + Math.abs(layout.order.queueDir.y)).toBe(1);
       for (const tb of layout.tables) {
-        expect(inGrid(tb.tile) && inGrid(tb.side)).toBe(true);
         // Kein Tisch auf einer Theken-, Geräte- oder Gangkachel.
         expect(layout.counter.some((c) => c.x === tb.tile.x && c.y === tb.tile.y)).toBe(false);
+        if (tb.outside) {
+          // Terrasse: vor der Fassade, auf einer Terrassenfläche ihrer Stufe
+          const area = layout.terrace.find((a) => a.minLevel === tb.outside?.minTerrace);
+          expect(area).toBeDefined();
+          if (!area) continue;
+          expect(tb.tile.x).toBeGreaterThanOrEqual(area.from.x - 0.5);
+          expect(tb.tile.x).toBeLessThanOrEqual(area.to.x + 0.5);
+          expect(tb.tile.y).toBeGreaterThanOrEqual(area.from.y - 0.5);
+          expect(tb.tile.y).toBeLessThanOrEqual(area.to.y + 0.5);
+          continue;
+        }
+        expect(inRoom(layout, Math.round(tb.tile.x), Math.round(tb.tile.y))).toBe(true);
+        expect(inRoom(layout, Math.round(tb.side.x), Math.round(tb.side.y))).toBe(true);
         expect(tb.tile.y).toBeGreaterThan(layout.walkRows.top);
-        expect(tb.tile.y).toBeLessThan(layout.walkRows.bottom);
+        // Gastraum-Tische zwischen den Laufzeilen, Wintergarten-Tische davor
+        const annex = tb.tile.y >= layout.annex.from.y - 0.5;
+        if (!annex) expect(tb.tile.y).toBeLessThan(layout.walkRows.bottom);
       }
-      expect(layout.tables).toHaveLength(12);
+      expect(layout.tables.filter((t) => !t.outside)).toHaveLength(14);
       expect(visibleTables(layout, 0)).toHaveLength(0);
       expect(visibleTables(layout, 3)).toHaveLength(3);
-      expect(visibleTables(layout, 50)).toHaveLength(12);
+      expect(visibleTables(layout, 50)).toHaveLength(14);
+      // Draußen mehr Tische mit jeder Terrassen-Stufe
+      const out = (t: number) => visibleTables(layout, 50, t).length - 14;
+      expect(out(0)).toBe(0);
+      expect(out(1)).toBeGreaterThan(0);
+      expect(out(2)).toBeGreaterThan(out(1));
+      expect(out(3)).toBeGreaterThan(out(2));
       expect(layout.pickup.waiterHomes.length).toBeGreaterThanOrEqual(CROWD.maxWaiters);
     }
     expect(() => getLayout('atlantis')).toThrow();

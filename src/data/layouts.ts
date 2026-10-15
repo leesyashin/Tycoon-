@@ -29,6 +29,30 @@ export interface TablePlacement {
   side: GridPos;
   /** Sichtbar ab so vielen Tischen (`seats`-Stufe). */
   minLevel: number;
+  /**
+   * Draußen auf der Terrasse (Gehweg): sichtbar ab dieser Terrassen-Stufe, Wege führen durch die Tür und über
+   * die Laufzeile `outRow` vor der Fassade. Drinnen (auch im Wintergarten): nicht gesetzt.
+   */
+  outside?: { minTerrace: number; outRow: number };
+}
+
+/** Wintergarten (verglaster Anbau vorn links): gehört zum Raum, macht den Grundriss zum L. */
+export interface AnnexArea {
+  from: GridPos;
+  to: GridPos;
+}
+
+/**
+ * Deko, die mit dem Ambiente-Level `decor` dazukommt (Bilder, Neon, Pflanzen, Teppich …). `wall` = an der
+ * Rückwand entlang x (`u`) bzw. y (`v`) auf Kachel `at`; sonst steht das Stück auf der Kachel `tile`.
+ */
+export interface DecorItem {
+  frame: string;
+  minLevel: number;
+  tile: GridPos;
+  wall?: 'u' | 'v';
+  /** Liegt flach auf dem Boden (Teppich): unter allen Möbeln. */
+  floor?: boolean;
 }
 
 export interface OrderArea {
@@ -70,6 +94,8 @@ export interface TerraceArea {
 export interface CafeLayout {
   gridSize: number;
   terrace: TerraceArea[];
+  /** Wintergarten vor der Fassade (Kachel-Rechteck inkl. beider Ecken). */
+  annex: AnnexArea;
   entrance: GridPos;
   /**
    * Gehweg vor dem Eingang (Stadtviertel, `data/city.ts`): Gäste kommen den Gehweg entlang, biegen hier zur Tür
@@ -87,6 +113,7 @@ export interface CafeLayout {
   pickup: PickupArea;
   tables: TablePlacement[];
   ambience: AmbiencePlacement[];
+  decor: DecorItem[];
   /** Startplatz der Putzkräfte. */
   cleanerHome: GridPos;
 }
@@ -158,7 +185,7 @@ const STATIONS: StationPlacement[] = [
 
 const TABLE_COLUMNS = [1, 4, 7, 10];
 const TABLE_ROWS = [5, 7, 9];
-const TABLES: TablePlacement[] = TABLE_ROWS.flatMap((y, row) =>
+const INSIDE_TABLES: TablePlacement[] = TABLE_ROWS.flatMap((y, row) =>
   TABLE_COLUMNS.map((x, col) => ({
     tile: { x, y },
     seats: [
@@ -171,14 +198,89 @@ const TABLES: TablePlacement[] = TABLE_ROWS.flatMap((y, row) =>
   })),
 );
 
+function table(x: number, y: number, side: GridPos, minLevel: number): TablePlacement {
+  return {
+    tile: { x, y },
+    seats: [
+      { x: x - SEAT_OFFSET, y },
+      { x: x + SEAT_OFFSET, y },
+    ] as const,
+    side,
+    minLevel,
+  };
+}
+
+/** Wintergarten: zwei Tische ab dem 13. und 14. Tisch, bedient von der Gasse x = 2,2 zwischen den Tischreihen. */
+const WG_Y = 12.55;
+const WG_SIDE: GridPos = { x: 2.2, y: WG_Y };
+const ANNEX_TABLES: TablePlacement[] = [table(1, WG_Y, WG_SIDE, 13), table(3.4, WG_Y, WG_SIDE, 14)];
+
+/**
+ * Terrassen-Tische mit Schirm: vorn (Stufe 1), rechts am Gehweg (Stufe 2), Ecke (Stufe 3). Bedient wird von
+ * der Laufzeile direkt vor der Fassade.
+ */
+const OUT_ROW_FRONT = 12.45;
+const OUT_COL_RIGHT = 12.45;
+function outdoor(x: number, y: number, minTerrace: number, front: boolean): TablePlacement {
+  return {
+    ...table(x, y, front ? { x, y: OUT_ROW_FRONT } : { x: OUT_COL_RIGHT, y }, 1),
+    outside: { minTerrace, outRow: OUT_ROW_FRONT },
+  };
+}
+const TERRACE_TABLES: TablePlacement[] = [
+  outdoor(8.2, 13.15, 1, true),
+  outdoor(10.6, 13.15, 1, true),
+  outdoor(13.15, 3, 2, false),
+  outdoor(13.15, 6, 2, false),
+  outdoor(13.15, 9, 2, false),
+  outdoor(13.15, 13.15, 3, true),
+];
+
+const TABLES: TablePlacement[] = [...INSIDE_TABLES, ...ANNEX_TABLES, ...TERRACE_TABLES];
+
+/** Deko nach Ambiente-Level `decor` (Bilder an der Wand, Neon, Pflanzen, Teppich, Leuchten …). */
+const DECOR: DecorItem[] = [
+  // Barhocker vor der Theke zwischen Schlange und Abholplätzen (dort läuft niemand)
+  { frame: 'deco-stools', minLevel: 0, tile: { x: 7, y: 2.85 } },
+  { frame: 'deco-plants', minLevel: 1, tile: { x: 5, y: 11 } },
+  { frame: 'deco-rug', minLevel: 2, tile: { x: 2.2, y: 12.6 }, floor: true },
+  { frame: 'deco-rug-blue', minLevel: 6, tile: { x: 2.5, y: 7 }, floor: true },
+  { frame: 'deco-monstera', minLevel: 9, tile: { x: 7, y: 11 } },
+  ...[1, 4, 7, 10].map((x) => ({ frame: 'deco-pendant', minLevel: 11, tile: { x, y: 5 } })),
+  { frame: 'deco-rug-blue', minLevel: 13, tile: { x: 8.5, y: 7 }, floor: true },
+  ...[1, 4, 7, 10].map((x) => ({ frame: 'deco-pendant', minLevel: 15, tile: { x, y: 7 } })),
+  { frame: 'deco-rug-blue', minLevel: 17, tile: { x: 2.5, y: 9 }, floor: true },
+  ...[1, 4, 7, 10].map((x) => ({ frame: 'deco-pendant', minLevel: 19, tile: { x, y: 9 } })),
+  { frame: 'deco-rug-blue', minLevel: 21, tile: { x: 8.5, y: 5 }, floor: true },
+  ...[1, 3.4].map((x) => ({ frame: 'deco-pendant', minLevel: 23, tile: { x, y: 12.55 } })),
+  { frame: 'wall-art-leaf', minLevel: 3, tile: { x: 0, y: 5 }, wall: 'v' },
+  { frame: 'deco-monstera', minLevel: 4, tile: { x: 0, y: 4 } },
+  { frame: 'wall-neon', minLevel: 5, tile: { x: 10, y: 0 }, wall: 'u' },
+  { frame: 'wall-art-tower', minLevel: 6, tile: { x: 0, y: 7 }, wall: 'v' },
+  { frame: 'deco-floorlamp', minLevel: 7, tile: { x: 0, y: 6 } },
+  { frame: 'wall-shelf', minLevel: 8, tile: { x: 0, y: 2 }, wall: 'v' },
+  { frame: 'deco-plants', minLevel: 10, tile: { x: 4.4, y: 13.4 } },
+  { frame: 'wall-art-photo', minLevel: 12, tile: { x: 0, y: 9 }, wall: 'v' },
+  { frame: 'wall-sconce', minLevel: 14, tile: { x: 0, y: 6 }, wall: 'v' },
+  { frame: 'wall-plants', minLevel: 16, tile: { x: 0, y: 10 }, wall: 'v' },
+  { frame: 'wall-clock', minLevel: 18, tile: { x: 11, y: 0 }, wall: 'u' },
+  { frame: 'wall-records', minLevel: 20, tile: { x: 1, y: 0 }, wall: 'u' },
+  { frame: 'wall-art-abstract', minLevel: 22, tile: { x: 0, y: 4 }, wall: 'v' },
+  { frame: 'wall-sconce', minLevel: 24, tile: { x: 0, y: 8 }, wall: 'v' },
+  { frame: 'deco-plants', minLevel: 26, tile: { x: 9, y: 11 } },
+  { frame: 'wall-art-gold', minLevel: 28, tile: { x: 0, y: 11 }, wall: 'v' },
+  { frame: 'deco-sculpture', minLevel: 30, tile: { x: 4.4, y: 12.3 } },
+];
+
 const DEFAULT_LAYOUT: CafeLayout = {
   gridSize: 12,
   // 12×12 → 12×14 → 14×14 (vorne links, vorne rechts, Ecke); der Raum bleibt, die Terrasse liegt davor.
   terrace: [
-    { minLevel: 1, from: { x: 0, y: 12 }, to: { x: 11, y: 13 } },
+    { minLevel: 1, from: { x: 5, y: 12 }, to: { x: 11, y: 13 } },
     { minLevel: 2, from: { x: 12, y: 0 }, to: { x: 13, y: 11 } },
     { minLevel: 3, from: { x: 12, y: 12 }, to: { x: 13, y: 13 } },
   ],
+  annex: { from: { x: 0, y: 12 }, to: { x: 4, y: 13 } },
   entrance: ENTRANCE,
   street: { curb: { x: AISLE_X, y: 13.6 }, spreadMin: 2, spreadMax: 6 },
   junction: JUNCTION,
@@ -219,12 +321,8 @@ const DEFAULT_LAYOUT: CafeLayout = {
     { id: 'decor', tile: { x: 11, y: 10 }, minLevel: 1 },
     { id: 'music', tile: { x: 11, y: 6 }, minLevel: 1 },
     { id: 'wifi', tile: { x: 11, y: 8 }, minLevel: 1 },
-    { id: 'terrace', tile: { x: 3, y: 12 }, minLevel: 1 },
-    { id: 'terrace', tile: { x: 8, y: 13 }, minLevel: 1 },
-    { id: 'terrace', tile: { x: 12, y: 4 }, minLevel: 2 },
-    { id: 'terrace', tile: { x: 13, y: 9 }, minLevel: 2 },
-    { id: 'terrace', tile: { x: 12, y: 12 }, minLevel: 3 },
   ],
+  decor: DECOR,
   cleanerHome: { x: 0, y: 11 },
 };
 
@@ -237,10 +335,10 @@ export const LAYOUTS: Readonly<Record<string, CafeLayout>> = {
   bali: DEFAULT_LAYOUT,
 };
 
-/** Belegte Fläche (Raum + sichtbare Terrasse) als Kachel-Ausdehnung in x und y. */
+/** Belegte Fläche (Raum, Wintergarten + sichtbare Terrasse) als Kachel-Ausdehnung in x und y. */
 export function layoutExtent(layout: CafeLayout, terraceLevel: number): { w: number; h: number } {
-  let w = layout.gridSize;
-  let h = layout.gridSize;
+  let w = Math.max(layout.gridSize, layout.annex.to.x + 1);
+  let h = Math.max(layout.gridSize, layout.annex.to.y + 1);
   for (const a of layout.terrace) {
     if (terraceLevel < a.minLevel) continue;
     w = Math.max(w, a.to.x + 1);
@@ -249,25 +347,61 @@ export function layoutExtent(layout: CafeLayout, terraceLevel: number): { w: num
   return { w, h };
 }
 
+/** Gehört die Kachel zum Gastraum (Raster oder Wintergarten)? */
+export function inRoom(layout: CafeLayout, x: number, y: number): boolean {
+  const n = layout.gridSize;
+  if (x >= 0 && y >= 0 && x < n && y < n) return true;
+  const a = layout.annex;
+  return x >= a.from.x && x <= a.to.x && y >= a.from.y && y <= a.to.y;
+}
+
 export function getLayout(locationId: string): CafeLayout {
   const l = LAYOUTS[locationId];
   if (!l) throw new Error(`No layout for location: ${locationId}`);
   return l;
 }
 
-/** Sichtbare Tische bei dieser `seats`-Stufe (höchstens so viele, wie der Grundriss Plätze hat). */
-export function visibleTables(layout: CafeLayout, seatsLevel: number): TablePlacement[] {
-  return layout.tables.filter((t) => seatsLevel >= t.minLevel);
+/** Sichtbare Tische bei dieser `seats`-Stufe und Terrassen-Stufe (Terrassen-Tische hängen nur an der Terrasse). */
+export function visibleTables(
+  layout: CafeLayout,
+  seatsLevel: number,
+  terraceLevel = 0,
+): TablePlacement[] {
+  return layout.tables.filter((t) =>
+    t.outside ? terraceLevel >= t.outside.minTerrace : seatsLevel >= t.minLevel,
+  );
+}
+
+/** Weg vor die Tür bis auf die Laufzeile vor der Fassade (für Terrassen-Tische). */
+function outPath(layout: CafeLayout, table: TablePlacement): GridPos[] {
+  const out = table.outside;
+  if (!out) return [];
+  const e = layout.entrance;
+  return [{ ...e }, { x: e.x, y: out.outRow }, { x: table.side.x, y: out.outRow }];
 }
 
 /** Weg vom Zugang der Bestelltheke zu einem Tisch: über die obere Laufzeile und die Seitenkachel. */
 export function pathToTable(layout: CafeLayout, from: GridPos, table: TablePlacement): GridPos[] {
   const row = layout.walkRows.top;
+  if (table.outside)
+    return [
+      { x: from.x, y: row },
+      { x: layout.junction.x, y: row },
+      ...outPath(layout, table),
+      { ...table.side },
+    ];
   return [{ x: from.x, y: row }, { x: table.side.x, y: row }, { ...table.side }];
 }
 
-/** Weg vom Tisch zum Eingang: hintere Reihen über die untere, vordere über die obere Laufzeile. */
+/**
+ * Weg vom Tisch zum Eingang: hintere Reihen über die untere, vordere über die obere Laufzeile. Terrassen-Gäste
+ * gehen nur bis zur Laufzeile vor der Fassade (den Rest über den Gehweg ergänzt die Figuren-Simulation).
+ */
 export function pathFromTable(layout: CafeLayout, table: TablePlacement): GridPos[] {
+  if (table.outside) {
+    const row = table.outside.outRow;
+    return [{ ...table.side }, { x: table.side.x, y: row }, { x: layout.street.curb.x, y: row }];
+  }
   const row =
     table.tile.y >= layout.walkRows.bottom - 3 ? layout.walkRows.bottom : layout.walkRows.top;
   return [
@@ -290,8 +424,32 @@ export function pathFromPickup(layout: CafeLayout, spot: GridPos): GridPos[] {
   return [{ x: spot.x, y: row }, { ...layout.junction }, { ...layout.entrance }];
 }
 
-/** Weg einer Bedienung von ihrem Platz hinter der Ausgabe zur Seitenkachel eines Tischs. */
+/** Weg einer Bedienung von ihrem Platz hinter der Ausgabe zur Seitenkachel eines Tischs (auch nach draußen). */
 export function waiterPathToTable(layout: CafeLayout, table: TablePlacement): GridPos[] {
   const row = layout.walkRows.top;
+  if (table.outside)
+    return [
+      ...layout.pickup.exit,
+      { x: layout.junction.x, y: row },
+      ...outPath(layout, table),
+      { ...table.side },
+    ];
   return [...layout.pickup.exit, { x: table.side.x, y: row }, { ...table.side }];
+}
+
+/** Weg einer Putzkraft von `from` zur Seitenkachel eines Tischs: über die untere Laufzeile, raus durch die Tür. */
+export function cleanerPathToTable(
+  layout: CafeLayout,
+  from: GridPos,
+  table: TablePlacement,
+): GridPos[] {
+  const row = layout.walkRows.bottom;
+  if (table.outside)
+    return [
+      { x: from.x, y: row },
+      { x: layout.entrance.x, y: row },
+      ...outPath(layout, table),
+      { ...table.side },
+    ];
+  return [{ x: from.x, y: row }, { x: table.side.x, y: row }, { ...table.side }];
 }

@@ -393,9 +393,14 @@ function wallFace(t: ThemeArt, h: number, face: Face, f: number, deco: 'none' | 
     const fuge = shade(tint(t.wainscot, 0.55), f);
     face(0, 0, 1, WAINSCOT_H, tile, 1);
     for (let z = 3 + 5; z < WAINSCOT_H; z += 5) face(0, z, 1, 0.5, fuge, 2);
-    for (let row = 0, z = 3; z < WAINSCOT_H; row++, z += 5)
+    // Glasur: je Fliese ein kurzer Glanzstrich oben links (wie Metro-Fliesen im Licht)
+    const glanz = shade(tint(t.wainscot, 0.7), f);
+    for (let row = 0, z = 3; z < WAINSCOT_H; row++, z += 5) {
       for (let a = row % 2 ? 0.0625 : 0.125; a < 1; a += 0.125)
         face(a, z, 0.012, Math.min(5, WAINSCOT_H - z), fuge, 2);
+      for (let a = row % 2 ? 0.0825 : 0.02; a < 0.95; a += 0.125)
+        face(a, z + 3.4, 0.05, 0.6, glanz, 3);
+    }
     face(0, 0, 1, 3, shade(t.wallTrim, f), 3);
     face(0, WAINSCOT_H, 1, 1.5, shade(tint(t.wallTrim, 0.3), f), 3);
   } else {
@@ -475,6 +480,82 @@ function frontWall(t: ThemeArt, alongU: boolean): string {
   return c.svg();
 }
 
+/** Höhe der Glaswände des Wintergartens (Szene: `GLASS_H`). */
+const GLASS = 40;
+
+/** Holzboden im Fischgrätmuster (Wintergarten): Dielen als schmale Rauten in zwei Holztönen. */
+function herringbone(t: ThemeArt, phase: number): string {
+  const c = new IsoCanvas(64, 32, 32, 0);
+  const a = t.deco === 'lightbox' ? C.oakLight : shade(t.floorA, 0.92);
+  const b = shade(a, 0.9);
+  c.flat(0, 0, 0, 1, 1, a);
+  for (let k = 0; k < 4; k++) {
+    const v = k * 0.25;
+    c.poly(
+      [
+        [0, v, 0],
+        [0.5, v + 0.12, 0],
+        [0.5, v + 0.25, 0],
+        [0, v + 0.13, 0],
+      ],
+      (k + phase) % 2 ? b : a,
+    );
+    c.poly(
+      [
+        [0.5, v + 0.12, 0],
+        [1, v, 0],
+        [1, v + 0.13, 0],
+        [0.5, v + 0.25, 0],
+      ],
+      (k + phase) % 2 ? a : b,
+    );
+  }
+  c.flat(0, 0.98, 0, 1, 0.02, shade(a, 0.8));
+  return c.svg();
+}
+
+/** Glaswand mit Sprossen und Rahmen in der Fassadenfarbe, Brüstung unten, halbtransparent. */
+function glassWall(t: ThemeArt, alongU: boolean): string {
+  const c = new IsoCanvas(64, 32 + GLASS + 2, 32, GLASS + 2);
+  const frame = t.front ?? t.frame;
+  const cap = t.frontCap ?? tint(t.wall, 0.3);
+  if (alongU) {
+    c.box(0, 0.9, 0, 1, 0.1, 8, frame, { top: cap });
+    c.group(0.38, () => c.wallV(0, 0.95, 8, 1, GLASS - 10, C.glass));
+    c.poly(
+      [
+        [0.15, 0.951, 12],
+        [0.3, 0.951, 12],
+        [0.5, 0.951, GLASS - 4],
+        [0.35, 0.951, GLASS - 4],
+      ],
+      C.white,
+      0.35,
+    );
+    for (const u of [0, 0.5]) c.box(u, 0.92, 8, 0.05, 0.06, GLASS - 10, frame);
+    c.box(0, 0.9, GLASS - 2, 1, 0.1, 2, frame, { top: cap });
+  } else {
+    c.box(0.9, 0, 0, 0.1, 1, 8, frame, { top: cap });
+    c.group(0.38, () => c.wallU(0.95, 0, 8, 1, GLASS - 10, shade(C.glass, 0.9)));
+    for (const v of [0, 0.5]) c.box(0.92, v, 8, 0.06, 0.05, GLASS - 10, frame);
+    c.box(0.9, 0, GLASS - 2, 0.1, 1, 2, frame, { top: cap });
+  }
+  return c.svg();
+}
+
+/** Linke Glaswand des Wintergartens in Rückwandhöhe: Rahmen, Sprossen, kaum getöntes Glas. */
+function glassBack(t: ThemeArt): string {
+  const h = WALL.back;
+  const c = new IsoCanvas(32, 16 + h + 4, 32, h + 4);
+  const frame = t.front ?? t.frame;
+  c.wallU(0, 0, 0, 1, 8, shade(frame, 0.8));
+  c.group(0.3, () => c.wallU(0.001, 0, 8, 1, h - 12, shade(C.glass, 0.85)));
+  for (const v of [0, 0.5, 0.97]) c.wallU(0.002, v, 8, 0.04, h - 12, shade(frame, 0.8));
+  c.wallU(0.002, 0, h - 4, 1, 4, shade(frame, 0.8));
+  c.wallU(0.002, 0, 30, 1, 1.2, shade(frame, 0.8));
+  return c.svg();
+}
+
 export function themeSprites(locationId: string): SpriteDef[] {
   const t = THEME_ART[locationId];
   if (!t) throw new Error(`No theme art: ${locationId}`);
@@ -508,6 +589,11 @@ export function themeSprites(locationId: string): SpriteDef[] {
     { name: 'wall-v-deco', svg: wallSegV(t, WALL.back, true) },
     { name: 'front-u', svg: frontWall(t, true) },
     { name: 'front-v', svg: frontWall(t, false) },
+    { name: 'floor-wg-a', svg: herringbone(t, 0) },
+    { name: 'floor-wg-b', svg: herringbone(t, 1) },
+    { name: 'glass-u', svg: glassWall(t, true) },
+    { name: 'glass-v', svg: glassWall(t, false) },
+    { name: 'glass-back-v', svg: glassBack(t) },
   ];
 }
 
