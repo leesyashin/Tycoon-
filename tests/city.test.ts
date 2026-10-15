@@ -17,6 +17,8 @@ import {
   propFacing,
   propFootprint,
   propFrame,
+  roadMarkTiles,
+  sidewalkJointLines,
   upperCellFor,
   type GridRect,
 } from '@data/city';
@@ -299,6 +301,36 @@ describe('Stadtviertel: Kamera und Wege', () => {
       path.some((p) => p.x === layout.entrance.x && p.y === layout.entrance.y);
     expect(through(pathToTable(layout, layout.order.access, out))).toBe(true);
     expect(through(waiterPathToTable(layout, out))).toBe(true);
+  });
+});
+
+describe('Stadtviertel: Boden-Details', () => {
+  it('Bordsteine und Mittellinien nur auf Fahrbahn oder Brücke, nie auf Kreuzungen', () => {
+    for (const r of CITY.roads) {
+      const tiles = roadMarkTiles(r, -70, 70);
+      expect(tiles.length, `${r.axis} ${String(r.at)}`).toBeGreaterThan(0);
+      for (const s of tiles) {
+        const [x, y] = r.axis === 'u' ? [s + 0.5, r.at + 2] : [r.at + 2, s + 0.5];
+        expect(['road', 'bridge'], `${r.axis} ${String(r.at)} bei ${String(s)}`).toContain(
+          groundAt(x, y),
+        );
+        const cross = CITY.roads.some(
+          (q) => q.axis !== r.axis && s + 0.5 > q.at && s + 0.5 < q.at + 4,
+        );
+        expect(cross, `${r.axis} ${String(r.at)} bei ${String(s)}`).toBe(false);
+      }
+    }
+  });
+
+  it('Gehwegfugen nur auf dem Gehweg (nicht über Kanal, Spree oder Kreuzungen), vor dem Café vorhanden', () => {
+    const lines = sidewalkJointLines();
+    for (const [x0, y0, x1, y1] of lines) {
+      const g = groundAt((x0 + x1) / 2 + 0.01, (y0 + y1) / 2 + 0.01);
+      expect(g, `${String(x0)},${String(y0)} → ${String(x1)},${String(y1)}`).toBe('sidewalk');
+    }
+    // Gehweg vor dem Café hat Fugen, der Kanal unter der Brücke keine
+    expect(lines.some(([x0, y0]) => x0 === 6 && y0 >= 12 && y0 < 15)).toBe(true);
+    expect(lines.some(([x0, , x1]) => (x0 + x1) / 2 > 21.5 && (x0 + x1) / 2 < 26.5)).toBe(false);
   });
 });
 

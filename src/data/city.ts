@@ -463,6 +463,79 @@ export function crossingApproaches(
   );
 }
 
+/** Liegt die Kachel s einer Fahrbahn auf einer Kreuzung mit einer Querstraße? */
+function onCrossRoad(
+  road: { axis: 'u' | 'v'; at: number },
+  s: number,
+  roads: readonly { axis: 'u' | 'v'; at: number }[],
+): boolean {
+  return roads.some(
+    (r) => r.axis !== road.axis && s + 0.5 > r.at - 0.01 && s + 0.5 < r.at + ROAD + 0.01,
+  );
+}
+
+/**
+ * Kacheln entlang einer Fahrbahn, auf denen Bordsteine und Mittellinie liegen: nur, wo wirklich Fahrbahn oder Brücke
+ * ist (nicht über Kai und Wasser hinaus) und nicht auf Kreuzungen.
+ */
+export function roadMarkTiles(
+  road: { axis: 'u' | 'v'; at: number },
+  from: number,
+  to: number,
+  ground: readonly GroundArea[] = CITY.ground,
+  roads: readonly { axis: 'u' | 'v'; at: number }[] = CITY.roads,
+): number[] {
+  const out: number[] = [];
+  for (let s = from; s < to; s++) {
+    if (onCrossRoad(road, s, roads)) continue;
+    const mid = road.at + ROAD / 2;
+    const g = road.axis === 'u' ? groundAt(s + 0.5, mid, ground) : groundAt(mid, s + 0.5, ground);
+    if (g === 'road' || g === 'bridge') out.push(s);
+  }
+  return out;
+}
+
+/**
+ * Plattenfugen der Gehwege an den Straßen nah am Café als Linien im Grid `[x0, y0, x1, y1]`: Querfugen je Kachel,
+ * Längsfugen innen im 3 Kacheln breiten Streifen, zusammengefasst zu Läufen. Nur auf echtem Gehweg (nicht über
+ * Fahrbahn, Kreuzung, Kai oder Wasser).
+ */
+export function sidewalkJointLines(
+  ground: readonly GroundArea[] = CITY.ground,
+  roads: readonly { axis: 'u' | 'v'; at: number }[] = CITY.roads,
+): [number, number, number, number][] {
+  const out: [number, number, number, number][] = [];
+  const S = CITY_GRID.sidewalk;
+  for (const r of roads) {
+    if (Math.abs(r.at - O) > PITCH * 1.2) continue;
+    // (s, a) → Grid-Punkt; s entlang der Straße, a quer dazu
+    const pt = (s: number, a: number): [number, number] => (r.axis === 'u' ? [s, a] : [a, s]);
+    const line = (s0: number, a0: number, s1: number, a1: number) => {
+      out.push([...pt(s0, a0), ...pt(s1, a1)]);
+    };
+    for (const a0 of [r.at - S, r.at + ROAD]) {
+      const walk = (s: number, a: number) => {
+        const [x, y] = pt(s + 0.5, a + 0.5);
+        return groundAt(x, y, ground) === 'sidewalk';
+      };
+      for (let a = a0; a < a0 + S; a++) {
+        let run: number | null = null;
+        for (let s = -60; s <= 50; s++) {
+          const ok = s < 50 && walk(s, a);
+          if (ok) line(s, a, s, a + 1);
+          if (a === a0) continue;
+          if (ok && run === null) run = s;
+          if (!ok && run !== null) {
+            line(run, a, s, a);
+            run = null;
+          }
+        }
+      }
+    }
+  }
+  return out;
+}
+
 /** Straßenmöbel an den beiden Hauptstraßen vor dem Café (beide Gehwegseiten) und den Uferstraßen. */
 function streetProps(ground: readonly GroundArea[], buildings: readonly BuildingDef[]): PropDef[] {
   const out: PropDef[] = [];

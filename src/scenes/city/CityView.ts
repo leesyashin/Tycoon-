@@ -13,7 +13,9 @@ import {
   isStreetTile,
   propCanvas,
   propFrame,
+  roadMarkTiles,
   roofHeight,
+  sidewalkJointLines,
   upperCellFor,
   type BuildingDef,
   type CityPalette,
@@ -226,41 +228,25 @@ export class CityView {
     this.roadMarks(g);
   }
 
-  /** Gehwegplatten an den Hauptstraßen: Fugen je Kachel (Granitplatten). */
+  /** Gehwegplatten an den Hauptstraßen: Fugen je Kachel (Granitplatten), nur auf dem Gehweg. */
   private sidewalkJoints(g: Phaser.GameObjects.Graphics): void {
-    const joint = hex(this.palette.sidewalkJoint);
-    const { road: R, sidewalk: S } = CITY_GRID;
-    g.lineStyle(1, joint, 0.85);
-    const line = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+    g.lineStyle(1, hex(this.palette.sidewalkJoint), 0.85);
+    for (const [x0, y0, x1, y1] of sidewalkJointLines()) {
+      const a = P(x0, y0);
+      const b = P(x1, y1);
       g.lineBetween(a.x, a.y, b.x, b.y);
-    for (const r of CITY.roads) {
-      if (Math.abs(r.at - CITY_GRID.origin) > CITY_GRID.pitch * 1.2) continue;
-      for (const [a0, a1] of [
-        [r.at - S, r.at],
-        [r.at + R, r.at + R + S],
-      ] as const) {
-        for (let s = -60; s < 50; s++)
-          if (r.axis === 'u') line(P(s, a0), P(s, a1));
-          else line(P(a0, s), P(a1, s));
-        for (const a of [a0 + 1, a0 + 2])
-          if (r.axis === 'u') line(P(-60, a), P(50, a));
-          else line(P(a, -60), P(a, 50));
-      }
     }
   }
 
-  /** Bordsteine, Mittellinien, Haltelinien, Zebrastreifen. */
+  /** Bordsteine, Mittellinien (nur auf Fahrbahn und Brücken, nicht auf Kreuzungen), Haltelinien, Zebrastreifen. */
   private roadMarks(g: Phaser.GameObjects.Graphics): void {
     const p = this.palette;
     const curb = hex(p.curb);
     const curbDark = shadeNum(hex(p.road), 0.8);
     const mark = hex(p.roadMark);
     const R = CITY_GRID.road;
-    const starts = CITY.roads.filter((r) => r.axis === 'u').map((r) => r.at);
-    const onCrossing = (s: number) => starts.some((a) => s > a - 0.01 && s < a + R + 0.01);
     for (const r of CITY.roads) {
-      for (let s = DETAIL.x0; s < DETAIL.x1; s++) {
-        if (onCrossing(s + 0.5)) continue;
+      for (const s of roadMarkTiles(r, DETAIL.x0, DETAIL.x1)) {
         const seg = (a0: number, a1: number, color: number) =>
           this.fillRect(
             g,
