@@ -1,4 +1,4 @@
-/** Kundentypen nach GAME_DESIGN § 7.5. Aussehen: Sprites aus `scripts/art/sprites.ts`; Effekte als Erwartungswert im Rate-Modell. */
+/** Kundentypen nach GAME_DESIGN § 7.5. Aussehen: Figuren aus `scripts/art/figures.ts` (Varianten in `data/art.ts`); Effekte als Erwartungswert im Rate-Modell. */
 export type CustomerTypeId = 'student' | 'tourist' | 'regular' | 'influencer' | 'critic';
 
 export interface CustomerTypeDef {

@@ -11,7 +11,8 @@ Bedienungen geben aus oder servieren am Tisch, Putzkräfte halten das Café saub
 - Ausstattung statt Verkaufsstationen: Kasse, Matcha-Station, Kaffeemaschine, Kühl-/Eisfach, Ofen, Kuchenvitrine, Steinmühle, Zeremonie-Set, Ausgabe-Station. Jedes Gerät bringt ein Produkt auf die Karte (Warenkorb-Modell), Level machen es schneller und teurer.
 - Personal als Köpfe: Verkäufer, Baristas, Bedienungen, Putzkräfte arbeiten parallel; Gründungsteam je 1 gratis. Bäcker und Tee-Meister entfallen.
 - Putz-Modell: Schmutz wächst mit den Gästen, Putzkräfte halten ein Gleichgewicht.
-- Neue Szene: durchgehende Theke mit Geräten an der Rückwand, Bestellschlange vor der Kasse, bis zu 12 Tische mit sitzenden Gästen, Bedienungen mit Tablett, Putzkräfte an dreckigen Tischen; neue Sprites für Theken, Geräte, Tische und Figuren mit Rollen-Outfit.
+- Neue Szene: durchgehende Theke mit Geräten an der Rückwand, Bestellschlange vor der Kasse, bis zu 12 Tische mit sitzenden Gästen, Bedienungen mit Tablett, Putzkräfte an dreckigen Tischen; neue Sprites für Theken, Geräte und Tische.
+- Figuren: die Gen-Z-Matcha-Figuren aus PR #14 (15 Kunden-Varianten, Personal mit Schürze, Stehen + 2 Lauf-Frames) mit Sitzpose am Tisch, Bedienungen mit Tablett und Looks für alle Phase-2-Rollen; Atlas als 8-Bit-Palette-PNG.
 - Spielstand-Schema v9 mit Migration (alte Stationen und Personal-Stufen werden übersetzt).
 - Balancing-Pass 1 (`pnpm sim`), Sim-Overrides für Experimente, Kontaktbogen- und Screenshot-Skripte.
 

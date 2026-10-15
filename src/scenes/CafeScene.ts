@@ -10,7 +10,15 @@ import {
 } from '@data/layouts';
 import { STATIONS, REGISTER_ID, PRODUCT_LINES, getStationDef } from '@data/stations';
 import { CROWD } from '@data/layouts';
-import { SCENE_FX, stationLookTier } from '@data/art';
+import {
+  CHAR_FRAMES,
+  CHAR_WALK,
+  CUSTOMER_LOOKS,
+  SCENE_FX,
+  staffLookFor,
+  stationLookTier,
+} from '@data/art';
+import type { StaffRoleId } from '@data/staff';
 import { DAY_CYCLE, UI_THEME } from '@data/ui';
 import { getLocation, type GameState } from '@core/GameState';
 import type { Store } from '@core/store';
@@ -27,7 +35,7 @@ import { getLang, t } from '@i18n/index';
 import { CustomerCrowd, type Agent } from './agents/crowd';
 import { CameraControls } from './cameraControls';
 import { TILE_H, TILE_W, toGrid, toScreen } from './iso/iso';
-import { ART_SCALE, ATLAS, CHAR_FOOT_ORIGIN_Y, FRAME, atlasUrls } from './art';
+import { ART_SCALE, ATLAS, CHAR_FOOT_ORIGIN_Y, CHAR_OVERLAY_Y, FRAME, atlasUrls } from './art';
 import { REGISTRY, UI_EVENTS, getStore } from './registry';
 
 const WALL_H = 64;
@@ -41,7 +49,6 @@ const EMOTE_POOL = 8;
 const LABEL_MAX_SCALE = 1.8;
 /** Rückwand-Geräte stehen dicht: jedes zweite Label sitzt höher, damit sie sich nicht überdecken. */
 const LABEL_STAGGER = 14;
-const WALK_FRAME_SEC = 0.18;
 /** HUD-Münzsymbol in CSS-Pixeln vom linken oberen Rand (Ziel des Münz-Flugs). */
 const HUD_COIN = { x: 34, y: 34 };
 const DEPTH = { wall: -2000, floor: -1000, label: 10_000, overlay: 20_000 } as const;
@@ -85,6 +92,12 @@ const reducedMotion = (): boolean => motionQuery.matches;
 function facing(dx: number, dy: number): { dir: 'front' | 'back'; flip: boolean } {
   if (Math.abs(dx) > Math.abs(dy)) return { dir: dx > 0 ? 'front' : 'back', flip: true };
   return { dir: dy >= 0 ? 'front' : 'back', flip: false };
+}
+
+/** Frame im Lauf-Zyklus nach `sec` Sekunden Gehen. */
+function walkFrame(sec: number): number {
+  const c = CHAR_WALK.cycle;
+  return c[Math.floor(sec / CHAR_WALK.stepSec) % c.length] ?? CHAR_FRAMES.stand;
 }
 
 export class CafeScene extends Phaser.Scene {
@@ -191,7 +204,7 @@ export class CafeScene extends Phaser.Scene {
     this.createTables();
     this.createAmbience(state);
     this.agentSprites = this.crowd.agents.map(() =>
-      this.sprite(0, 0, FRAME.customer('student', 'front', 0))
+      this.sprite(0, 0, FRAME.customer('student', CUSTOMER_LOOKS.student[0] ?? '', 'front', 0))
         .setOrigin(0.5, CHAR_FOOT_ORIGIN_Y)
         .setVisible(false),
     );
@@ -792,28 +805,34 @@ export class CafeScene extends Phaser.Scene {
    * Putzkräfte als bewegte Figuren aus `crowd`. Sichtbar nach Anzahl, gedeckelt (`CROWD.max*`).
    */
   private createStaff(): void {
-    const standing = (role: string, spot: GridPos, dir: 'front' | 'back' = 'front') => {
+    // Die n-te Figur einer Rolle bekommt den n-ten Look (`STAFF_LOOKS`), rein optisch.
+    const standing = (
+      role: StaffRoleId,
+      spot: GridPos,
+      n: number,
+      dir: 'front' | 'back' = 'front',
+    ) => {
       const w = this.world(spot);
-      return this.sprite(w.x, w.y + TILE_H * 0.5, FRAME.staff(role, dir))
+      return this.sprite(w.x, w.y + TILE_H * 0.5, FRAME.staff(role, staffLookFor(role, n), dir))
         .setOrigin(0.5, CHAR_FOOT_ORIGIN_Y)
         .setDepth(isoDepth(spot.x, spot.y, 6))
         .setVisible(false);
     };
-    for (const spot of this.layout.order.cashierSpots.slice(0, CROWD.maxCashiers)) {
-      this.cashierFigures.push(standing('cashier', spot));
-    }
-    for (const line of PRODUCT_LINES) {
+    this.layout.order.cashierSpots.slice(0, CROWD.maxCashiers).forEach((spot, i) => {
+      this.cashierFigures.push(standing('cashier', spot, i));
+    });
+    PRODUCT_LINES.forEach((line, i) => {
       const p = this.layout.stations.find((s) => s.stationId === line.id);
-      if (!p) continue;
+      if (!p) return;
       // Baristas arbeiten mit dem Rücken zum Gastraum am Gerät an der Rückwand.
       this.baristaFigures.push({
         stationId: line.id,
-        sprite: standing('barista', p.workSpot, 'back'),
+        sprite: standing('barista', p.workSpot, i, 'back'),
       });
-    }
-    const moving = (role: string, n: number): StaffFigure[] =>
-      Array.from({ length: n }, () => ({
-        sprite: this.sprite(0, 0, FRAME.staff(role))
+    });
+    const moving = (role: StaffRoleId, n: number): StaffFigure[] =>
+      Array.from({ length: n }, (_, i) => ({
+        sprite: this.sprite(0, 0, FRAME.staff(role, staffLookFor(role, i)))
           .setOrigin(0.5, CHAR_FOOT_ORIGIN_Y)
           .setVisible(false),
         prev: { x: 0, y: 0 },
@@ -842,7 +861,7 @@ export class CafeScene extends Phaser.Scene {
   private syncStaffFigures(): void {
     const still = reducedMotion();
     const sync = (
-      role: string,
+      role: StaffRoleId,
       figures: StaffFigure[],
       agents: { active: boolean; x: number; y: number; phase: string }[],
       lookWhenIdle: (a: { x: number; y: number }) => ReturnType<typeof facing>,
@@ -861,8 +880,10 @@ export class CafeScene extends Phaser.Scene {
         f.prev.x = a.x;
         f.prev.y = a.y;
         const look = moving ? facing(dx, dy) : lookWhenIdle(a);
-        const frame = moving && !still ? Math.floor(this.walkClock / WALK_FRAME_SEC + i) % 2 : 0;
-        const name = FRAME.staff(role, look.dir, frame);
+        // Laufend im Zyklus, je Figur versetzt; stehend Frame 0 (bei reduzierter Bewegung immer).
+        const frame =
+          moving && !still ? walkFrame(this.walkClock + i * CHAR_WALK.stepSec) : CHAR_FRAMES.stand;
+        const name = FRAME.staff(role, staffLookFor(role, i), look.dir, frame);
         if (f.sprite.frame.name !== name) f.sprite.setFrame(name);
         f.sprite
           .setFlipX(look.flip)
@@ -907,10 +928,12 @@ export class CafeScene extends Phaser.Scene {
       const y = p.y + TILE_H / 2;
       const seated = a.phase === 'consume' || (a.phase === 'waitServe' && a.table >= 0);
       if (seated) {
-        // Sitzpose; der linke Platz blickt nach rechts zum Tisch (gespiegelt).
-        const frame = FRAME.customerSit(a.type);
+        // Sitzpose, Blick zum Tisch (Richtung und Spiegelung wie beim Gehen).
+        const tb = this.layout.tables[a.table];
+        const look = tb ? facing(tb.tile.x - a.x, tb.tile.y - a.y) : facing(0, 1);
+        const frame = FRAME.customerSit(a.type, a.look, look.dir);
         if (s.frame.name !== frame) s.setFrame(frame);
-        s.setFlipX(a.seat === 0);
+        s.setFlipX(look.flip);
       } else {
         const dx = a.x - prev.x;
         const dy = a.y - prev.y;
@@ -919,9 +942,11 @@ export class CafeScene extends Phaser.Scene {
         if (moving) look = facing(dx, dy);
         else if (a.phase === 'queue' || a.phase === 'order') look = facing(0, -1);
         else look = facing(0, 1);
-        const walkFrame =
-          moving && !still ? Math.floor(this.walkClock / WALK_FRAME_SEC + a.id) % 2 : 0;
-        const frame = FRAME.customer(a.type, look.dir, walkFrame);
+        const frameNo =
+          moving && !still
+            ? walkFrame(this.walkClock + a.id * CHAR_WALK.stepSec)
+            : CHAR_FRAMES.stand;
+        const frame = FRAME.customer(a.type, a.look, look.dir, frameNo);
         if (s.frame.name !== frame) s.setFrame(frame);
         s.setFlipX(look.flip);
       }
@@ -935,7 +960,7 @@ export class CafeScene extends Phaser.Scene {
       m.setVisible(queueing);
       if (queueing) {
         if (m.frame.name !== moodFrame) m.setFrame(moodFrame);
-        m.setPosition(x, y - 24).setDepth(DEPTH.label - 1);
+        m.setPosition(x, y - CHAR_OVERLAY_Y).setDepth(DEPTH.label - 1);
       }
     }
   }
@@ -961,7 +986,8 @@ export class CafeScene extends Phaser.Scene {
     for (const a of this.crowd.agents) {
       if (!a.active || a.phase !== 'order' || a.serveTotal <= 0) continue;
       const p = toScreen(a.x, a.y);
-      ring(p.x, p.y + TILE_H / 2 - 28, Phaser.Math.Clamp(1 - a.timer / a.serveTotal, 0, 1));
+      const y = p.y + TILE_H / 2 - CHAR_OVERLAY_Y - r - 1;
+      ring(p.x, y, Phaser.Math.Clamp(1 - a.timer / a.serveTotal, 0, 1));
     }
     const rates = this.rates;
     if (!rates || rates.served <= 0 || reducedMotion()) return;
@@ -970,7 +996,7 @@ export class CafeScene extends Phaser.Scene {
     const cycle = Phaser.Math.Clamp(busy.length / Math.max(rates.stages.production, 1e-6), 0.8, 6);
     busy.forEach((b, i) => {
       const frac = (((this.walkClock / cycle + i * 0.37) % 1) + 1) % 1;
-      ring(b.sprite.x, b.sprite.y - 30, frac);
+      ring(b.sprite.x, b.sprite.y - CHAR_OVERLAY_Y - r - 1, frac);
     });
   }
 
@@ -1050,8 +1076,9 @@ export class CafeScene extends Phaser.Scene {
     const kinds = ['heart', 'note', 'star'] as const;
     const kind = kinds[Math.floor(Math.random() * kinds.length)] ?? 'heart';
     const p = toScreen(gx, gy);
+    const top = p.y + TILE_H / 2 - CHAR_OVERLAY_Y;
     e.setFrame(FRAME.emote(kind))
-      .setPosition(p.x + 8, p.y - 18)
+      .setPosition(p.x + 8, top)
       .setAlpha(1)
       .setVisible(true);
     if (reducedMotion()) {
@@ -1060,7 +1087,7 @@ export class CafeScene extends Phaser.Scene {
     }
     this.tweens.add({
       targets: e,
-      y: p.y - 30,
+      y: top - 12,
       alpha: { from: 1, to: 0 },
       duration: SCENE_FX.emoteMs,
       ease: 'Quad.In',

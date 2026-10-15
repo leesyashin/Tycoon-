@@ -11,6 +11,7 @@ import {
   type TablePlacement,
 } from '@data/layouts';
 import type { CustomerTypeId } from '@data/customerTypes';
+import { CUSTOMER_LOOKS } from '@data/art';
 import { customerTypeShares, pickCustomerType } from '@core/customers/types';
 
 /**
@@ -26,6 +27,8 @@ export interface Agent {
   readonly id: number;
   active: boolean;
   type: CustomerTypeId;
+  /** Figuren-Variante des Typs (`CUSTOMER_LOOKS`), rein optisch. */
+  look: string;
   phase: CustomerPhase;
   x: number;
   y: number;
@@ -123,6 +126,7 @@ export class CustomerCrowd {
         id: i,
         active: false,
         type: 'student',
+        look: CUSTOMER_LOOKS.student[0] ?? '',
         phase: 'walkIn',
         x: 0,
         y: 0,
@@ -220,6 +224,7 @@ export class CustomerCrowd {
     this.queue.push(free);
     free.active = true;
     free.type = pickCustomerType(this.shares, this.rng());
+    free.look = pickLook(free.type, this.rng());
     free.phase = 'walkIn';
     free.x = this.layout.entrance.x;
     free.y = this.layout.entrance.y;
@@ -505,6 +510,13 @@ export class CustomerCrowd {
     a.active = false;
     a.path = [];
   }
+}
+
+/** Variante eines Kundentyps aus einer Zufallszahl 0..1 (gleich verteilt). */
+export function pickLook(type: CustomerTypeId, roll: number): string {
+  const looks = CUSTOMER_LOOKS[type];
+  const i = Math.min(looks.length - 1, Math.max(0, Math.floor(roll * looks.length)));
+  return looks[i] ?? looks[0] ?? '';
 }
 
 /** Sichtbare Bestellzeit des Schlangenkopfs aus der Kapazität der Bestelltheke. */

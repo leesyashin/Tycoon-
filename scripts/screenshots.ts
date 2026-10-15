@@ -3,15 +3,18 @@
  * einen gewachsenen Spielstand ein und fotografiert Café, Personal-Panel und Ausstattungs-Panel in DE/EN,
  * Hochformat 390×844 und Desktop 1280×720.
  *   pnpm dev --port 5175 &  PW_CHROMIUM=… pnpm tsx scripts/screenshots.ts http://localhost:5175/Tycoon-/ docs/screenshots/s10
+ * Umgebungsvariablen: SHOT_WAIT_MS (Wartezeit), SHOT_SPAWN (Gäste je Sekunde), SHOT_SCALE (Pixelverhältnis).
  */
 import { mkdirSync } from 'node:fs';
 import { chromium } from '@playwright/test';
 
 const base = process.argv[2] ?? 'http://localhost:5173/Tycoon-/';
 const out = process.argv[3] ?? 'docs/screenshots/s10';
-/** Zum Prüfen der Figuren: länger warten und mehr Gäste zeigen (`?debugSpawn`, nur Optik). */
+/** Zum Prüfen der Figuren: länger warten, mehr Gäste zeigen (`?debugSpawn`, nur Optik), feiner rendern. */
 const waitMs = Number(process.env['SHOT_WAIT_MS'] ?? 9000);
 const spawn = Number(process.env['SHOT_SPAWN'] ?? 0);
+/** Geräte-Pixelverhältnis (2 = doppelt so große PNGs, Figuren in Atlas-Auflösung). */
+const scale = Number(process.env['SHOT_SCALE'] ?? 1);
 mkdirSync(out, { recursive: true });
 
 /** Gewachsenes Café (Café-Level 5, Σ Level 113): Ausstattung, Team, Tische, etwas Schmutz. */
@@ -37,7 +40,11 @@ const browser = await chromium.launch(
 );
 
 async function shoot(lang: 'de' | 'en', width: number, height: number): Promise<void> {
-  const page = await browser.newPage({ viewport: { width, height }, reducedMotion: 'reduce' });
+  const page = await browser.newPage({
+    viewport: { width, height },
+    deviceScaleFactor: scale,
+    reducedMotion: 'reduce',
+  });
   const query = `?lang=${lang}&tutorial=0${spawn > 0 ? `&debugSpawn=${String(spawn)}` : ''}`;
   await page.goto(base + query);
   await page.getByTestId('hud').waitFor();

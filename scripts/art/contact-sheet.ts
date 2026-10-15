@@ -2,11 +2,13 @@
  * Kontaktbogen zum Prüfen der Sprites ohne Spielstart (Phase 2):
  *   PW_CHROMIUM=… pnpm tsx scripts/art/contact-sheet.ts stations out.png
  *   PW_CHROMIUM=… pnpm tsx scripts/art/contact-sheet.ts figures out.png
+ *   PW_CHROMIUM=… pnpm tsx scripts/art/contact-sheet.ts figures out.png 'waiter|sit-'   (nur passende Namen)
  * Rendert die SVGs aus `sprites.ts` vergrößert in ein Raster mit Beschriftung. Nicht Teil von `pnpm art`.
  */
 import { writeFileSync } from 'node:fs';
 import { chromium } from '@playwright/test';
-import { ambienceSprites, characterSprites, stationSprites } from './sprites';
+import { ambienceSprites, stationSprites } from './sprites';
+import { characterSprites } from './figures';
 
 const which = process.argv[2] ?? 'stations';
 const out = process.argv[3] ?? 'contact-sheet.png';
@@ -20,7 +22,9 @@ const sets: Record<string, { re: RegExp; scale: number; cols: number }> = {
   figures: { re: /^(customer|staff)-/, scale: 4, cols: 10 },
 };
 const set = sets[which] ?? { re: /./, scale: 2, cols: 8 };
-const list = all.filter((s) => set.re.test(s.name));
+// Optionaler dritter Parameter: zusätzlicher Filter als regulärer Ausdruck (z. B. 'waiter|sit-').
+const only = process.argv[4] ? new RegExp(process.argv[4]) : /./;
+const list = all.filter((s) => set.re.test(s.name) && only.test(s.name));
 const browser = await chromium.launch(
   process.env['PW_CHROMIUM'] ? { executablePath: process.env['PW_CHROMIUM'] } : {},
 );
