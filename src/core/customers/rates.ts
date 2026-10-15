@@ -4,6 +4,14 @@ import { Decimal, D, ZERO } from '../math/bignum';
 import { getLocation, type GameState, type LocationState } from '../GameState';
 import { collectModifiers } from '../economy/modifiers';
 import { getCheckoutThroughput, getStationPrice, getStationThroughput } from '../economy/stations';
+import { BOOST_RULES } from '@data/leaves';
+import {
+  customerTypeShares,
+  influencerHypeMult,
+  regularTipMult,
+  stationDemandWeight,
+  tipSatisfactionTerm,
+} from './types';
 
 export interface SatisfactionBreakdown {
   base: number;
@@ -27,6 +35,8 @@ export interface LocationRates {
   waitPressure: number;
   satisfactionFactor: number;
   tipRate: number;
+  /** Erwarteter Spawn-Faktor aus Influencer-Hype (GAME_DESIGN § 7.5), schon in `spawnRate` enthalten. */
+  influencerHypeMult: number;
   satisfaction: SatisfactionBreakdown;
   /** Kunden/s pro Verkaufsstation. */
   perStation: Record<string, number>;
@@ -40,14 +50,21 @@ export function satisfactionFactor(satisfaction: number): number {
   return BALANCE.satisfaction.factorBase + satisfaction / 100;
 }
 
-export function tipRate(loc: LocationState): number {
+/** Trinkgeld-Quote inkl. Kundentypen (Stammgast +10 %, Kritiker zählt Zufriedenheit doppelt). */
+export function tipRate(loc: LocationState, locationId = 'berlin'): number {
   const t = BALANCE.tips;
-  return (
-    (loc.satisfaction / 100) * t.satisfactionFactor + (loc.ambience['music'] ?? 0) * t.perMusicLevel
-  );
+  const shares = customerTypeShares(locationId);
+  const base =
+    tipSatisfactionTerm(loc.satisfaction, shares.critic) * t.satisfactionFactor +
+    (loc.ambience['music'] ?? 0) * t.perMusicLevel;
+  return base * regularTipMult(shares.regular);
 }
 
-export function computeSpawnRate(loc: LocationState, extraSpawnMult = 1): number {
+/**
+ * @param extraSpawnMult Events, Boosts, Kampagne: mehr Nachfrage und mehr Durchlauf (Kapazität mit).
+ * @param demandMult nur Nachfrage (Influencer-Hype): volle Sitzplätze bleiben voll.
+ */
+export function computeSpawnRate(loc: LocationState, extraSpawnMult = 1, demandMult = 1): number {
   const sp = BALANCE.spawn;
   const a = loc.ambience;
   const capacityCap =
@@ -59,7 +76,7 @@ export function computeSpawnRate(loc: LocationState, extraSpawnMult = 1): number
     (1 + (loc.staff['socialMedia'] ?? 0) * sp.perSocialMedia) *
     satisfactionFactor(loc.satisfaction) *
     extraSpawnMult;
-  const demand = sp.base * loc.level ** sp.cafeLevelExponent * mult;
+  const demand = sp.base * loc.level ** sp.cafeLevelExponent * mult * demandMult;
   return Math.min(demand, capacityCap * mult);
 }
 
@@ -94,7 +111,19 @@ export function computeSatisfactionTarget(
   };
 }
 
-export function computeLocationRates(state: GameState, locationId: string): LocationRates {
+export interface RateOptions {
+  /**
+   * Influencer-Hype mitrechnen. Er ist ein 5-s-Boost aus aktiver Spielzeit; Offline-Einnahmen und Zeitsprung
+   * rechnen wie bei Boosts, Events und Kampagne ohne ihn.
+   */
+  influencerHype?: boolean;
+}
+
+export function computeLocationRates(
+  state: GameState,
+  locationId: string,
+  opts: RateOptions = {},
+): LocationRates {
   const loc = getLocation(state, locationId);
   const mods = collectModifiers(state, locationId);
 
@@ -112,7 +141,17 @@ export function computeLocationRates(state: GameState, locationId: string): Loca
   const checkout = getCheckoutThroughput(checkoutLevel, loc.staff['cashier'] ?? 0, mods.speedMult);
   const totalThroughput = Math.min(sumThroughput, checkout);
 
-  const spawnRate = computeSpawnRate(loc, mods.spawnMult);
+  const shares = customerTypeShares(locationId);
+  // Influencer-Hype aus dem Spawn ohne Hype (sonst Rückkopplung). Er hebt nur die Nachfrage, nicht die
+  // Sitzplätze, und zählt wie ein Boost zum Deckel ×12.
+  const hype =
+    opts.influencerHype === false
+      ? 1
+      : Math.min(
+          influencerHypeMult(computeSpawnRate(loc, mods.spawnMult) * shares.influencer),
+          BOOST_RULES.maxMult / mods.spawnMult,
+        );
+  const spawnRate = computeSpawnRate(loc, mods.spawnMult, hype);
   const served = Math.min(spawnRate, totalThroughput);
   const waitPressure = clamp(
     spawnRate / Math.max(totalThroughput, 1e-9) - 1,
@@ -123,12 +162,17 @@ export function computeLocationRates(state: GameState, locationId: string): Loca
   const perStation: Record<string, number> = {};
   const perStationIncome: Record<string, Decimal> = {};
   let income = ZERO;
-  const tips = tipRate(loc) * mods.tipMult;
+  const tips = tipRate(loc, locationId) * mods.tipMult;
   const priceMult = (1 + tips) * mods.incomeMult * mods.priceMult * mods.prestigeMult;
+  // Verteilung nach Durchsatz, Merch-Station mit Touristen-Bonus gewichtet.
+  const weight = (id: string): number =>
+    (perStationCap[id] ?? 0) * stationDemandWeight(id, shares.tourist);
+  let sumWeight = 0;
+  for (const id of Object.keys(perStationCap)) sumWeight += weight(id);
   for (const def of STATIONS) {
     const cap = perStationCap[def.id];
-    if (cap === undefined || sumThroughput <= 0) continue;
-    const customers = served * (cap / sumThroughput);
+    if (cap === undefined || sumWeight <= 0) continue;
+    const customers = served * (weight(def.id) / sumWeight);
     perStation[def.id] = customers;
     const revenue = getStationPrice(def, loc.stations[def.id]?.level ?? 0, locationId).mul(
       customers * (mods.stationPriceMult[def.id] ?? 1),
@@ -144,6 +188,7 @@ export function computeLocationRates(state: GameState, locationId: string): Loca
     waitPressure,
     satisfactionFactor: satisfactionFactor(loc.satisfaction),
     tipRate: tips,
+    influencerHypeMult: hype,
     satisfaction: computeSatisfactionTarget(
       loc,
       waitPressure,

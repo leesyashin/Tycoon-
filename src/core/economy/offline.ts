@@ -32,7 +32,8 @@ export interface OfflineResult {
 }
 
 /**
- * Zustand ohne zeitlich begrenzte Multiplikatoren (Boosts, Events, aktive Kampagne). Ihre Timer laufen
+ * Zustand ohne zeitlich begrenzte Multiplikatoren (Boosts, Events, aktive Kampagne; den Influencer-Hype
+ * schaltet `creditIncome` in den Raten ab). Ihre Timer laufen
  * in Spielzeit und stehen offline still; ohne das Abziehen würde ein 10-min-Boost für bis zu 14 h zählen.
  */
 export function withoutTemporaryBoosts(state: GameState): GameState {
@@ -60,7 +61,7 @@ export function creditIncome(state: GameState, seconds: number): CreditResult {
   const locations = { ...state.locations };
   for (const id of Object.keys(state.locations)) {
     const loc = getLocation(state, id);
-    const rates = computeLocationRates(rateState, id);
+    const rates = computeLocationRates(rateState, id, { influencerHype: false });
     const gain = rates.incomePerSec.mul(seconds);
     served += rates.served * seconds;
     total = total.add(gain);

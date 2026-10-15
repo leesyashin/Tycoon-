@@ -14,7 +14,7 @@ export const BALANCE = {
    * kommen (GAME_DESIGN § 15).
    */
   cafeLevel: {
-    steps: [25, 35, 30, 25, 25, 25, 25, 25, 25, 22, 22, 22, 22] as readonly number[],
+    steps: [25, 35, 30, 23, 25, 25, 25, 25, 25, 22, 22, 22, 22] as readonly number[],
     stepAfter: 25,
     max: 50,
   },
@@ -27,7 +27,7 @@ export const BALANCE = {
   },
 
   spawn: {
-    base: 0.25,
+    base: 0.21,
     cafeLevelExponent: 0.9,
     capacityBase: 2,
     perSeat: 2,

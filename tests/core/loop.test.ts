@@ -6,17 +6,25 @@ import {
   computeLocationRates,
   computeSpawnRate,
   getIncomePerSec,
+  influencerHypeMult,
   satisfactionFactor,
   tipRate,
 } from '@core/customers';
 import { applyOffline, getOfflineCapMs, getOfflineEfficiency } from '@core/economy';
 
 const fresh = () => createInitialState(0);
+// Trinkgeld 7.5 % bei Zufriedenheit 50, Stammgäste (20 %) +10 % → ×1.02.
+const TIPS = 0.075 * 1.02;
+const START_INCOME = 0.2 * 3 * (1 + TIPS);
 
 describe('Rate-Modell', () => {
   it('Start: Spawn durch Kapazität begrenzt, Durchsatz begrenzt Bedienung', () => {
     const r = computeLocationRates(fresh(), 'berlin');
-    expect(r.spawnRate).toBeCloseTo(0.2, 9); // min(0.25, 0.1×2) × (0.5+0.5)
+    // min(Nachfrage, Sitzplätze 0.1×2) × (0.5+0.5); Influencer-Hype (10 % von 0.2/s) hebt nur die Nachfrage,
+    // die Sitzplätze sind schon voll.
+    expect(r.influencerHypeMult).toBeCloseTo(influencerHypeMult(0.2 * 0.1), 9);
+    expect(r.influencerHypeMult).toBeGreaterThan(1);
+    expect(r.spawnRate).toBeCloseTo(0.2, 9);
     expect(r.totalThroughput).toBeCloseTo(0.25, 9);
     expect(r.served).toBeCloseTo(0.2, 9);
     expect(r.waitPressure).toBe(0);
@@ -24,9 +32,9 @@ describe('Rate-Modell', () => {
   it('Einkommen = bediente Kunden × Preis × (1 + Trinkgeld)', () => {
     const s = fresh();
     const r = computeLocationRates(s, 'berlin');
-    expect(r.tipRate).toBeCloseTo(0.075, 9);
-    expect(r.incomePerSec.toNumber()).toBeCloseTo(0.2 * 3 * 1.075, 9);
-    expect(getIncomePerSec(s, 'berlin').toNumber()).toBeCloseTo(0.645, 9);
+    expect(r.tipRate).toBeCloseTo(TIPS, 9);
+    expect(r.incomePerSec.toNumber()).toBeCloseTo(0.2 * 3 * (1 + TIPS), 9);
+    expect(getIncomePerSec(s, 'berlin').toNumber()).toBeCloseTo(START_INCOME, 9);
   });
   it('Warteschlange erzeugt Druck (Nachfrage > Durchsatz)', () => {
     const s = fresh();
@@ -44,7 +52,8 @@ describe('Rate-Modell', () => {
     expect(satisfactionFactor(0)).toBe(0.5);
     expect(satisfactionFactor(100)).toBe(1.5);
     const loc = { ...getLocation(fresh(), 'berlin'), satisfaction: 100, ambience: { music: 2 } };
-    expect(tipRate(loc)).toBeCloseTo(0.16, 9);
+    // Kritiker (5 %) zählen die Abweichung von 50 doppelt: 0.95 × 1 + 0.05 × 1.5; Stammgäste ×1.02.
+    expect(tipRate(loc)).toBeCloseTo(((0.95 + 0.05 * 1.5) * 0.15 + 2 * 0.005) * 1.02, 9);
   });
   it('Spawn wächst mit Café-Level, WLAN, Marketing und Events', () => {
     const base = getLocation(fresh(), 'berlin');
@@ -73,9 +82,9 @@ describe('tick', () => {
     const s = tick(fresh(), 1000);
     expect(s.playtimeSec).toBeCloseTo(1, 9);
     const gained = getLocation(s, 'berlin').coins.toNumber() - BALANCE.startCoins;
-    expect(gained).toBeCloseTo(0.645, 6);
-    expect(s.meta.lifetimeEarned.toNumber()).toBeCloseTo(0.645, 6);
-    expect(getLocation(s, 'berlin').earnedThisRun.toNumber()).toBeCloseTo(0.645, 6);
+    expect(gained).toBeCloseTo(START_INCOME, 6);
+    expect(s.meta.lifetimeEarned.toNumber()).toBeCloseTo(START_INCOME, 6);
+    expect(getLocation(s, 'berlin').earnedThisRun.toNumber()).toBeCloseTo(START_INCOME, 6);
   });
   it('ist pur und ignoriert negative/ungültige Deltas', () => {
     const s = fresh();
@@ -152,7 +161,7 @@ describe('Offline', () => {
     expect(getOfflineEfficiency(s)).toBe(0.5);
     const r = applyOffline(s, 10 * 3_600_000);
     expect(r.creditedMs).toBe(4 * 3_600_000);
-    expect(r.earned.toNumber()).toBeCloseTo(0.645 * 4 * 3600 * 0.5, 4);
+    expect(r.earned.toNumber()).toBeCloseTo(START_INCOME * 4 * 3600 * 0.5, 4);
     expect(getLocation(r.state, 'berlin').coins.toNumber()).toBeCloseTo(
       BALANCE.startCoins + r.earned.toNumber(),
       4,
@@ -181,6 +190,11 @@ describe('Offline', () => {
     const loc = getLocation(s, 'berlin');
     const two = { ...s, locations: { berlin: loc, kyoto: { ...loc } } };
     const one = applyOffline(s, 3_600_000).earned.toNumber();
-    expect(applyOffline(two, 3_600_000).earned.toNumber()).toBeCloseTo(26 * one, 4);
+    const ratio =
+      getIncomePerSec(two, 'kyoto').toNumber() / getIncomePerSec(two, 'berlin').toNumber();
+    // Preise ×25; Kyoto hat mehr Touristen, also etwas weniger Stammgast-Trinkgeld und Influencer-Hype.
+    expect(ratio).toBeGreaterThan(24);
+    expect(ratio).toBeLessThan(25);
+    expect(applyOffline(two, 3_600_000).earned.toNumber()).toBeCloseTo((1 + ratio) * one, 4);
   });
 });
