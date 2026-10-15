@@ -70,6 +70,14 @@ export const C = {
   postYellow: '#f7c21b',
   canvasRed: '#d9473f',
   linen: '#efe6d2',
+  // Ladenfronten im Erdgeschoss (Rahmen, Schilder, Inneres hinter dem Schaufenster)
+  shopGreen: '#2f5f45',
+  shopAubergine: '#3a3550',
+  shopOxblood: '#8a2b22',
+  shopPine: '#24413a',
+  shopPharmacy: '#3c9a5a',
+  shopRaspberry: '#c95a8c',
+  shopInterior: '#eadfc8',
 
   // Material-Leiter der Ausstattung (UI_STYLE § 4): Kobalt-Lack → Edelstahl → blaue Fliesen → Nussbaum/Marmor/Messing
   // → Nachtblau/Marmor/Gold. Metalle bekommen Glanzstreifen statt Verlauf.

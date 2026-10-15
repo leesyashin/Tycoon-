@@ -36,10 +36,10 @@ import type { SpriteDef } from './sprites';
 
 const FACES: readonly FacadeFace[] = ['a', 'b'];
 /** Altbaufenster: dunkles, leicht blaues Glas (Innenräume), nachts warm. */
-const PANE = '#6f8db0';
-const PANE_LIT = '#ffd98a';
-const IRON = '#3b3f4f';
-const DOOR = '#6b4a33';
+const PANE = C.pane;
+const PANE_LIT = C.paneLit;
+const IRON = C.castIron;
+const DOOR = C.doorWood;
 
 function cellCanvas(face: FacadeFace, hc: number): FacingCanvas {
   const s = CITY_SPRITE.cell(hc);
@@ -149,24 +149,52 @@ function plinth(c: FacingCanvas, p: CityPalette) {
   c.front(-0.02, 0.001, h - 2, 1.04, 2, p.stucco);
 }
 
-/** Markise mit Streifen in zwei Farben, schräg aus der Fassade. */
+/**
+ * Markise: Bahnen in zwei Farben schräg aus der Fassade, Kopfleiste, Seitenwange an der +x-Seite, vorn ein
+ * Volant mit Bögen; darunter ein weicher Schatten auf Schaufenster und Tür.
+ */
 function awning(c: FacingCanvas, a: string, b: string) {
-  const n = 6;
+  const x0 = 0.05;
+  const x1 = 0.95;
+  const n = 7;
+  const zt = 46;
+  const zf = 37.5;
+  const yf = 0.5;
+  c.frontLit(0.08, 0.009, 31, 0.84, 15, C.ink, 0.16);
   for (let k = 0; k < n; k++) {
-    const x0 = 0.07 + (k * 0.86) / n;
-    const x1 = x0 + 0.86 / n;
-    const col = k % 2 ? b : a;
+    const u0 = x0 + (k * (x1 - x0)) / n;
+    const u1 = u0 + (x1 - x0) / n;
     c.fpoly(
       [
-        [x0, 0.01, 50],
-        [x1, 0.01, 50],
-        [x1, 0.52, 41],
-        [x0, 0.52, 41],
+        [u0, 0.01, zt],
+        [u1, 0.01, zt],
+        [u1, yf, zf],
+        [u0, yf, zf],
       ],
-      col,
+      k % 2 ? b : a,
     );
-    c.front(x0, 0.52, 38, x1 - x0, 3, col);
   }
+  c.fpoly(
+    [
+      [x1, 0.01, zt],
+      [x1, yf, zf],
+      [x1, yf, zf - 3],
+      [x1, 0.2, zt - 4.5],
+      [x1, 0.01, zt - 4.5],
+    ],
+    c.sideShade(a),
+  );
+  const P = (x: number, y: number, z: number): Vec3 => (c.facing === 'a' ? [x, y, z] : [y, x, z]);
+  valance(
+    c,
+    P(x0, yf, zf),
+    P(x1, yf, zf),
+    2.4,
+    [a, b],
+    n,
+    c.facing === 'a' ? SHADE.left : SHADE.right,
+  );
+  c.fbox(x0 - 0.01, 0, zt - 0.2, x1 - x0 + 0.02, 0.04, 1.2, C.stainlessDark);
 }
 
 type Goods =
@@ -180,7 +208,7 @@ type Goods =
   | 'pharmacy'
   | 'icecream'
   | 'records';
-type Outside = 'flowers' | 'crates' | 'chairs' | 'books' | 'bike' | 'cone' | null;
+type Outside = 'flowers' | 'crates' | 'chairs' | 'books' | 'bike' | 'cone' | 'board' | null;
 interface ShopStyle {
   frame: string;
   sign: string;
@@ -189,6 +217,8 @@ interface ShopStyle {
   outside: Outside;
   /** Emblem auf dem Schild (keine Schrift). */
   emblem: 'bar' | 'cross' | 'circle' | 'leaf';
+  /** Nasenschild am Ausleger rechts. */
+  nose?: boolean;
 }
 
 /** Zehn Ladentypen der Kiezstraßen (Index = `shop<n>`). */
@@ -198,11 +228,11 @@ const SHOPS: readonly ShopStyle[] = [
     sign: C.red,
     awning: [C.red, C.white],
     goods: 'shelves',
-    outside: null,
+    outside: 'board',
     emblem: 'bar',
   },
   {
-    frame: '#2f5f45',
+    frame: C.shopGreen,
     sign: C.matchaDeep,
     awning: [C.matchaDeep, C.white],
     goods: 'flowers',
@@ -210,23 +240,24 @@ const SHOPS: readonly ShopStyle[] = [
     emblem: 'leaf',
   },
   {
-    frame: '#3a3550',
+    frame: C.shopAubergine,
     sign: C.gold,
     awning: null,
     goods: 'bottles',
     outside: 'crates',
     emblem: 'bar',
+    nose: true,
   },
   {
-    frame: '#6b4a33',
+    frame: C.doorWood,
     sign: C.cream,
     awning: [C.coffee, C.cream],
     goods: 'bread',
-    outside: null,
+    outside: 'board',
     emblem: 'circle',
   },
   {
-    frame: '#8a2b22',
+    frame: C.shopOxblood,
     sign: C.orange,
     awning: [C.red, C.gold],
     goods: 'grill',
@@ -234,12 +265,13 @@ const SHOPS: readonly ShopStyle[] = [
     emblem: 'bar',
   },
   {
-    frame: '#24413a',
+    frame: C.shopPine,
     sign: C.paper,
     awning: null,
     goods: 'books',
     outside: 'books',
     emblem: 'bar',
+    nose: true,
   },
   {
     frame: C.ink,
@@ -251,112 +283,205 @@ const SHOPS: readonly ShopStyle[] = [
   },
   {
     frame: C.white,
-    sign: '#3c9a5a',
+    sign: C.shopPharmacy,
     awning: null,
     goods: 'pharmacy',
     outside: null,
     emblem: 'cross',
+    nose: true,
   },
   {
-    frame: '#c95a8c',
+    frame: C.shopRaspberry,
     sign: C.sakura,
     awning: [C.sakura, C.white],
     goods: 'icecream',
     outside: 'cone',
     emblem: 'circle',
   },
-  { frame: C.plum, sign: C.ink, awning: null, goods: 'records', outside: null, emblem: 'circle' },
+  {
+    frame: C.plum,
+    sign: C.ink,
+    awning: null,
+    goods: 'records',
+    outside: 'board',
+    emblem: 'circle',
+    nose: true,
+  },
 ];
 
-/** Auslage im Schaufenster (x 0,09 … 0,69, z 5 … 42). */
+/** Auslage im Schaufenster (x 0,12 … 0,67, z 7 … 39): Waren als Flächen hinter dem Glas. */
 function goods(c: FacingCanvas, g: Goods) {
   const L = (x: number, z: number, w: number, h: number, col: string) =>
     c.frontLit(x, 0.005, z, w, h, c.frontShade(col));
+  const board = (z: number) => {
+    L(0.12, z - 1.4, 0.55, 1.4, C.woodDark);
+    L(0.12, z - 2, 0.55, 0.6, shade(C.woodDark, 0.7));
+  };
   const shelves = (cols: readonly string[]) => {
-    for (const z of [16, 27]) L(0.1, z, 0.58, 1.2, C.woodDark);
-    for (let k = 0; k < 6; k++) {
-      L(0.12 + k * 0.09, 17.2, 0.05, 5 + (k % 3), cols[k % cols.length] ?? C.cream);
-      L(0.13 + k * 0.09, 28.2, 0.04, 4 + ((k + 1) % 3), cols[(k + 2) % cols.length] ?? C.cream);
+    for (const z of [18, 29]) board(z);
+    for (let k = 0; k < 7; k++) {
+      L(0.13 + k * 0.077, 18, 0.05, 4.5 + (k % 3), cols[k % cols.length] ?? C.cream);
+      L(0.14 + k * 0.077, 18 + 3.5 + (k % 3), 0.03, 1, tint(cols[k % cols.length] ?? C.cream, 0.4));
+      L(0.135 + k * 0.077, 29, 0.045, 4 + ((k + 1) % 3), cols[(k + 2) % cols.length] ?? C.cream);
     }
   };
   switch (g) {
     case 'shelves':
       shelves([C.sakura, C.matcha, C.cream, C.orange, C.blue, C.gold]);
+      L(0.14, 7, 0.22, 6, C.oakLight);
+      L(0.42, 7, 0.22, 6, C.oakLight);
+      for (let k = 0; k < 4; k++)
+        L(0.16 + k * 0.12, 13, 0.08, 3, [C.red, C.carYellow, C.matcha, C.orange][k] ?? C.red);
       break;
     case 'bottles':
-      shelves([C.matchaDeep, C.gold, C.red, C.orange, C.teal, C.cream]);
-      for (let k = 0; k < 8; k++) L(0.11 + k * 0.07, 6, 0.03, 8, k % 2 ? C.matchaDeep : C.coffee);
+      shelves([C.leafDeep, C.gold, C.red, C.orange, C.teal, C.cream]);
+      for (let k = 0; k < 9; k++) {
+        const col = k % 3 ? C.leafDeep : C.coffee;
+        L(0.13 + k * 0.06, 7, 0.035, 7, col);
+        L(0.14 + k * 0.06, 14, 0.015, 2.4, col);
+        L(0.137 + k * 0.06, 9.4, 0.026, 2, C.paper);
+      }
       break;
     case 'flowers':
       for (let k = 0; k < 5; k++) {
-        L(0.12 + k * 0.11, 6, 0.06, 8, C.stainlessDark);
-        L(0.1 + k * 0.11, 14, 0.1, 7, [C.sakura, C.gold, C.red, C.white, C.plum][k] ?? C.sakura);
-        L(0.11 + k * 0.11, 20, 0.07, 4, C.matcha);
+        const x = 0.13 + k * 0.105;
+        L(x + 0.01, 7, 0.06, 8, C.galvanized);
+        L(x + 0.01, 13.6, 0.06, 1, tint(C.galvanized, 0.4));
+        for (let m = 0; m < 3; m++) L(x + m * 0.025, 15 + (m % 2) * 2, 0.012, 6, C.leaf);
+        L(x - 0.01, 20, 0.1, 5, [C.sakura, C.gold, C.red, C.white, C.plum][k] ?? C.sakura);
+        L(
+          x + 0.01,
+          23,
+          0.05,
+          3,
+          tint([C.sakura, C.gold, C.red, C.white, C.plum][k] ?? C.sakura, 0.35),
+        );
       }
+      for (let k = 0; k < 3; k++) L(0.2 + k * 0.16, 30, 0.04, 7, C.leafMid);
       break;
     case 'bread':
-      L(0.1, 16, 0.58, 1.2, C.woodDark);
+      board(18);
+      board(28);
       for (let k = 0; k < 5; k++) {
-        L(0.12 + k * 0.11, 17.2, 0.09, 4, C.woodDark);
-        L(0.13 + k * 0.11, 21, 0.07, 1.6, C.oakLight);
+        L(0.13 + k * 0.105, 18, 0.09, 3.6, C.woodDark);
+        L(0.14 + k * 0.105, 21.6, 0.07, 1.6, C.oakLight);
+        L(0.14 + k * 0.105, 28, 0.08, 3, k % 2 ? C.oakLight : C.woodDark);
       }
-      for (let k = 0; k < 3; k++) L(0.16 + k * 0.17, 6, 0.12, 6, k === 1 ? C.sakura : C.cream);
+      for (let k = 0; k < 3; k++) {
+        L(0.15 + k * 0.17, 7, 0.13, 1, C.white);
+        L(0.16 + k * 0.17, 8, 0.11, 4.5, k === 1 ? C.sakura : C.cream);
+        L(0.16 + k * 0.17, 12.5, 0.11, 1, k === 1 ? C.red : C.oakLight);
+      }
       break;
     case 'grill':
-      L(0.14, 8, 0.12, 26, C.coffee);
-      L(0.15, 10, 0.1, 22, C.woodDark);
-      L(0.19, 6, 0.02, 30, C.stainless);
-      L(0.34, 6, 0.32, 10, C.stainless);
+      L(0.15, 9, 0.11, 25, C.coffee);
+      L(0.16, 11, 0.09, 21, C.woodDark);
+      for (let z = 12; z < 31; z += 4) L(0.16, z, 0.09, 1, C.oakLight);
+      L(0.2, 7, 0.016, 29, C.stainless);
+      L(0.12, 7, 0.02, 25, shade(C.orange, 0.9));
+      L(0.33, 7, 0.32, 10, C.stainless);
+      L(0.33, 17, 0.32, 1, tint(C.stainless, 0.4));
       for (let k = 0; k < 4; k++)
-        L(0.36 + k * 0.075, 16, 0.05, 3, [C.matcha, C.red, C.cream, C.orange][k] ?? C.red);
+        L(0.35 + k * 0.075, 17.4, 0.06, 3, [C.matcha, C.red, C.cream, C.orange][k] ?? C.red);
+      L(0.36, 26, 0.26, 8, C.ink);
+      for (let k = 0; k < 3; k++) L(0.38, 27.5 + k * 2.2, 0.16, 0.8, C.white);
       break;
     case 'books':
-      for (const z of [8, 19, 30]) {
-        L(0.1, z - 1.2, 0.58, 1.2, C.woodDark);
+      for (const z of [9, 20, 31]) {
+        board(z);
         for (let k = 0; k < 14; k++)
           L(
-            0.11 + k * 0.04,
+            0.125 + k * 0.038,
             z,
             0.03,
-            6 + (k % 3),
+            5.5 + (k % 3),
             [C.red, C.cobalt, C.gold, C.matchaDeep, C.cream, C.plum][k % 6] ?? C.red,
           );
       }
       break;
     case 'wheels':
       for (const [x, z] of [
-        [0.22, 22],
-        [0.48, 26],
-        [0.34, 12],
+        [0.24, 24],
+        [0.5, 27],
+        [0.36, 12],
       ] as const) {
-        L(x - 0.08, z - 1, 0.16, 2, C.ink);
-        L(x - 0.01, z - 7, 0.02, 14, C.ink);
+        const ring: [number, number][] = [];
+        for (let i = 0; i < 14; i++) {
+          const a = (i / 14) * Math.PI * 2;
+          ring.push([x + Math.cos(a) * 0.075, z + Math.sin(a) * 6]);
+        }
+        c.frontPoly(0.005, ring, c.frontShade(C.rubber));
+        c.frontPoly(
+          0.0055,
+          ring.map(([px, pz]) => [x + (px - x) * 0.8, z + (pz - z) * 0.8] as [number, number]),
+          c.frontShade(C.shopInterior),
+        );
+        L(x - 0.005, z - 4.8, 0.01, 9.6, C.galvanized);
+        L(x - 0.06, z - 0.4, 0.12, 0.8, C.galvanized);
       }
+      L(0.13, 7, 0.2, 3, C.teal);
       break;
     case 'pharmacy':
-      shelves([C.white, '#3c9a5a', C.white, C.sakura, C.white, C.cobaltLight]);
-      L(0.3, 6, 0.18, 6, '#3c9a5a');
+      shelves([C.white, C.shopPharmacy, C.white, C.sakura, C.white, C.cobaltLight]);
+      L(0.28, 7, 0.22, 7, C.shopPharmacy);
+      L(0.37, 8, 0.04, 5, C.white);
+      L(0.345, 9.8, 0.09, 1.4, C.white);
       break;
     case 'icecream':
-      L(0.1, 8, 0.58, 10, C.stainless);
-      for (let k = 0; k < 6; k++)
-        L(
-          0.12 + k * 0.09,
-          14,
-          0.07,
-          3.4,
-          [C.sakura, C.cream, C.matchaFoam, C.coffee, C.gold, C.red][k] ?? C.cream,
-        );
-      L(0.1, 18, 0.58, 1, C.glass);
+      L(0.12, 7, 0.55, 11, C.stainless);
+      L(0.12, 17, 0.55, 1, tint(C.stainless, 0.5));
+      for (let k = 0; k < 6; k++) {
+        const col = [C.sakura, C.cream, C.matchaFoam, C.coffee, C.gold, C.red][k] ?? C.cream;
+        L(0.13 + k * 0.088, 15, 0.075, 2.6, col);
+        L(0.14 + k * 0.088, 17.6, 0.055, 1.2, tint(col, 0.35));
+      }
+      L(0.12, 19, 0.55, 1.2, C.glass);
+      for (let k = 0; k < 3; k++)
+        L(0.18 + k * 0.17, 27, 0.08, 9, [C.sakura, C.matchaFoam, C.cream][k] ?? C.cream);
       break;
     case 'records':
       for (let k = 0; k < 4; k++) {
-        L(0.12 + k * 0.14, 24, 0.12, 12, [C.sakura, C.cobalt, C.gold, C.teal][k] ?? C.gold);
-        L(0.16 + k * 0.14, 28, 0.04, 4, C.ink);
+        L(0.13 + k * 0.135, 24, 0.12, 12, [C.sakura, C.cobalt, C.gold, C.teal][k] ?? C.gold);
+        L(0.16 + k * 0.135, 28, 0.06, 4, C.ink);
+        L(0.18 + k * 0.135, 29.6, 0.02, 0.8, C.cream);
       }
-      L(0.1, 8, 0.58, 10, C.woodDark);
+      L(0.12, 7, 0.55, 10, C.woodDark);
+      for (let k = 0; k < 10; k++) L(0.13 + k * 0.052, 11, 0.04, 6, k % 2 ? C.ink : C.plum);
       break;
   }
+}
+
+/** Kundenstopper (Tafel ohne Schrift, nur Linien) vor dem Laden. */
+function aBoard(c: FacingCanvas, x: number) {
+  c.fshadow(x - 0.07, 0.3, 0, 0.14, 0.12, 0.22);
+  c.fpoly(
+    [
+      [x - 0.06, 0.42, 0],
+      [x + 0.06, 0.42, 0],
+      [x + 0.06, 0.35, 11],
+      [x - 0.06, 0.35, 11],
+    ],
+    c.frontShade(C.woodDark),
+  );
+  c.fpoly(
+    [
+      [x - 0.05, 0.418, 1.2],
+      [x + 0.05, 0.418, 1.2],
+      [x + 0.05, 0.358, 10],
+      [x - 0.05, 0.358, 10],
+    ],
+    c.frontShade(C.ink),
+  );
+  for (let k = 0; k < 3; k++)
+    c.fpoly(
+      [
+        [x - 0.035, 0.41 - k * 0.012, 3 + k * 2.2],
+        [x + (k === 1 ? 0.02 : 0.035), 0.41 - k * 0.012, 3 + k * 2.2],
+        [x + (k === 1 ? 0.02 : 0.035), 0.408 - k * 0.012, 3.8 + k * 2.2],
+        [x - 0.035, 0.408 - k * 0.012, 3.8 + k * 2.2],
+      ],
+      k === 0 ? C.sakura : C.white,
+    );
 }
 
 /** Auslage vor dem Laden (auf dem Gehweg, y 0,2 … 0,55). */
@@ -365,121 +490,192 @@ function outside(c: FacingCanvas, o: Outside) {
     case 'flowers':
       for (let k = 0; k < 3; k++) {
         const x = 0.18 + k * 0.17;
-        c.fshadowDisc(x, 0.35, 0, 0.07, 0.2);
-        c.fcyl(x, 0.35, 0, 0.055, 6, C.stainlessDark);
-        c.fdome(x, 0.35, 6, 0.07, 6, [C.sakura, C.gold, C.red][k] ?? C.sakura);
-        c.fdome(x + 0.03, 0.33, 7, 0.04, 4, C.matcha);
+        c.fshadowDisc(x, 0.36, 0, 0.08, 0.22);
+        c.ffrustum(x, 0.36, 0, 0.05, 0.065, 6, C.galvanized, shade(C.galvanized, 0.7));
+        const col = [C.sakura, C.gold, C.red][k] ?? C.sakura;
+        for (let m = 0; m < 4; m++) {
+          const dx = Math.cos(m * 1.6) * 0.035;
+          const dy = Math.sin(m * 1.6) * 0.035;
+          c.fdome(x + dx, 0.36 + dy, 6.5, 0.035, 4.4, m % 2 ? col : C.leaf);
+        }
+        c.fdome(x, 0.36, 8.5, 0.045, 4, col);
       }
       break;
     case 'crates':
       for (let k = 0; k < 2; k++) {
-        c.fshadow(0.14, 0.24, 0, 0.18, 0.18, 0.2);
+        c.fshadow(0.14, 0.24, 0, 0.18, 0.18, 0.22);
         c.fbevel(0.14, 0.24, k * 5, 0.18, 0.18, 5, k ? C.orange : C.matchaDeep, { b: 0.6 });
+        c.front(
+          0.15,
+          0.421,
+          k * 5 + 2,
+          0.16,
+          0.5,
+          k ? shade(C.orange, 0.8) : shade(C.matchaDeep, 0.8),
+        );
+        for (let m = 0; m < 3; m++)
+          c.fcyl(0.18 + m * 0.05, 0.33, k * 5 + 5, 0.016, 2.6, k ? C.leafDeep : C.coffee, C.gold);
       }
-      c.fbox(0.5, 0.3, 0, 0.16, 0.04, 14, C.ink);
-      c.frontLit(0.52, 0.341, 3, 0.12, 9, c.frontShade(C.white));
+      aBoard(c, 0.56);
       break;
     case 'chairs':
-      for (const x of [0.2, 0.5]) {
-        c.fshadowDisc(x + 0.06, 0.38, 0, 0.1, 0.2);
-        c.fcyl(x + 0.06, 0.38, 0, 0.012, 10, C.stainless);
-        c.fcyl(x + 0.06, 0.38, 10, 0.09, 1.2, C.white);
+      for (const x of [0.22, 0.52]) {
+        c.fshadowDisc(x + 0.06, 0.38, 0, 0.1, 0.22);
+        c.fcyl(x + 0.06, 0.38, 0, 0.04, 0.6, C.stainlessDark);
+        c.fcyl(x + 0.06, 0.38, 0.6, 0.012, 10, C.stainless);
+        c.fcyl(x + 0.06, 0.38, 10.6, 0.09, 1, tint(C.stainless, 0.4), C.white);
+        c.fcyl(x + 0.04, 0.4, 11.6, 0.018, 2, C.cup, C.matchaFoam);
       }
-      c.fbevel(0.12, 0.25, 6, 0.08, 0.08, 1.2, C.red, { b: 0.4 });
-      c.fbevel(0.66, 0.25, 6, 0.08, 0.08, 1.2, C.red, { b: 0.4 });
+      for (const x of [0.11, 0.69]) {
+        c.fbevel(x, 0.33, 6, 0.08, 0.08, 1.2, C.red, { b: 0.4 });
+        c.fbox(x + (x < 0.5 ? 0 : 0.065), 0.33, 7.2, 0.015, 0.08, 5, C.red);
+      }
       break;
     case 'books':
-      c.fshadow(0.14, 0.22, 0, 0.5, 0.2, 0.2);
+      c.fshadow(0.14, 0.22, 0, 0.5, 0.2, 0.22);
       c.fbox(0.14, 0.22, 0, 0.5, 0.2, 8, C.woodDark);
-      for (let k = 0; k < 8; k++)
+      c.front(0.15, 0.4201, 1.5, 0.48, 0.6, shade(C.woodDark, 0.7));
+      for (let k = 0; k < 9; k++)
         c.fbox(
-          0.15 + k * 0.06,
+          0.15 + k * 0.054,
           0.24,
           8,
-          0.05,
+          0.045,
           0.14,
-          2,
-          [C.red, C.cobalt, C.gold, C.cream][k % 4] ?? C.red,
+          2 + (k % 2) * 0.6,
+          [C.red, C.cobalt, C.gold, C.cream, C.matchaDeep][k % 5] ?? C.red,
         );
       break;
-    case 'bike':
-      c.fshadow(0.1, 0.3, 0, 0.6, 0.08, 0.2);
-      c.fbox(0.12, 0.33, 0, 0.012, 0.012, 6, C.ink);
-      c.fbox(0.56, 0.33, 0, 0.012, 0.012, 6, C.ink);
-      c.fbox(0.12, 0.33, 6, 0.46, 0.012, 1.2, C.teal);
-      c.fbox(0.2, 0.33, 9, 0.1, 0.03, 1, C.ink);
+    case 'bike': {
+      c.fshadow(0.1, 0.3, 0, 0.6, 0.08, 0.22);
+      const wheelF = (x: number) => {
+        const ring: Vec3[] = [];
+        for (let i = 0; i <= 16; i++) {
+          const a = (i / 16) * Math.PI * 2;
+          ring.push([x + Math.cos(a) * 0.1, 0.34, 3.9 + Math.sin(a) * 3.9]);
+        }
+        polyline(
+          c,
+          ring.map(([x1, y1, z1]) => (c.facing === 'a' ? [x1, y1, z1] : [y1, x1, z1]) as Vec3),
+          C.rubber,
+          1.1,
+        );
+      };
+      wheelF(0.2);
+      wheelF(0.52);
+      const Q = (x: number, z: number): Vec3 => (c.facing === 'a' ? [x, 0.34, z] : [0.34, x, z]);
+      strut(c, Q(0.2, 3.9), Q(0.36, 3.9), C.teal, 1.1);
+      strut(c, Q(0.36, 3.9), Q(0.3, 8.6), C.teal, 1.1);
+      strut(c, Q(0.2, 3.9), Q(0.3, 8.6), C.teal, 1);
+      strut(c, Q(0.3, 8.6), Q(0.46, 9), C.teal, 1.1);
+      strut(c, Q(0.36, 3.9), Q(0.46, 9), C.teal, 1.1);
+      strut(c, Q(0.46, 9), Q(0.52, 3.9), shade(C.teal, 0.85), 1);
+      strut(c, Q(0.46, 9), Q(0.45, 10.6), C.ink, 1);
+      c.fbox(0.27, 0.32, 9, 0.07, 0.04, 0.8, C.ink);
       break;
+    }
     case 'cone':
-      c.fshadowDisc(0.5, 0.35, 0, 0.08, 0.2);
-      c.fbox(0.49, 0.34, 0, 0.02, 0.02, 12, C.white);
-      c.ffrustum(0.5, 0.35, 12, 0.02, 0.07, 9, C.oakLight, C.sakura);
-      c.fdome(0.5, 0.35, 21, 0.07, 6, C.sakura);
+      c.fshadowDisc(0.5, 0.36, 0, 0.09, 0.22);
+      c.fcyl(0.5, 0.36, 0, 0.05, 1, C.stainlessDark);
+      c.fbox(0.49, 0.35, 1, 0.02, 0.02, 11, C.white);
+      c.ffrustum(0.5, 0.36, 12, 0.012, 0.07, 9, C.oakLight, C.sakura);
+      c.fdome(0.5, 0.36, 21, 0.072, 6, C.sakura);
+      c.fdome(0.51, 0.35, 25.5, 0.04, 3, C.white);
+      aBoard(c, 0.22);
+      break;
+    case 'board':
+      aBoard(c, 0.3);
       break;
     default:
       break;
   }
 }
 
-/** Laden: Schaufenster mit Auslage, Ladenschild ohne Schrift, je Typ eigene Markise und Auslage vorm Laden. */
+/**
+ * Laden: Schaufenster mit Sprosse, Oberlicht und Auslage, Sockelfeld, Glastür mit Griff, Pilaster, Schild ohne
+ * Schrift (Emblem und Zierlinien), je Typ eigene Markise oder Nasenschild und Sachen vor der Tür.
+ */
 function shopCell(c: FacingCanvas, p: CityPalette, variant: number) {
   const s = SHOPS[variant % SHOPS.length] ?? SHOPS[0];
   if (!s) return;
   plinth(c, p);
-  c.front(0.05, 0.002, 2, 0.9, 44, s.frame);
-  // Schaufenster: warm beleuchtetes Innere mit Auslage
-  c.frontLit(0.09, 0.004, 5, 0.6, 37, c.frontShade('#eadfc8'));
+  const fr = s.frame;
+  const light = fr === C.white;
+  c.front(0.05, 0.002, 2, 0.9, 44, fr);
+  // Schaufenster: warm beleuchtetes Inneres, Auslage, Glas mit Reflex, Sprosse und Oberlicht
+  c.frontLit(0.11, 0.004, 7, 0.57, 33, c.frontShade(C.shopInterior));
   goods(c, s.goods);
-  c.frontLit(0.09, 0.006, 5, 0.6, 37, C.glass, 0.25);
-  reflex(c, 0.09, 0.007, 5, 0.6, 37);
-  // Ladentür rechts
-  c.front(0.72, 0.004, 3, 0.19, 39, shade(s.frame, s.frame === C.white ? 0.85 : 1.2));
-  c.frontLit(0.74, 0.006, 5, 0.15, 33, c.frontShade(PANE));
-  c.front(0.75, 0.007, 19, 0.04, 1.2, C.stainless);
-  c.fbox(0.05, 0, 0, 0.9, 0.08, 2, shade(s.frame, 0.9));
-  // Schild: Fläche mit Emblem und Zierlinie (keine Schrift)
-  c.front(0.04, 0.003, 48, 0.92, 9, s.sign);
+  c.frontLit(0.11, 0.006, 7, 0.57, 33, C.glass, 0.22);
+  reflex(c, 0.11, 0.007, 7, 0.57, 33);
+  c.front(0.11, 0.0075, 34.2, 0.57, 1, fr);
+  c.front(0.39, 0.0075, 7, 0.014, 27, fr);
+  c.front(0.08, 0.002, 2, 0.63, 5, shade(fr, light ? 0.9 : 1.25));
+  c.front(0.1, 0.003, 3, 0.59, 3, shade(fr, light ? 0.82 : 1.1));
+  c.fbox(0.09, 0, 6.4, 0.61, 0.05, 0.8, light ? C.stainless : tint(fr, 0.2));
+  // Ladentür mit Glas, Griff, Trittblech und Oberlicht
+  const df = shade(fr, light ? 0.85 : 1.25);
+  c.front(0.72, 0.004, 2, 0.18, 39, df);
+  c.frontLit(0.745, 0.006, 6, 0.13, 26, c.frontShade(PANE));
+  c.frontLit(0.75, 0.007, 8, 0.03, 22, C.white, 0.25);
+  c.frontLit(0.745, 0.006, 35, 0.13, 4, c.frontShade(tint(PANE, 0.2)));
+  c.front(0.85, 0.008, 17, 0.012, 6, C.stainless);
+  c.front(0.735, 0.007, 2.2, 0.15, 3, C.stainlessDark);
+  c.fbox(0.69, 0, 0, 0.24, 0.12, 1.6, shade(p.plinth, 1.15));
+  // Pilaster links und rechts
+  for (const x of [0.04, 0.905]) c.fbox(x, 0, 2, 0.055, 0.04, 44, shade(fr, light ? 0.92 : 1.12));
+  // Schild: Fläche mit Profil, Emblem und Zierlinien (keine Schrift)
+  c.fbox(0.035, 0, 46.5, 0.93, 0.05, 10, s.sign);
+  c.fbox(0.03, 0, 56.5, 0.94, 0.07, 1.4, tint(p.stucco, 0.1));
   const em = s.sign === C.paper || s.sign === C.cream ? C.ink : C.white;
+  const fy = 0.051;
   if (s.emblem === 'cross') {
-    c.frontLit(0.13, 0.005, 49.6, 0.04, 5.8, c.frontShade(C.white));
-    c.frontLit(0.1, 0.005, 51.6, 0.1, 1.8, c.frontShade(C.white));
+    c.frontLit(0.13, fy, 48.2, 0.04, 6.4, c.frontShade(C.white));
+    c.frontLit(0.1, fy, 50.4, 0.1, 2, c.frontShade(C.white));
   } else if (s.emblem === 'circle') {
     const pts: [number, number][] = [];
     for (let i = 0; i < 12; i++) {
       const a = (i / 12) * Math.PI * 2;
-      pts.push([0.15 + Math.cos(a) * 0.05, 52.5 + Math.sin(a) * 2.2]);
+      pts.push([0.15 + Math.cos(a) * 0.05, 51.5 + Math.sin(a) * 2.6]);
     }
-    c.frontPoly(0.005, pts, c.frontShade(em));
+    c.frontPoly(fy, pts, c.frontShade(em));
+    c.frontPoly(
+      fy + 0.001,
+      pts.map(([x, z]) => [0.15 + (x - 0.15) * 0.45, 51.5 + (z - 51.5) * 0.45] as [number, number]),
+      c.frontShade(s.sign),
+    );
   } else if (s.emblem === 'leaf') {
     c.frontPoly(
-      0.005,
+      fy,
       [
-        [0.1, 50],
+        [0.1, 49],
         [0.16, 54.5],
-        [0.22, 50],
-        [0.16, 49.2],
+        [0.22, 49],
+        [0.16, 48.2],
       ],
       c.frontShade(em),
     );
+    c.frontLit(0.158, fy + 0.001, 48.6, 0.006, 5.4, c.frontShade(s.sign));
   } else {
-    c.frontLit(0.1, 0.005, 50.5, 0.12, 4, c.frontShade(em));
+    c.frontLit(0.1, fy, 49.4, 0.12, 4.4, c.frontShade(em));
   }
+  const line = em === C.ink ? shade(s.sign, 0.6) : tint(s.sign, 0.55);
+  c.frontLit(0.28, fy, 51.4, 0.5, 1.3, c.frontShade(line));
   c.frontLit(
     0.28,
-    0.005,
-    52,
-    0.5,
-    1.2,
-    c.frontShade(em === C.ink ? shade(s.sign, 0.6) : tint(s.sign, 0.55)),
-  );
-  c.frontLit(
-    0.28,
-    0.005,
-    49.6,
+    fy,
+    48.8,
     0.34,
-    1,
+    1.1,
     c.frontShade(em === C.ink ? shade(s.sign, 0.7) : tint(s.sign, 0.4)),
   );
   if (s.awning) awning(c, s.awning[0], s.awning[1]);
+  else c.frontLit(0.08, 0.009, 38, 0.84, 8, C.ink, 0.1);
+  if (s.nose) {
+    // Nasenschild am Ausleger rechts über der Tür, quer zur Fassade
+    c.fbox(0.86, 0, 44.2, 0.012, 0.3, 0.8, IRON);
+    c.fbevel(0.85, 0.1, 35.5, 0.03, 0.2, 8.4, s.sign, { b: 0.4 });
+    c.side(0.881, 0.12, 37, 0.16, 5.4, em === C.ink ? shade(s.sign, 0.6) : C.white);
+  }
   outside(c, s.outside);
 }
 
