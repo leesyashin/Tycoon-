@@ -6,7 +6,7 @@
  * neu ausführen: `pnpm art`.
  *
  *   public/assets/sprites/common.png|json      Figuren (`art/figures.ts`), Smileys, Münze, Partikel
- *   public/assets/sprites/furniture.png|json   Ausstattung in 5 Stufen, Thekenmodule, Tische, Ambiente
+ *   public/assets/sprites/furniture.png|json   Ausstattung in 5 Stufen, Thekenmodule, Tische, Ambiente, Lager
  *   public/assets/sprites/theme-<ort>.png|json Boden/Wände je Standort (Lazy-Loading)
  *   public/assets/sprites/icons/*.png          beschnittene Einzelbilder für das DOM (alte werden gelöscht)
  *   public/assets/ui/icon-192.png, icon-512.png PWA-Icons
@@ -25,17 +25,30 @@ import {
 import { characterSprites, staffPortrait } from './art/figures';
 import { citySprites, facadeSprites } from './art/city';
 import { decorSprites, tableOutSprites } from './art/decor';
+import { storageSprites } from './art/storage';
 import { encodePalettePng } from './art/png';
 
 const OUT = 'public/assets/sprites';
 const LOCATIONS = ['berlin', 'kyoto', 'tokyo', 'seoul', 'newyork', 'bali'];
+
+/** Lage im Atlas (`x`…`h`) und, bei beschnittenen Frames, Ausschnitt im Originalbild (`sx`, `sy`, `sw`, `sh`). */
+interface PackedFrame {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  sx: number;
+  sy: number;
+  sw: number;
+  sh: number;
+}
 
 interface Packed {
   /** RGBA-Pixel des Atlas, Base64. */
   rgba: string;
   w: number;
   h: number;
-  frames: Record<string, { x: number; y: number; w: number; h: number }>;
+  frames: Record<string, PackedFrame>;
 }
 
 const browser = await chromium.launch(
@@ -46,9 +59,14 @@ await page.setContent('<!doctype html><body></body>');
 // tsx (esbuild, keepNames) ruft in übergebenen Funktionen `__name` auf – im Browser gibt es das nicht.
 await page.evaluate('window.__name = (f) => f');
 
-async function pack(sprites: SpriteDef[], maxW = 2048): Promise<Packed> {
+/**
+ * Packt die Sprites zeilenweise (höchste zuerst). `trim`: jedes Bild wird auf seinen sichtbaren Inhalt beschnitten
+ * (Phaser setzt beschnittene Frames wieder an die Stelle im Originalbild, `trimmed` im JSON) – spart bei den hohen
+ * Möbel-Leinwänden mit viel leerer Fläche über niedrigen Theken den Großteil des Platzes.
+ */
+async function pack(sprites: SpriteDef[], maxW = 2048, trim = false): Promise<Packed> {
   return page.evaluate(
-    async ({ sprites, maxW }) => {
+    async ({ sprites, maxW, trim }) => {
       const load = (svg: string) =>
         new Promise<HTMLImageElement>((resolve, reject) => {
           const img = new Image();
@@ -56,25 +74,66 @@ async function pack(sprites: SpriteDef[], maxW = 2048): Promise<Packed> {
           img.onerror = () => reject(new Error('svg failed'));
           img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
         });
+      /** Sichtbarer Ausschnitt (Alpha > 0) eines Bildes; ohne `trim` das ganze Bild. */
+      const box = (img: HTMLImageElement) => {
+        const full = { sx: 0, sy: 0, sw: img.width, sh: img.height };
+        if (!trim) return full;
+        const c = document.createElement('canvas');
+        c.width = img.width;
+        c.height = img.height;
+        const cx = c.getContext('2d');
+        if (!cx) throw new Error('no 2d');
+        cx.drawImage(img, 0, 0);
+        const d = cx.getImageData(0, 0, img.width, img.height).data;
+        let x0 = img.width;
+        let y0 = img.height;
+        let x1 = -1;
+        let y1 = -1;
+        for (let yy = 0; yy < img.height; yy++)
+          for (let xx = 0; xx < img.width; xx++)
+            if ((d[(yy * img.width + xx) * 4 + 3] ?? 0) > 0) {
+              x0 = Math.min(x0, xx);
+              y0 = Math.min(y0, yy);
+              x1 = Math.max(x1, xx);
+              y1 = Math.max(y1, yy);
+            }
+        if (x1 < 0) return { sx: 0, sy: 0, sw: 1, sh: 1 };
+        return { sx: x0, sy: y0, sw: x1 - x0 + 1, sh: y1 - y0 + 1 };
+      };
       const imgs = await Promise.all(
-        sprites.map(async (s) => ({ name: s.name, img: await load(s.svg) })),
+        sprites.map(async (s) => {
+          const img = await load(s.svg);
+          return { name: s.name, img, ...box(img) };
+        }),
       );
-      imgs.sort((a, b) => b.img.height - a.img.height || a.name.localeCompare(b.name));
+      imgs.sort((a, b) => b.sh - a.sh || a.name.localeCompare(b.name));
       const pad = 2;
       let x = pad;
       let y = pad;
       let rowH = 0;
       let width = 0;
-      const frames: Record<string, { x: number; y: number; w: number; h: number }> = {};
-      for (const { name, img } of imgs) {
-        if (x + img.width + pad > maxW) {
+      const frames: Record<
+        string,
+        {
+          x: number;
+          y: number;
+          w: number;
+          h: number;
+          sx: number;
+          sy: number;
+          sw: number;
+          sh: number;
+        }
+      > = {};
+      for (const { name, img, sx, sy, sw, sh } of imgs) {
+        if (x + sw + pad > maxW) {
           x = pad;
           y += rowH + pad;
           rowH = 0;
         }
-        frames[name] = { x, y, w: img.width, h: img.height };
-        x += img.width + pad;
-        rowH = Math.max(rowH, img.height);
+        frames[name] = { x, y, w: img.width, h: img.height, sx, sy, sw, sh };
+        x += sw + pad;
+        rowH = Math.max(rowH, sh);
         width = Math.max(width, x);
       }
       const height = y + rowH + pad;
@@ -85,7 +144,7 @@ async function pack(sprites: SpriteDef[], maxW = 2048): Promise<Packed> {
       if (!ctx) throw new Error('no 2d');
       for (const { name, img } of imgs) {
         const f = frames[name];
-        if (f) ctx.drawImage(img, f.x, f.y);
+        if (f) ctx.drawImage(img, f.sx, f.sy, f.sw, f.sh, f.x, f.y, f.sw, f.sh);
       }
       // Rohpixel statt PNG: Node schreibt daraus ein Palette-PNG.
       const data = ctx.getImageData(0, 0, width, height).data;
@@ -94,7 +153,7 @@ async function pack(sprites: SpriteDef[], maxW = 2048): Promise<Packed> {
         bin += String.fromCharCode(...data.subarray(i, Math.min(data.length, i + 0x8000)));
       return { rgba: btoa(bin), w: width, h: height, frames };
     },
-    { sprites, maxW },
+    { sprites, maxW, trim },
   );
 }
 
@@ -188,16 +247,19 @@ function writeAtlas(name: string, p: Packed): void {
   const frames = Object.fromEntries(
     Object.entries(p.frames)
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, f]) => [
-        k,
-        {
-          frame: f,
-          rotated: false,
-          trimmed: false,
-          spriteSourceSize: { x: 0, y: 0, w: f.w, h: f.h },
-          sourceSize: { w: f.w, h: f.h },
-        },
-      ]),
+      .map(([k, f]) => {
+        const trimmed = f.sx !== 0 || f.sy !== 0 || f.sw !== f.w || f.sh !== f.h;
+        return [
+          k,
+          {
+            frame: { x: f.x, y: f.y, w: f.sw, h: f.sh },
+            rotated: false,
+            trimmed,
+            spriteSourceSize: { x: f.sx, y: f.sy, w: f.sw, h: f.sh },
+            sourceSize: { w: f.w, h: f.h },
+          },
+        ];
+      }),
   );
   const json = { frames, meta: { image: `${name}.png`, size: { w: p.w, h: p.h }, scale: '2' } };
   writeFileSync(`${OUT}/${name}.json`, `${JSON.stringify(json, null, 1)}\n`);
@@ -215,13 +277,18 @@ const tables = tableSprites();
 writeAtlas('common', await pack([...characterSprites(), ...fxSprites()]));
 writeAtlas(
   'furniture',
-  await pack([
-    ...stationSprites(),
-    ...tables,
-    ...tableOutSprites(),
-    ...ambience,
-    ...decorSprites(),
-  ]),
+  await pack(
+    [
+      ...stationSprites(),
+      ...tables,
+      ...tableOutSprites(),
+      ...ambience,
+      ...decorSprites(),
+      ...storageSprites(),
+    ],
+    2048,
+    true,
+  ),
 );
 for (const loc of LOCATIONS)
   writeAtlas(`theme-${loc}`, await pack([...themeSprites(loc), ...facadeSprites(loc)], 2048));
