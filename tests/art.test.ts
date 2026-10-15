@@ -39,6 +39,7 @@ import {
 } from '../scripts/art/equipment';
 import { ambienceSprites } from '../scripts/art/sprites';
 import { decorSprites, tableOutSprites } from '../scripts/art/decor';
+import { storageSprites } from '../scripts/art/storage';
 
 type Atlas = { frames: Record<string, unknown> };
 const common = JSON.parse(readFileSync('public/assets/sprites/common.json', 'utf8')) as Atlas;
@@ -131,6 +132,7 @@ describe('Möbel-Atlas (pnpm art)', () => {
       ...tableOutSprites(),
       ...ambienceSprites(),
       ...decorSprites(),
+      ...storageSprites(),
     ].map((s) => s.name);
     expect(Object.keys(furniture.frames).sort()).toEqual(drawn.sort());
   });

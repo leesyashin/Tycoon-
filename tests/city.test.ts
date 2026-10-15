@@ -50,7 +50,13 @@ function seeded(seed = 1): () => number {
   };
 }
 
-const CAFE: GridRect = { x0: 0, y0: 0, x1: 14, y1: 14 };
+/** Café-Grundstück: Raum ab der hinteren Ecke bis über Terrasse und Wintergarten. */
+const CAFE: GridRect = {
+  x0: getLayout('berlin').origin.x,
+  y0: getLayout('berlin').origin.y,
+  x1: 14,
+  y1: 14,
+};
 
 /** Neun Prüfpunkte einer Grundfläche (Ecken knapp innen, Kantenmitten, Mitte). */
 function samples(r: GridRect): [number, number][] {
@@ -249,8 +255,13 @@ describe('Stadtviertel: Grundriss', () => {
       first = crowd.agents.find((a) => a.active);
     }
     expect(first).toBeDefined();
-    expect(first?.y).toBeCloseTo(curb.y);
-    expect(Math.abs((first?.x ?? 0) - curb.x)).toBeGreaterThanOrEqual(layout.street.spreadMin);
+    // Sie tauchen auf dem Gehweg seitlich der Tür auf (entlang der Gehweg-Richtung).
+    const along = layout.street.axis === 'u' ? 'x' : 'y';
+    const across = along === 'x' ? 'y' : 'x';
+    expect(first?.[across]).toBeCloseTo(curb[across]);
+    expect(Math.abs((first?.[along] ?? 0) - curb[along])).toBeGreaterThanOrEqual(
+      layout.street.spreadMin,
+    );
   });
 });
 

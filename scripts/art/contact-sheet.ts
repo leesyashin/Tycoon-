@@ -1,12 +1,13 @@
 /**
  * Kontaktbogen zum Prüfen der Sprites ohne Spielstart:
  *   PW_CHROMIUM=… pnpm tsx scripts/art/contact-sheet.ts stations out.png     (Geräte × 5 Stufen, je Zeile ein Gerät)
- *   PW_CHROMIUM=… pnpm tsx scripts/art/contact-sheet.ts counter out.png      (Thekenmodule je Stufe und Deko)
+ *   PW_CHROMIUM=… pnpm tsx scripts/art/contact-sheet.ts counter out.png      (Thekenmodule je Stufe, Deko, quer, Ecke)
+ *   PW_CHROMIUM=… pnpm tsx scripts/art/contact-sheet.ts storage out.png      (Lager je Stufe, getragene Ware)
  *   PW_CHROMIUM=… pnpm tsx scripts/art/contact-sheet.ts furniture out.png    (Tische, Ambiente, Schmutz-Marker)
  *   PW_CHROMIUM=… pnpm tsx scripts/art/contact-sheet.ts figures out.png
  *   PW_CHROMIUM=… pnpm tsx scripts/art/contact-sheet.ts figures out.png 'waiter|sit-'   (nur passende Namen)
  *   PW_CHROMIUM=… pnpm tsx scripts/art/contact-sheet.ts city|facade|theme out.png      (Stadtviertel, Berlin)
- *   PW_CHROMIUM=… pnpm tsx scripts/art/contact-sheet.ts register|fx out.png   (Kasse wie in der Szene, Effekte/Ringe)
+ *   PW_CHROMIUM=… pnpm tsx scripts/art/contact-sheet.ts register|fx out.png   (Kasse wie in der Szene, auch quer; Effekte)
  * Rendert die SVGs vergrößert in ein Raster mit Beschriftung. Nicht Teil von `pnpm art`.
  */
 import { writeFileSync } from 'node:fs';
@@ -16,6 +17,7 @@ import { citySprites, facadeSprites } from './city';
 import { decorSprites, tableOutSprites } from './decor';
 import { EQUIPMENT_IDS, TIERS, stationIconSvg, stationSprites, tableSprites } from './equipment';
 import { characterSprites } from './figures';
+import { STORAGE_TIERS, storagePreview, storageSprites } from './storage';
 
 const which = process.argv[2] ?? 'stations';
 const out = process.argv[3] ?? 'contact-sheet.png';
@@ -39,18 +41,29 @@ function stack(svgs: string[]): string {
 const onCounter = (): SpriteDef[] => {
   const all = new Map(stationSprites().map((x) => [x.name, x.svg]));
   return [...all.keys()]
-    .filter((n) => /^station-register-\d-a/.test(n))
+    .filter((n) => /^station-register-\d-[ab]/.test(n))
     .map((n) => {
-      const tier = n.split('-')[2] ?? '1';
-      return { name: n, svg: stack([all.get(`counter-${tier}-0-a`) ?? '', all.get(n) ?? '']) };
+      const [, , tier = '1', facing = 'a'] = n.split('-');
+      return {
+        name: n,
+        svg: stack([all.get(`counter-${tier}-0-${facing}`) ?? '', all.get(n) ?? '']),
+      };
     });
 };
 const sets: Record<string, { list: () => SpriteDef[]; scale: number; cols: number }> = {
   stations: { list: () => devices, scale: 3, cols: 5 },
   counter: {
-    list: () => stationSprites().filter((s) => /^counter-.*-a$/.test(s.name)),
+    list: () => stationSprites().filter((s) => s.name.startsWith('counter-')),
     scale: 2.5,
-    cols: 4,
+    cols: 8,
+  },
+  storage: {
+    list: () => [
+      ...STORAGE_TIERS.map((t) => ({ name: `lager-${String(t)}`, svg: storagePreview(t) })),
+      ...storageSprites(),
+    ],
+    scale: 2.5,
+    cols: 6,
   },
   furniture: { list: () => [...tableSprites(), ...ambienceSprites()], scale: 3, cols: 4 },
   figures: { list: characterSprites, scale: 4, cols: 10 },

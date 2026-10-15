@@ -1,4 +1,10 @@
-import { CHAR_SPRITE, stationLookTier, tableLookTier, type LookTier } from '@data/art';
+import {
+  CHAR_SPRITE,
+  stationLookTier,
+  tableLookTier,
+  type LookTier,
+  type StorageTier,
+} from '@data/art';
 
 /**
  * Atlas-Schlüssel und Frame-Namen der Szene (S8, Phase 2). Die Bilder erzeugt `pnpm art` aus
@@ -34,9 +40,18 @@ export const FRAME = {
   /** Kasse mit ausgefahrener Lade (kurz nach dem Kassieren). */
   registerOpen: (level: number, facesX: boolean) =>
     `station-register-${String(stationLookTier(level))}-${facesX ? 'b' : 'a'}-open`,
-  /** Thekenmodul in der Stufe des Cafés mit Deko-Variante (`COUNTER_PROPS`). */
-  counter: (tier: LookTier, variant: number, facesX: boolean) =>
-    `counter-${String(tier)}-${String(variant)}-${facesX ? 'b' : 'a'}`,
+  /** Thekenmodul in der Stufe des Cafés mit Deko-Variante (`COUNTER_PROPS`): gerade, quer oder Eckmodul. */
+  counter: (tier: LookTier, variant: number, kind: 'a' | 'b' | 'corner') =>
+    `counter-${String(tier)}-${String(variant)}-${kind}`,
+  /** Lager (`scripts/art/storage.ts`): Eckregal, Seitenregal (quer = „b“), Palette; Stufe nach Geräten. */
+  storage: (piece: 'corner' | 'rack' | 'stock', tier: StorageTier, facesX: boolean) =>
+    piece === 'stock'
+      ? 'storage-stock'
+      : piece === 'corner'
+        ? `storage-corner-${String(tier)}`
+        : `storage-rack-${String(tier)}-${facesX ? 'b' : 'a'}`,
+  /** Ware, die ein Barista aus dem Lager trägt (`SUPPLY_ITEMS`). */
+  supply: (id: string) => `supply-${id}`,
   ambience: (id: string) => `ambience-${id}`,
   /** Tisch mit zwei Stühlen in der Stufe nach Anzahl der Tische (`TABLE_LOOK_LEVELS`). */
   table: (seatsLevel: number) => `table-${String(tableLookTier(seatsLevel))}`,

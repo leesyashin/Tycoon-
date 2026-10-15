@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import {
   getLayout,
   inRoom,
-  layoutExtent,
+  layoutBounds,
   visibleTables,
   type CafeLayout,
   type DecorItem,
@@ -26,14 +26,18 @@ import {
   PASS_SLOTS,
   SCENE_FX,
   STATION_FX,
+  SUPPLY_CANVAS,
+  SUPPLY_ITEMS,
   counterLookTier,
   counterPropsAt,
   decorFrame,
   roomLook,
   staffLookFor,
   stationLookTier,
+  storageLookTier,
   tableLookTier,
   type LookTier,
+  type StorageTier,
 } from '@data/art';
 import type { StaffRoleId } from '@data/staff';
 import { DAY_CYCLE, UI_THEME } from '@data/ui';
@@ -79,6 +83,8 @@ const HUD_COIN = { x: 34, y: 34 };
 const DEPTH = { wall: -2000, floor: -1000, label: 10_000, overlay: 20_000 } as const;
 /** Teller/Becher-Sprites (`item-*`): Bodenpunkt 16 px unter der Oberkante einer 22 px hohen Leinwand. */
 const ITEM_ORIGIN_Y = 16 / 22;
+/** Getragene Ware aus dem Lager: so hoch über den Füßen (Hände) und so weit vor dem Körper (Pixel). */
+const SUPPLY_HAND = { z: 15, ahead: 4 } as const;
 /** Tisch-Objekt-ID für das Antippen (öffnet das Ambiente-Panel „Tische“). */
 const TABLE_OBJECT = 'ambience:seats';
 
@@ -119,11 +125,21 @@ interface TableView {
 
 /** Modul der Gästetheke (auch unter Kasse und Ausgabe). */
 interface CounterView {
-  x: number;
+  /** Bildschirm-x der Kachel: Reihenfolge der Plopp-Welle (von links nach rechts). */
+  order: number;
   sprite: Phaser.GameObjects.Image;
   /** Deko-Variante (`COUNTER_PROPS`), 0 unter einem Gerät. */
   variant: number;
+  /** Gerade (Front nach +y), quer (Front nach +x) oder Eckmodul. */
+  kind: 'a' | 'b' | 'corner';
+}
+
+/** Teil des Lagers (Regal, Palette); sichtbar und gefüllt nach der Lager-Stufe. */
+interface StorageView {
+  piece: 'corner' | 'rack' | 'stock';
   facesX: boolean;
+  minTier: number;
+  sprite: Phaser.GameObjects.Image;
 }
 
 interface StaffFigure {
@@ -137,6 +153,11 @@ const OVERLAY_SIZE = 20_000;
 // Einmal abfragen, `matches` folgt Änderungen live (vorher lief `matchMedia` in jedem Frame).
 const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
 const reducedMotion = (): boolean => motionQuery.matches;
+
+/** Lager-Stufe 1..3 aus einer Mindest-Stufe des Grundrisses. */
+function storageTierAt(tier: number): StorageTier {
+  return Math.min(3, Math.max(1, Math.trunc(tier))) as StorageTier;
+}
 
 /** Blickrichtung einer Figur aus einem Bewegungs-/Blickvektor im Grid. */
 function facing(dx: number, dy: number): { dir: 'front' | 'back'; flip: boolean } {
@@ -164,6 +185,11 @@ export class CafeScene extends Phaser.Scene {
   private counters: CounterView[] = [];
   /** Gezeigte Optik-Stufe der Theke (0 bis zum ersten Zeichnen). */
   private shownCounterTier = 0;
+  private storage: StorageView[] = [];
+  /** Gezeigte Lager-Stufe (0 bis zum ersten Zeichnen). */
+  private shownStorageTier = 0;
+  /** Ware in der Hand der Baristas, die aus dem Lager kommen (je Barista ein Sprite). */
+  private supplySprites: Phaser.GameObjects.Image[] = [];
   private sparkles!: Phaser.GameObjects.Particles.ParticleEmitter;
   private agentSprites: Phaser.GameObjects.Image[] = [];
   private agentPrev: { x: number; y: number }[] = [];
@@ -228,6 +254,9 @@ export class CafeScene extends Phaser.Scene {
     this.tables = [];
     this.counters = [];
     this.shownCounterTier = 0;
+    this.storage = [];
+    this.shownStorageTier = 0;
+    this.supplySprites = [];
     this.agentSprites = [];
     this.agentPrev = [];
     this.waiterFigures = [];
@@ -287,14 +316,16 @@ export class CafeScene extends Phaser.Scene {
 
     // Stadtviertel zuerst: liegt komplett hinter dem Café (eigene, negative Tiefen).
     const n = this.layout.gridSize;
+    const o = this.layout.origin;
     this.city = new CityView(
       this,
       this.locationId,
-      { x0: 0, y0: 0, x1: n, y1: n },
+      { x0: o.x, y0: o.y, x1: n, y1: n },
       DEPTH.overlay - 1,
     );
     this.drawRoom();
     this.createCounter();
+    this.createStorage();
     this.createStations();
     this.createTables();
     this.createAmbience(state);
@@ -375,6 +406,7 @@ export class CafeScene extends Phaser.Scene {
       window.removeEventListener('keydown', onKey);
     });
     this.refreshCounter(state, false);
+    this.refreshStorage(state, false);
     this.refreshStations(state, false);
     this.refreshTables(state, false);
   }
@@ -398,6 +430,7 @@ export class CafeScene extends Phaser.Scene {
       this.rates = computeLocationRates(state, this.locationId);
       this.ratesAge = 0;
       this.refreshCounter(state, true);
+      this.refreshStorage(state, true);
       this.refreshStations(state, true);
       this.refreshTables(state, true);
       this.createAmbience(state);
@@ -421,6 +454,7 @@ export class CafeScene extends Phaser.Scene {
     this.syncAgents(mood(loc.satisfaction));
     this.syncStaffFigures();
     this.syncBaristas();
+    this.syncSupplies();
     this.syncCashiers();
     this.syncDirt();
     this.syncPassItems();
@@ -500,21 +534,27 @@ export class CafeScene extends Phaser.Scene {
     );
   }
 
+  /** Ist das die Tür (Lücke in der Vorderwand dieser Seite)? */
+  private isDoor(x: number, y: number, side: 'u' | 'v'): boolean {
+    const e = this.layout.entrance;
+    return x === e.x && y === e.y && this.layout.entranceSide === side;
+  }
+
   /**
    * Boden, hohe Rückwände mit Leuchtkasten/Fenstern, niedrige Vorderwände (Dollhouse-Schnitt, UI_STYLE § 4).
-   * Der Grundriss ist ein L: Raster plus Wintergarten vorn links mit Holzboden und Glaswänden; Wände entstehen
-   * überall dort, wo eine Raumkachel an eine Nicht-Raumkachel grenzt.
+   * Der Grundriss ist ein L: Raum ab `origin` bis zu den Fassaden plus Wintergarten vorn links mit Holzboden und
+   * Glaswänden; Wände entstehen überall dort, wo eine Raumkachel an eine Nicht-Raumkachel grenzt, außer an der Tür.
    */
   private drawRoom(): void {
     const n = this.layout.gridSize;
+    const o = this.layout.origin;
     const theme = ATLAS.theme(this.locationId);
     const { entrance, annex } = this.layout;
     const inAnnex = (x: number, y: number) =>
       x >= annex.from.x && x <= annex.to.x && y >= annex.from.y && y <= annex.to.y;
-    const w = Math.max(n, annex.to.x + 1);
-    const h = Math.max(n, annex.to.y + 1);
-    for (let gy = 0; gy < h; gy++) {
-      for (let gx = 0; gx < w; gx++) {
+    const b = layoutBounds(this.layout, 0);
+    for (let gy = b.y0; gy < b.y1; gy++) {
+      for (let gx = b.x0; gx < b.x1; gx++) {
         if (!inRoom(this.layout, gx, gy)) continue;
         const p = toScreen(gx, gy);
         const isEntrance = gx === entrance.x && gy === entrance.y;
@@ -528,53 +568,39 @@ export class CafeScene extends Phaser.Scene {
         if (!isEntrance && !inAnnex(gx, gy)) this.floorTiles.push({ sprite: img, checker });
       }
     }
-    for (let i = 0; i < n; i++) {
+    // Rückwände: entlang x an der hinteren Kante (y = origin.y), entlang y an der linken (x = origin.x).
+    const back = (side: 'u' | 'v', i: number): void => {
       const window = i % WINDOW_EVERY === 1;
-      const pu = toScreen(i, 0);
+      const p = side === 'u' ? toScreen(o.x + i, o.y) : toScreen(o.x, o.y + i);
+      const x = side === 'u' ? p.x : p.x - TILE_W / 2;
       this.wallTiles.push({
-        sprite: this.sprite(pu.x, pu.y - WALL_H - 4, window ? 'wall-u-deco' : 'wall-u', theme)
+        sprite: this.sprite(x, p.y - WALL_H - 4, `wall-${side}${window ? '-deco' : ''}`, theme)
           .setOrigin(0, 0)
           .setDepth(DEPTH.wall),
-        side: 'u',
+        side,
         deco: window,
       });
-      const pv = toScreen(0, i);
-      this.wallTiles.push({
-        sprite: this.sprite(
-          pv.x - TILE_W / 2,
-          pv.y - WALL_H - 4,
-          window ? 'wall-v-deco' : 'wall-v',
-          theme,
-        )
-          .setOrigin(0, 0)
-          .setDepth(DEPTH.wall),
-        side: 'v',
-        deco: window,
-      });
-      if (window) {
-        // Licht nachts (additiv, Alpha folgt der Tageszeit).
+      // Licht nachts (additiv, Alpha folgt der Tageszeit).
+      if (window)
         this.glows.push(
-          this.sprite(pu.x + TILE_W / 4, pu.y - 30, FRAME.glow)
-            .setBlendMode(Phaser.BlendModes.ADD)
-            .setDepth(DEPTH.wall + 1)
-            .setAlpha(0),
-          this.sprite(pv.x - TILE_W / 4, pv.y - 30, FRAME.glow)
+          this.sprite(side === 'u' ? p.x + TILE_W / 4 : p.x - TILE_W / 4, p.y - 30, FRAME.glow)
             .setBlendMode(Phaser.BlendModes.ADD)
             .setDepth(DEPTH.wall + 1)
             .setAlpha(0),
         );
-      }
-    }
-    // Wintergarten: hohe Glaswand an der linken Seite (x = 0), sie verdeckt den Gehweg dahinter nicht.
+    };
+    for (let i = 0; i < n - o.x; i++) back('u', i);
+    for (let i = 0; i < n - o.y; i++) back('v', i);
+    // Wintergarten: hohe Glaswand an der linken Seite, sie verdeckt den Gehweg dahinter nicht.
     for (let y = annex.from.y; y <= annex.to.y; y++) {
-      const pv = toScreen(0, y);
+      const pv = toScreen(annex.from.x, y);
       this.sprite(pv.x - TILE_W / 2, pv.y - WALL_H - 4, 'glass-back-v', theme)
         .setOrigin(0, 0)
         .setDepth(DEPTH.wall);
     }
-    // Vorderwände (25 %) bzw. Glaswände des Wintergartens an allen offenen Kanten, Lücke am Eingang und an Möbeln.
-    for (let gy = 0; gy < h; gy++) {
-      for (let gx = 0; gx < w; gx++) {
+    // Vorderwände (25 %) bzw. Glaswände des Wintergartens an allen offenen Kanten, Lücke an Tür und Möbeln.
+    for (let gy = b.y0; gy < b.y1; gy++) {
+      for (let gx = b.x0; gx < b.x1; gx++) {
         if (!inRoom(this.layout, gx, gy)) continue;
         const glass = inAnnex(gx, gy);
         const pf = toScreen(gx, gy);
@@ -591,44 +617,54 @@ export class CafeScene extends Phaser.Scene {
             .setDepth(isoDepth(gx, gy, 9));
           if (!glass) this.frontTiles.push({ sprite: img, side });
         };
-        if (!inRoom(this.layout, gx, gy + 1) && !(gx === entrance.x && gy === entrance.y))
-          wall('u');
-        if (!inRoom(this.layout, gx + 1, gy) && !this.furnitureAt(gx, gy)) wall('v');
+        if (!inRoom(this.layout, gx, gy + 1) && !this.isDoor(gx, gy, 'u')) wall('u');
+        if (
+          !inRoom(this.layout, gx + 1, gy) &&
+          !this.furnitureAt(gx, gy) &&
+          !this.isDoor(gx, gy, 'v')
+        )
+          wall('v');
       }
     }
   }
 
   /**
-   * Durchgehende Gästetheke in der Optik-Stufe des Cafés. Unter Kasse und Ausgabe liegt ein leeres Modul,
-   * auf dem das Gerät steht; Antippen öffnet die Kasse bzw. das Gerät darauf.
+   * Gästetheke als L in der Optik-Stufe des Cafés: gerade Module, quer gestellte (Front nach +x) und das Eckmodul.
+   * Unter Kasse und Ausgabe liegt ein leeres Modul, auf dem das Gerät steht; Antippen öffnet die Kasse bzw. das
+   * Gerät darauf.
    */
   private createCounter(): void {
     const modules = [
-      ...this.layout.counter.map((tile) => ({
+      ...this.layout.counter.map((tile, i) => ({
         tile,
         stationId: REGISTER_ID,
-        variant: counterPropsAt(tile.x),
-        facesX: false,
+        variant: counterPropsAt(i),
+        kind: tile.corner ? ('corner' as const) : tile.facesX ? ('b' as const) : ('a' as const),
       })),
       ...this.layout.stations
         .filter((p) => getStationDef(p.stationId).area !== 'bar')
-        .map((p) => ({ tile: p.tile, stationId: p.stationId, variant: 0, facesX: p.facesX })),
+        .map((p) => ({
+          tile: p.tile,
+          stationId: p.stationId,
+          variant: 0,
+          kind: p.facesX ? ('b' as const) : ('a' as const),
+        })),
     ];
     for (const m of modules) {
       const w = this.world(m.tile);
       const sprite = this.sprite(
         w.x,
         w.y + TILE_H,
-        FRAME.counter(1, m.variant, m.facesX),
+        FRAME.counter(1, m.variant, m.kind),
         ATLAS.furniture,
       )
         .setOrigin(0.5, 1)
         .setDepth(isoDepth(m.tile.x, m.tile.y, 5))
         .setInteractive({ useHandCursor: true, pixelPerfect: false })
         .setData('stationId', m.stationId);
-      this.counters.push({ x: m.tile.x, sprite, variant: m.variant, facesX: m.facesX });
+      this.counters.push({ order: w.x, sprite, variant: m.variant, kind: m.kind });
     }
-    this.counters.sort((a, b) => a.x - b.x);
+    this.counters.sort((a, b) => a.order - b.order);
   }
 
   /** Theke folgt dem Café-Level (`COUNTER_LOOK_CAFE_LEVELS`); beim Aufstieg ploppen die Module nacheinander. */
@@ -638,11 +674,50 @@ export class CafeScene extends Phaser.Scene {
     const upgrade = animate && this.shownCounterTier > 0 && tier > this.shownCounterTier;
     this.shownCounterTier = tier;
     this.counters.forEach((v, i) => {
-      v.sprite.setFrame(FRAME.counter(tier, v.variant, v.facesX));
+      v.sprite.setFrame(FRAME.counter(tier, v.variant, v.kind));
       if (upgrade) this.plop(v.sprite, i * SCENE_FX.counterWaveMs);
     });
     const mid = this.counters[Math.floor(this.counters.length / 2)];
     if (upgrade && mid) this.newLook(this.restBounds(mid.sprite));
+  }
+
+  /** Lager hinter dem Personal-Gang: Regale und Palette, nur Optik (kein Antippen). */
+  private createStorage(): void {
+    for (const p of this.layout.storage.pieces) {
+      const w = this.world(p.tile);
+      const sprite = this.sprite(
+        w.x,
+        w.y + TILE_H,
+        // Erstes Bild aus der Stufe, ab der das Teil gezeichnet ist (Seitenregal erst ab Stufe 2).
+        FRAME.storage(p.piece, storageTierAt(p.minTier), p.facesX),
+        ATLAS.furniture,
+      )
+        .setOrigin(0.5, 1)
+        .setDepth(isoDepth(p.tile.x, p.tile.y, 5))
+        .setVisible(false);
+      this.storage.push({ piece: p.piece, facesX: p.facesX, minTier: p.minTier, sprite });
+    }
+  }
+
+  /**
+   * Das Lager füllt sich mit der Zahl gekaufter Geräte der Barista-Theke (`STORAGE_LOOK_DEVICES`); neue Regale
+   * ploppen dazu. Rein kosmetisch.
+   */
+  private refreshStorage(state: GameState, animate: boolean): void {
+    const loc = getLocation(state, this.locationId);
+    const devices = PRODUCT_LINES.filter((l) => (loc.stations[l.id]?.level ?? 0) > 0).length;
+    const tier: StorageTier = storageLookTier(devices);
+    if (tier === this.shownStorageTier) return;
+    const upgrade = animate && this.shownStorageTier > 0 && tier > this.shownStorageTier;
+    this.shownStorageTier = tier;
+    for (const v of this.storage) {
+      const show = tier >= v.minTier;
+      const appears = show && !v.sprite.visible;
+      // Nicht sichtbare Teile behalten ihr Bild (das Seitenregal gibt es erst ab Stufe 2).
+      if (show) v.sprite.setFrame(FRAME.storage(v.piece, tier, v.facesX));
+      v.sprite.setVisible(show);
+      if (upgrade && show) this.plop(v.sprite, appears ? SCENE_FX.counterWaveMs * 4 : 0);
+    }
   }
 
   private createStations(): void {
@@ -665,7 +740,7 @@ export class CafeScene extends Phaser.Scene {
         sprite,
         label,
         labelY,
-        stagger: p.tile.y === 0 && p.tile.x % 2 === 0,
+        stagger: p.tile.y === this.layout.origin.y && (p.tile.x - this.layout.origin.x) % 2 === 0,
         shownLevel: -1,
         shownLock: '',
         shownTint: -1,
@@ -695,11 +770,12 @@ export class CafeScene extends Phaser.Scene {
 
   /** Kamera-Grenzen = Raum plus sichtbare Terrasse (Grid-Erweiterung, GAME_DESIGN § 5.2). */
   private updateRoomBounds(terraceLevel: number): void {
-    const { w, h } = layoutExtent(this.layout, terraceLevel);
-    const left = toScreen(0, h).x;
-    const right = toScreen(w, 0).x;
-    const bottom = toScreen(w, h).y;
-    this.room.setTo(left, -WALL_H, right - left, bottom + WALL_H);
+    const b = layoutBounds(this.layout, terraceLevel);
+    const left = toScreen(b.x0, b.y1).x;
+    const right = toScreen(b.x1, b.y0).x;
+    const top = toScreen(b.x0, b.y0).y - WALL_H;
+    const bottom = toScreen(b.x1, b.y1).y;
+    this.room.setTo(left, top, right - left, bottom - top);
   }
 
   /** Zeichnet Ambiente (Deko, Musik, WLAN, Terrasse) neu, sobald sich ein Level ändert. */
@@ -792,7 +868,8 @@ export class CafeScene extends Phaser.Scene {
       if (f.sprite.frame.name !== name) f.sprite.setFrame(name);
     }
     if (upgrade && !reducedMotion()) {
-      const c = this.world({ x: this.layout.gridSize / 2, y: this.layout.gridSize / 2 });
+      const { origin, gridSize: n } = this.layout;
+      const c = this.world({ x: (origin.x + n) / 2, y: (origin.y + n) / 2 });
       this.newLook(new Phaser.Geom.Rectangle(c.x - 40, c.y - 80, 80, 80));
     }
   }
@@ -800,13 +877,13 @@ export class CafeScene extends Phaser.Scene {
   /** Wand-Deko liegt bündig auf der Rückwand (gleiche Leinwand wie die Wandkachel), sonst wie ein Möbel. */
   private decorSprite(d: DecorItem): Phaser.GameObjects.Image {
     if (d.wall === 'u') {
-      const p = toScreen(d.tile.x, 0);
+      const p = toScreen(d.tile.x, this.layout.origin.y);
       return this.sprite(p.x, p.y - WALL_H - 4, d.frame + '-u', ATLAS.furniture)
         .setOrigin(0, 0)
         .setDepth(DEPTH.wall + 2);
     }
     if (d.wall === 'v') {
-      const p = toScreen(0, d.tile.y);
+      const p = toScreen(this.layout.origin.x, d.tile.y);
       return this.sprite(p.x - TILE_W / 2, p.y - WALL_H - 4, d.frame + '-v', ATLAS.furniture)
         .setOrigin(0, 0)
         .setDepth(DEPTH.wall + 2);
@@ -946,8 +1023,9 @@ export class CafeScene extends Phaser.Scene {
 
   /** Maße eines Sprites in Ruhe (unabhängig von einem laufenden Plopp). */
   private restBounds(target: Phaser.GameObjects.Image): Phaser.Geom.Rectangle {
-    const w = target.frame.width * ART_SCALE;
-    const h = target.frame.height * ART_SCALE;
+    // Originalgröße (Möbel-Frames sind im Atlas auf ihren Inhalt beschnitten).
+    const w = target.frame.realWidth * ART_SCALE;
+    const h = target.frame.realHeight * ART_SCALE;
     return new Phaser.Geom.Rectangle(
       target.x - w * target.originX,
       target.y - h * target.originY,
@@ -1123,13 +1201,15 @@ export class CafeScene extends Phaser.Scene {
    * (`CROWD.max*`).
    */
   private createStaff(): void {
-    // Die n-te Figur einer Rolle bekommt den n-ten Look (`STAFF_LOOKS`), rein optisch.
+    // Die n-te Figur einer Rolle bekommt den n-ten Look (`STAFF_LOOKS`), rein optisch. Verkäufer blicken zur Kasse.
+    const look = this.cashierLook();
     this.layout.order.cashierSpots.slice(0, CROWD.maxCashiers).forEach((spot, i) => {
       const w = this.world(spot);
       this.cashierFigures.push(
         this.sprite(w.x, w.y + TILE_H * 0.5, FRAME.staff('cashier', staffLookFor('cashier', i)))
           .setOrigin(0.5, CHAR_FOOT_ORIGIN_Y)
           .setDepth(isoDepth(spot.x, spot.y, 6))
+          .setFlipX(look.flip)
           .setVisible(false),
       );
     });
@@ -1143,6 +1223,17 @@ export class CafeScene extends Phaser.Scene {
     this.baristaFigures = moving('barista', CROWD.maxBaristas);
     this.waiterFigures = moving('waiter', CROWD.maxWaiters);
     this.cleanerFigures = moving('cleaner', CROWD.maxCleaners);
+    this.supplySprites = this.baristaFigures.map(() =>
+      this.sprite(0, 0, FRAME.supply('tin'), ATLAS.furniture)
+        .setOrigin(0.5, SUPPLY_CANVAS.oy / SUPPLY_CANVAS.h)
+        .setVisible(false),
+    );
+  }
+
+  /** Blickrichtung der Verkäufer: zur Kasse (quer gestellt → nach +x). */
+  private cashierLook(): ReturnType<typeof facing> {
+    const reg = this.layout.stations.find((s) => s.stationId === REGISTER_ID);
+    return reg?.facesX ? facing(1, 0) : facing(0, 1);
   }
 
   private refreshStaff(state: GameState): void {
@@ -1203,7 +1294,9 @@ export class CafeScene extends Phaser.Scene {
       f.prev.x = b.x;
       f.prev.y = b.y;
       const carrying = b.phase === 'toPass' || b.phase === 'drop';
-      let look = facing(0, -1);
+      // Mit dem Rücken zum Gastraum ans Gerät (quer gestellte Geräte stehen an der linken Wand).
+      const across = this.layout.stations.find((p) => p.stationId === b.station)?.facesX;
+      let look = across ? facing(-1, 0) : facing(0, -1);
       let frame: number = CHAR_FRAMES.stand;
       if (moving) {
         look = facing(dx, dy);
@@ -1218,6 +1311,10 @@ export class CafeScene extends Phaser.Scene {
         frame = CHAR_FRAMES.carry[0];
       } else if (b.phase === 'work') {
         frame = this.workFrame(i * 0.5);
+      } else if (b.phase === 'fetch') {
+        // Greift ins Regal an der linken Wand
+        look = facing(-1, 0);
+        frame = this.workFrame(i * 0.5);
       }
       const name = FRAME.staff('barista', staffLookFor('barista', i), look.dir, frame);
       if (f.sprite.frame.name !== name) f.sprite.setFrame(name);
@@ -1230,16 +1327,39 @@ export class CafeScene extends Phaser.Scene {
     });
   }
 
+  /**
+   * Ware aus dem Lager: in den Händen eines Baristas, der vom Regal zurück ans Gerät läuft (vor dem Körper; läuft
+   * er von der Kamera weg, dahinter).
+   */
+  private syncSupplies(): void {
+    this.crowd.baristas.forEach((b, i) => {
+      const s = this.supplySprites[i];
+      const f = this.baristaFigures[i];
+      if (!s || !f) return;
+      const show = b.active && b.phase === 'fromStore' && f.sprite.visible;
+      if (s.visible !== show) s.setVisible(show);
+      if (!show) return;
+      const frame = FRAME.supply(SUPPLY_ITEMS[b.station] ?? 'tin');
+      if (s.frame.name !== frame) s.setFrame(frame);
+      const away = f.sprite.frame.name.includes('-back-');
+      const side = f.sprite.flipX ? 1 : -1;
+      s.setPosition(f.sprite.x + side * SUPPLY_HAND.ahead, f.sprite.y - SUPPLY_HAND.z).setDepth(
+        f.sprite.depth + (away ? -0.05 : 0.05),
+      );
+    });
+  }
+
   /** Verkäufer tippen, solange jemand bestellt (die Kasse zeigt zu ihnen); sonst stehen sie und schauen zum Gast. */
   private syncCashiers(): void {
     const ordering = this.crowd.agents.some((a) => a.active && a.phase === 'order');
     const busy = ordering || this.crowd.waitingCount > 0;
+    const look = this.cashierLook();
     this.cashierFigures.forEach((s, i) => {
       if (!s.visible) return;
       // Der erste Verkäufer steht an der Kasse; die anderen helfen erst, wenn sich eine Schlange bildet.
       const works = i === 0 ? ordering : busy && this.crowd.waitingCount > i;
       const frame = works ? this.workFrame(i * 0.7) : CHAR_FRAMES.stand;
-      const name = FRAME.staff('cashier', staffLookFor('cashier', i), 'front', frame);
+      const name = FRAME.staff('cashier', staffLookFor('cashier', i), look.dir, frame);
       if (s.frame.name !== name) s.setFrame(name);
     });
   }
@@ -1352,7 +1472,9 @@ export class CafeScene extends Phaser.Scene {
     for (const p of this.layout.stations) {
       const fx = STATION_FX[p.stationId];
       if (!fx) continue;
-      const at = toScreen(p.tile.x + fx.u, p.tile.y + fx.v);
+      // Anker gelten für Front nach +y; quer gestellt sind u und v vertauscht.
+      const [u, v] = p.facesX ? [fx.v, fx.u] : [fx.u, fx.v];
+      const at = toScreen(p.tile.x + u, p.tile.y + v);
       const x = at.x;
       const y = at.y - fx.z;
       const local = isoDepth(p.tile.x, p.tile.y, 5.8);
@@ -1591,7 +1713,7 @@ export class CafeScene extends Phaser.Scene {
         const moving = s.visible && Math.hypot(dx, dy) > 1e-4;
         let look: ReturnType<typeof facing>;
         if (moving) look = facing(dx, dy);
-        else if (a.phase === 'queue' || a.phase === 'order') look = facing(0, -1);
+        else if (a.phase === 'queue' || a.phase === 'order') look = this.queueLook(a);
         else look = facing(0, 1);
         const frameNo =
           moving && !still
@@ -1614,6 +1736,15 @@ export class CafeScene extends Phaser.Scene {
         m.setPosition(x, y - CHAR_OVERLAY_Y).setDepth(DEPTH.label - 1);
       }
     }
+  }
+
+  /** Wartende blicken nach vorn in der Schlange, wer bestellt, zur Kasse. */
+  private queueLook(a: Agent): ReturnType<typeof facing> {
+    const { queue, access } = this.layout.order;
+    const idx = this.crowd.queueIndex(a);
+    const reg = this.layout.stations.find((s) => s.stationId === REGISTER_ID)?.tile ?? access;
+    const ahead = idx <= 0 ? reg : (queue[Math.min(idx, queue.length) - 1] ?? access);
+    return facing(ahead.x - a.x, ahead.y - a.y);
   }
 
   /**
@@ -1751,8 +1882,8 @@ export class CafeScene extends Phaser.Scene {
       return;
     }
     const g = toGrid(p.worldX, p.worldY);
-    const ext = layoutExtent(this.layout, this.terraceLevel);
-    if (g.x < 0 || g.y < 0 || g.x >= ext.w || g.y >= ext.h) return;
+    const b = layoutBounds(this.layout, this.terraceLevel);
+    if (g.x < b.x0 || g.y < b.y0 || g.x >= b.x1 || g.y >= b.y1) return;
     let accepted = false;
     this.store.dispatch((s) => {
       const r = tapCafe(s, this.locationId);
