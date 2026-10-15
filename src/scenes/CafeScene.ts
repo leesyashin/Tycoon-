@@ -38,7 +38,9 @@ const STATION_TOP = 40;
 const RATES_REFRESH_MS = 200;
 const POPUP_POOL = 24;
 const EMOTE_POOL = 8;
-const LABEL_MAX_SCALE = 2.2;
+const LABEL_MAX_SCALE = 1.8;
+/** Rückwand-Geräte stehen dicht: jedes zweite Label sitzt höher, damit sie sich nicht überdecken. */
+const LABEL_STAGGER = 14;
 const WALK_FRAME_SEC = 0.18;
 /** HUD-Münzsymbol in CSS-Pixeln vom linken oberen Rand (Ziel des Münz-Flugs). */
 const HUD_COIN = { x: 34, y: 34 };
@@ -440,8 +442,9 @@ export class CafeScene extends Phaser.Scene {
         .setDepth(isoDepth(p.tile.x, p.tile.y, 5))
         .setInteractive({ useHandCursor: true, pixelPerfect: false });
       sprite.setData('stationId', p.stationId);
+      const stagger = p.tile.y === 0 && p.tile.x % 2 === 0 ? LABEL_STAGGER : 0;
       const label = this.makeText(13, UI_THEME.textCss)
-        .setPosition(w.x, w.y - STATION_TOP + TILE_H / 2)
+        .setPosition(w.x, w.y - STATION_TOP - stagger + TILE_H / 2)
         .setDepth(DEPTH.label);
       this.stations.push({
         id: p.stationId,
@@ -550,6 +553,15 @@ export class CafeScene extends Phaser.Scene {
   private refreshStations(state: GameState, animate: boolean): void {
     const loc = getLocation(state, this.locationId);
     const tints = equippedSkinTints(state);
+    // Von den gesperrten Geräten bekommt nur das nächste ein Schild; die anderen stehen stumm als Bauplatz.
+    const nextLocked = this.stations
+      .filter(
+        (v) =>
+          (loc.stations[v.id]?.level ?? 0) <= 0 && !isStationUnlocked(state, this.locationId, v.id),
+      )
+      .sort(
+        (a, b) => getStationDef(a.id).unlockCafeLevel - getStationDef(b.id).unlockCafeLevel,
+      )[0]?.id;
     for (const v of this.stations) {
       const tint = tints[v.id] ?? 0xffffff;
       if (tint !== v.shownTint) {
@@ -564,10 +576,12 @@ export class CafeScene extends Phaser.Scene {
             loc.level >= getStationDef(v.id).unlockCafeLevel
           ? 'terrace'
           : 'level';
-      if (level === v.shownLevel && lock === v.shownLock) continue;
+      const silent = lock !== 'open' && v.id !== nextLocked;
+      const shownLock = silent ? '' : lock;
+      if (level === v.shownLevel && shownLock === v.shownLock) continue;
       const before = v.shownLevel;
       v.shownLevel = level;
-      v.shownLock = lock;
+      v.shownLock = shownLock;
       const onCounter = getStationDef(v.id).area !== 'bar';
       if (level > 0) {
         v.sprite.setFrame(FRAME.station(v.id, level, v.placement.facesX)).setAlpha(1);
@@ -584,11 +598,13 @@ export class CafeScene extends Phaser.Scene {
           .setFrame(onCounter ? FRAME.counter(v.placement.facesX) : FRAME.ghost)
           .setAlpha(unlocked || onCounter ? 1 : 0.45);
         v.label.setText(
-          lock === 'open'
-            ? t('scene.station.buy')
-            : lock === 'terrace'
-              ? t('scene.station.needsTerrace')
-              : t('scene.station.locked', { level: getStationDef(v.id).unlockCafeLevel }),
+          silent
+            ? ''
+            : lock === 'open'
+              ? t('scene.station.buy')
+              : lock === 'terrace'
+                ? t('scene.station.needsTerrace')
+                : t('scene.station.locked', { level: getStationDef(v.id).unlockCafeLevel }),
         );
       }
       if (v.id === 'matchaStation') this.refreshSteam(level > 0);

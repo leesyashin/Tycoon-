@@ -2,6 +2,19 @@
 
 Alle nennenswerten Änderungen an Matcha Café Empire. Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach [SemVer](https://semver.org/lang/de/).
 
+## [Unreleased] – Phase 2: bedientes Café (S10/S11, 2026-10-15)
+
+Vorgabe Vincent: kein Selbstbedienungs-Café mehr. Gäste bestellen an der Bestelltheke, Baristas bereiten zu,
+Bedienungen geben aus oder servieren am Tisch, Putzkräfte halten das Café sauber (`docs/PLAN.md` „Phase 2“).
+
+- Service-Pipeline im Rate-Modell: Nachfrage → Bestellung → Zubereitung → Ausgabe, der kleinste Durchsatz ist der Engpass (HUD-Chip, Pipeline-Karte im Personal-Panel, Statistik).
+- Ausstattung statt Verkaufsstationen: Kasse, Matcha-Station, Kaffeemaschine, Kühl-/Eisfach, Ofen, Kuchenvitrine, Steinmühle, Zeremonie-Set, Ausgabe-Station. Jedes Gerät bringt ein Produkt auf die Karte (Warenkorb-Modell), Level machen es schneller und teurer.
+- Personal als Köpfe: Verkäufer, Baristas, Bedienungen, Putzkräfte arbeiten parallel; Gründungsteam je 1 gratis. Bäcker und Tee-Meister entfallen.
+- Putz-Modell: Schmutz wächst mit den Gästen, Putzkräfte halten ein Gleichgewicht.
+- Neue Szene: durchgehende Theke mit Geräten an der Rückwand, Bestellschlange vor der Kasse, bis zu 12 Tische mit sitzenden Gästen, Bedienungen mit Tablett, Putzkräfte an dreckigen Tischen; neue Sprites für Theken, Geräte, Tische und Figuren mit Rollen-Outfit.
+- Spielstand-Schema v9 mit Migration (alte Stationen und Personal-Stufen werden übersetzt).
+- Balancing-Pass 1 (`pnpm sim`), Sim-Overrides für Experimente, Kontaktbogen- und Screenshot-Skripte.
+
 ## [1.0.0] – 2026-10-15
 
 Erste vollständige Version: ein Idle-/Tycoon-Spiel im Browser, zweisprachig (DE/EN), mobil zuerst, mit lokalem Spielstand und ohne Werbung oder Käufe. Entstanden in zehn Sessions (S0–S9, siehe `docs/PLAN.md`).

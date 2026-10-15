@@ -1,46 +1,38 @@
 ## Loop
 state: blocked
 current: -
-branch: session/s9-release
+branch: session/s10-service
 started: -
-next: S9
-## Letzte Session: S9 – Balancing, Tutorial, Release (Teil 1 2026-10-14, Teil 2 2026-10-15, PR siehe Branch `session/s9-release`, nicht gemergt)
+next: S12
+## Letzte Session: S10/S11 – Phase 2 „bedientes Café“ (2026-10-15, PR #PRNUM, Basis `session/s9-release`)
+Vorgabe Vincent (2026-10-15): Das Café-Prinzip war falsch (Selbstbedienung an acht Verkaufsstationen). Jetzt
+bestellen die Gäste an einer Bestelltheke, Baristas bereiten an der Barista-Theke zu, Bedienungen geben aus
+oder servieren am Tisch, Putzkräfte halten alles sauber; die Gegenstände und Figuren sollten besser aussehen,
+das HUD bleibt. Plan dazu: PLAN.md „Phase 2 – Service-Café (S10–S12)“; S10 und S11 sind in dieser Session
+gebaut, S12 (Balancing-Pass, Tutorial-Feinschliff, Screenshots, Gerätetest) ist offen.
+
 ## Fertig
-### S9 Teil 2 (auf `session/s9-release`)
-- Performance: schlanker Phaser-Build `src/phaserCustom.js` (Vite-Alias `phaser` → nur genutzte Module; Typen weiter aus `phaser`), Build-Flags per eigenem Vite-/esbuild-Plugin ersetzt (ohne Sound, Camera3D, FB Instant). Pre-/Post-FX aus, Licht-/Punktlicht-/Rope-/Bitmap-Masken-/Single-Pipelines werden nicht kompiliert. Phaser-Chunk 349 → 205 KB gzip.
-- Szene: Münz-Popups (24 Texte) entstehen erst bei Bedarf; `reducedMotion()` fragt `matchMedia` nicht mehr jeden Frame; ohne GPU (SwiftShader/llvmpipe, aus Phasers eigenem WebGL-Kontext erkannt) läuft die Szene mit 30 fps (`UI_CONFIG.softwareFpsLimit`), weil der Compositor dort jeden Frame die Leinwand zurückliest. Debug-Taste B hört aufs DOM (kein Keyboard-Plugin mehr).
-- Lighthouse Mobile (Container, je 5 Läufe): vorher 72–76, jetzt Median 78 (71–82); TBT 1,7 s → 0,76–1,15 s. FCP 1,2–1,3 s, LCP 1,8 s, CLS 0. Der Rest-TBT sind vier Phaser-Start-Tasks (Modul-Auswertung, Renderer/Shader, zwei Atlanten + Szenenaufbau) unter Software-GL.
-- Kundentypen-Effekte im Rate-Modell (GAME_DESIGN § 7.5, `CUSTOMER_EFFECTS` in `data/customerTypes.ts`, Helfer in `core/customers/types.ts`): Touristen +50 % Gewicht am Merch-Regal, Stammgäste +10 % Trinkgeld, Kritiker zählen die Abweichung der Zufriedenheit vom neutralen Wert beim Trinkgeld doppelt, Influencer-Hype als Erwartungswert (Anteil der Zeit mit Hype = 1 − e^(−Influencer/s · 5 s), ×1.5 Nachfrage). Neue Tests `tests/core/customerEffects.test.ts`.
-- Balancing danach neu eingestellt: alle Richtwerte aus § 15 wieder im ±20-%-Band (Tabelle unten).
-- Robustheit: Schlägt die Service-Worker-Registrierung fehl (Privatmodus, Richtlinie), läuft das Spiel ohne Fehler-Dialog weiter.
-- Release vorbereitet: `package.json` 1.0.0, `CHANGELOG.md` (S0–S9), README mit neuen Screenshots aus dem Produktions-Build (`docs/screenshots/v1/`, DE/EN, 390×844 und 1280×720, ohne Debug-Hinweis). Git-Tag `v1.0.0` erst nach dem Merge (siehe BLOCKIERT).
-- e2e: Tagesaufgaben-Test tippt nach, falls der 10-Taps/s-Deckel unter Last einen Tap verwirft (Klicks stauen sich hinter einem langen Frame). 32 e2e grün, 280 Unit grün, Coverage core 99,7 % Zeilen.
+### S10 – Service-Pipeline (Kern, Daten, UI)
+- Rate-Modell mit vier Stufen (`core/customers/rates.ts`): Nachfrage (wie bisher: Café-Level, Tische = `seats`, WLAN, Marketing, Zufriedenheit, Events), Bestellung (`Verkäufer × Kassen-Tempo / 2 s`), Zubereitung (`Baristas / Barista-Sekunden je Gast`), Ausgabe (`Bedienungen × Tempo der Ausgabe-Station / Ø Servicezeit 4,8 s`). Bedient = Minimum, `bottleneck` benennt die Stufe, `stages` liefert die Kapazitäten (GAME_DESIGN § 7.2, § 14).
+- Ausstattung statt Stationen (`data/stations.ts`, technisch weiter `StationDef`/`loc.stations`): Kasse (`register`, Level 0 = Handkasse Tempo 0,6), Matcha-Station, Kaffeemaschine, Kühl-/Eisfach, Ofen, Kuchenvitrine, Steinmühle, Zeremonie-Set (Produktlinien mit `attachRate`, `workTime`, `basePrice`), Ausgabe-Station (`servingStation`, Café-Level 4). Warenkorb-Modell: jeder Gast bestellt Matcha plus jede weitere Linie mit ihrem Anteil; ein neues Gerät senkt das Einkommen nie (Test). Tempo je Level +2 % und Meilensteine ×2 (`getStationSpeed`), Preis wie bisher × Level.
+- Personal als Köpfe (`data/staff.ts`): Verkäufer, Barista, Bedienung, Putzkraft (Wachstum 1,7, max 20) plus Filialleiter und Social-Media-Manager als Stufen. Gründungsteam je 1 Verkäufer/Barista/Bedienung gratis (Start und nach jedem Reset); weniger als das Gründungsteam lädt kein Save (Härtung in `reviveStaff`). Bäcker und Tee-Meister entfernt.
+- Putz-Modell (`core/staff/effects.ts`): Schmutz/min = 2 + bediente Gäste/s × 60 × 0,03; Putzleistung = Putzkräfte × 5 × 2 × (1 − Sauberkeit/100); exakte Lösung der Differenzialgleichung je Tick, Gleichgewicht `100 × (1 − Schmutz/Putzleistung)`. „Blitzblank“ braucht jetzt 95 (100 ist nicht mehr erreichbar).
+- Save-Schema v9 (`mce.save.v9`) + Migration v8→v9: Stations-IDs umbenannt (matchaBar→matchaStation, checkout→register, togoWindow→coffeeMachine, icedBar→iceBox, bakery→oven, merchShelf→displayCase, ceremonyCorner→grinder, workshopRoom→ceremonySet), Ausgabe-Station ergänzt, Personal-Stufen → Köpfe (Bäcker/Tee-Meister → Baristas, Bedienungen = alte Kassierer-Stufe, mindestens Gründungsteam), angefangenes Tutorial beginnt neu. Tests in `tests/core/save.test.ts`.
+- UI: Pipeline-Karte (`ui/pipeline.ts`) mit vier Balken, Engpass-Chip und Hinweis im Personal-Panel und in der Statistik; Personal-Zeilen mit „3/20 eingestellt“, „Jetzt: …/s“ und ehrlicher „Nächste Kraft“-Zeile (kein Mehreinkommen, wenn der Engpass woanders liegt); Stations-Panel mit Bereich, Produkt, Anteil der Gäste, Preis, Zubereitungs-/Bestellzeit, Kapazität und Auslastung der Stufe; Shop nach Bereichen gruppiert; HUD-Chip „Engpass: …“, sobald Gäste warten; Zufriedenheits-Hinweis nennt den Engpass; Tutorial-Texte (Kasse, Team, Pipeline).
+- i18n: 9 Ausstattungen × 6 Standorte mit eigenen Namen, Produkte, Rollen, Stufen, Pipeline-Hinweise; alte Keys entfernt, `de.json`/`en.json` identisch (Test).
+- Balance-Sim: Köpfe, Sauberkeit mit Verkehr, Zeilen „Kasse gekauft“, „Kühl-/Eisfach“, „Ofen“; Overrides `--set pfad=wert`, `--staffGrowth`, `--attachScale` für Experimente ohne Dateiänderung. Balancing-Pass 1 (Tabelle unten).
+- Tests: 289 Unit grün (`pnpm check`), darunter neue für Pipeline, Putz-Modell, Migration v9, Warenkorb.
 
-### S9 Teil 1 (auf `session/s9-release`)
-- Balancing-Pass: Sim trifft alle Richtwerte aus GAME_DESIGN § 15 innerhalb ±20 % (Tabelle unten). Café-Level folgt jetzt einer Stufen-Tabelle `BALANCE.cafeLevel.steps` (früh größere Schritte), Helper `cafeLevelThreshold/cafeLevelFromSum/cafeLevelProgress` in `core/economy/cafeLevel.ts`. Reinigungskraft ab Café-Level 2 für 3 500 (war 3/500), Zen-Faktor 1.8 (war 3).
-- Sim misst zusätzlich Offline-Rückkehr nach 8 h (in „nächste Qualitätsstufe“ und gedeckten Greedy-Käufen) und den Idle-Anteil (Offline-Nacht / 90 min aktiver Tag).
-- Tutorial: 8 Schritte (`data/tutorial.ts`, `core/tutorial`), Highlight-Ring + Sprechblase (`ui/tutorial.ts`), Aufgaben-Schritte (Matcha-Bar Lv 3, Kasse, Personal) gehen von selbst weiter (`checkTutorial` in `progressionStep`), manuelle per „Weiter“; überspringbar, Fortschritt im Save, „Tutorial wiederholen“ in den Einstellungen. `?tutorial=0` startet ohne (e2e).
-- Save-Schema v8 (`tutorial`) + Migration v7→v8 (Bestandsspieler: Tutorial erledigt; Café-Level aus den Stations-Leveln neu berechnet, Bestwert bleibt) + Tests; `mce.save.v7` in `LEGACY_KEYS`.
-- Robustheit: kaputter Spielstand → Dialog bietet die neueste lesbare IndexedDB-Sicherung an (neue Sicherungen pausieren so lange); Sicherungen-Liste mit „Laden“ in den Einstellungen; Fehler-Boundary (`ui/errorBoundary.ts`) mit „Spielstand exportieren“/„Neu laden“; Uhr-Manipulation: `lastSavedAt` läuft nur vorwärts (`forwardTime`), Tagesaufgaben und Blätter-Tagesdeckel wechseln nur vorwärts.
-- PWA: Service Worker von Hand registriert (`ui/pwa.ts`, kein `workbox-window`), Update-Dialog statt stillem Austausch (`registerType: 'prompt'`), Toast „läuft offline“, Install-Knopf in den Einstellungen (nur mit `beforeinstallprompt`), Splash über der Szene, Manifest mit `id`/`description`/`lang`, Apple-Meta-Tags.
-- Bugfix: `index.html` verlinkte Manifest/Icons mit `/Tycoon-/…` – im Dev-Server wurde daraus `/Tycoon-/Tycoon-/…` (404). Jetzt `/…`, Vite setzt die Basis.
-- Performance: Phaser als eigener Chunk (`src/game.ts`), startet im ersten Leerlauf (`requestIdleCallback`, max. 1,5 s) – HUD und Einnahmen laufen vorher; Haupt-Chunk 58 KB gzip, Phaser-Chunk 349 KB gzip. `antialiasGL: false`. Autosave im Leerlauf. Café-Uhr-Formatierer gecacht (stand im Profil oben).
-- e2e: neue `tests/e2e/release.spec.ts` (Tutorial komplett DE/EN inkl. axe, Aufgabe erkennt Kauf, Überspringen bleibt gespeichert, Wiederholen; Backup nach kaputtem Save; Fehler-Boundary mit Download; Manifest/Icons/Splash). Bestehende Specs öffnen mit `&tutorial=0`. 32 e2e grün, 274 Unit grün.
+### S11 – Szene und Figuren
+- Neuer Grundriss (`data/layouts.ts`): Geräte an der Rückwand (y = 0), Personal-Gang (y = 1), durchgehende Theke (y = 2) mit Kasse bei x = 1 und Ausgabe bei x = 10, Bestellschlange vor der Kasse nach rechts, Abholplätze vor der Ausgabe, 12 Tische (x ∈ {1, 4, 7, 10}, y ∈ {5, 7, 9}) mit zwei Plätzen und Seitenkachel, Laufzeilen y = 4 und y = 10, Mittelgang x = 6, Eingang (6, 11), Putzkraft-Startplatz (0, 11). Wege als Helfer (`pathToTable`, `waiterPathToTable` …).
+- Figuren-Simulation (`scenes/agents/crowd.ts`, kosmetisch): Gäste reinkommen → Schlange → Bestellen (Ring) → Tisch (60 %, wenn ein Platz frei ist) oder Abholung → warten → Bedienung übergibt an der Theke oder bringt an den Tisch → Sitzgäste konsumieren 7–12 s → gehen. Bedienungen (max 3 Figuren) und Putzkräfte (max 2) als eigene Agenten; dreckige Tische folgen der Sauberkeit und werden gewischt. Wartet ein Gast länger als 15 s auf eine Bedienung, bekommt er seine Bestellung „über die Theke“ (Sicherheitsventil, nur Optik). `tests/crowd.test.ts` prüft Grundriss, Wege, Bedienungen, Putzkräfte und dass die Szene den `GameState` nicht verändert.
+- `CafeScene`: Theken-Module, Geräte mit Ausbaustufen (Kasse/Ausgabe stehen ohne Level als leeres Modul, Rückwand-Geräte als Bauplatz – nur das nächste bekommt ein Schild), Tische nach `seats`-Stufe (ab 13 mit Tischdecke) mit Schmutz-Marker, Verkäufer-Figuren (bis 3) hinter der Kasse, Baristas an den gekauften Geräten mit Fortschrittsring im Takt der Zubereitung, Bedienungen mit Tablett, Putzkräfte, Sitzpose der Gäste, Warteschlangen-Tafel über der Kasse, Antippen eines Tischs öffnet „Tische“. Labels der Rückwand-Geräte versetzt, damit sie sich nicht überdecken.
+- Sprites (`scripts/art/sprites.ts`, `pnpm art`): Thekenmodul, 9 Ausstattungen × 3 Stufen × 2 Richtungen (Kasse mit Display/Kartenleser/Trinkgeldglas, Matcha-Station mit Kessel/Schale/Chasen/Regal, Siebträger mit Mühle, Kühlschrank mit Glastür und Eisfach, Ofen mit Fenster und Blech, Vitrine mit Torten, Steinmühle, Tatami-Nische, Ausgabe mit Tabletts/Glocke/Wärmelampe; Stufe 3 mit Gold-Akzent), runder Tisch mit zwei Stühlen (Variante mit Tischdecke), Schmutz-Marker, überarbeitete Blockfiguren (Schuhe, Hände, Haarkappe und Pony, Taille, Hut/Beanie/Schirmmütze, Rollen-Outfit: Verkäufer, Barista, Bedienung mit Tablett, Putzkraft mit Mopp und Handschuhen, Filialleiter, Social Media) und Sitzpose je Kundentyp. Kontaktbogen: `pnpm tsx scripts/art/contact-sheet.ts stations|figures out.png`.
+- Screenshots DE 390×844 / EN 1280×720 (Café, Personal-Pipeline, Ausstattungs-Panel) in `docs/screenshots/s10/`, erzeugt mit `scripts/screenshots.ts` (pflanzt einen gewachsenen Spielstand ein).
+- e2e: Specs auf neue IDs/Texte umgestellt (Icon-Grid-Reihenfolge, Köpfe statt Stufen, Produktnamen, Kyoto-Namen); 32 e2e grün (`PW_CHROMIUM=… pnpm e2e`, ~3 min), 289 Unit grün, `pnpm check` grün.
 
-### Bis S8
-- UI-Skin 1:1 nach UI_STYLE (Checkliste § 7 vollständig abgehakt): Tokens § 2 in `src/ui/style.css`, Spiegel `UI_THEME` in `src/data/ui.ts`; Schriften Poppins/Didact Gothic lokal (WOFF2, OFL); Icon-Sprite `public/assets/ui/icons.svg` (Phosphor Fill, MIT) mit Helper `src/ui/icons.ts`
-- HUD (§ 3.1–3.3): Währungs-Pille mit orangem „+“, Status-Pille (Café-Uhr, Einkommen/s, Standort), Chips Zufriedenheit/Sauberkeit (< 70), Boost-Pillen, Qualitäts-Pille rechts (6 Blätter = 6 Stufen, öffnet Shop-Tab Qualität)
-- Rechte Spalte (Personal, Statistik, Erfolge mit Badge), Bottom-Bar `.actionbar` (Shop-Kreis 72 px mit „!“-Badge, Hype-Pille, Marketing, Standorte, Bauen), Zahnrad, Filialleiter-Avatar mit Auto-Kauf-Pille. Labels nur als `aria-label`/`title`; `nav-*`-Testids stabil, neu `nav-stats`, `nav-build`
-- Stations-Bottom-Sheet (§ 3.8): Kopf-Chip, weiße Detailkarte mit Sprite-Icon und LEVEL-Badge, Kauf-Pillen ×1/×10/×100/Max, Icon-Grid (8 Stationen + 5 Ambiente, Level-Badge, gesperrt, kaufbar-Punkt) mit ‹ › – Ambiente-Elemente haben eine eigene Detailkarte mit Kauf im selben Sheet
-- Verwaltungs-Screen (§ 3.9): Vollbild mit Karten-Tabs Stationen/Marketing/Personal/Statistik (`manage-tab-*`); neue Statistik (`statsPanel.ts`): Einnahmen je Station und Trinkgeld pro Café-Tag als Balken, Auslastung, Tagesbilanz-Pille. Standorte, Fortschritt, Settings ebenfalls als Vollbild-Screen; Dialoge und Toasts weiß
-- Szene: `pixelArt: false`, `antialias: true`; alle Platzhalter (`scenes/placeholders.ts`, `data/themes.ts`) entfernt. Sprite-Pipeline `pnpm art` (`scripts/art/*`, `scripts/build-art.ts`): Sprites als Code (SVG, Flat-Shaded, 3 Helligkeitsstufen) → PNG 2× → eigener Shelf-Packer → Phaser-JSON-Atlas `common` + `theme-<ort>` (Lazy-Loading in `CafeScene.preload`), DOM-Icons, PWA-Icons 192/512
-- Sprites: 8 Stationen × 3 Ausbaustufen (Level 1/25/100) × 2 Blickrichtungen, 5 Ambiente, 5 Kundentypen und 7 Personal-Rollen (Schürze) mit 2 Richtungen × 2 Lauf-Frames (+ Spiegeln = 4 Richtungen), Boden/Wände mit Fenstern/niedrige Vorderwände (Dollhouse) je Standort-Thema
-- Effekte: Tag/Nacht (24 min = 1 Tag, `core/time/dayCycle.ts`, Indigo-Multiply + warme Fenster), Fortschrittsringe über bedienten Kunden, Warteschlangen-Tafel (rote LED) über der Kasse, Kauf-Plopp, Shine bei neuer Ausbaustufe, Dampf über der Matcha-Bar, Münz-Flug Richtung HUD, Kunden-Emotes; bei `prefers-reduced-motion` aus
-- Audio (`src/audio/audio.ts`): Web-Audio-Synthese (keine Dateien), SFX Kauf/Münze/Tap/Freischaltung/Fehler/Event-Start/-Ende/Blatt/Boost, Lo-fi-Loop; AudioContext erst nach erster Interaktion; Lautstärke-Regler in den Settings
-- Save-Schema v7 (`settings.sfxVolume/musicVolume`) + Migration v6→v7 + Härtung der Settings
-- Tests: 260 Unit (neu: dayCycle, Atlas-Vollständigkeit, Stations-Optik, Save v7); e2e 27 grün (neu `tests/e2e/art.spec.ts`: Assets lokal ohne 404/fehlende Frames, Lazy-Loading, Touch-Ziele ≥ 44 px, Icon-Grid/Pfeile/Ambiente-Kauf, Verwaltungs-Tabs, Lautstärke persistiert, reduced motion ohne Animationen; axe zusätzlich für Ambiente-Karte und Statistik)
-- Screenshots DE/EN 390×844 und 1280×720 in `docs/screenshots/s8/`
-- Bundle: JS 402 KB gzip, Sprites 356 KB, Schriften 41 KB – weit unter 2 MB
+### Bis S9
+- S9 (Balancing, Tutorial, Release, PR #12, nicht gemergt) und S0–S8: siehe CHANGELOG.md und die Git-Historie; Monetarisierung weiter nur als No-op-Interface (Abschnitt unten).
 
 ## Monetarisierung: wie ein echter Provider eingehängt würde
 - Einziger Einstiegspunkt ist `MonetizationProvider` (`src/core/monetization/provider.ts`). Spielcode ruft nur `isAvailable()`, `showRewarded(placement)` und `purchase(sku)`; Belohnungen bucht immer `core` (z. B. `claimFreeBoost`), nie der Provider.
@@ -48,185 +40,72 @@ next: S9
 - Rewarded Ad: `showRewarded('freeBoost')` öffnet die Werbung und löst erst nach vollständigem Ansehen mit `{ rewarded: true }` auf; Abbruch → `{ rewarded: false }`. Der Spielzeit-Timer (`freeBoostAt`) bleibt die Obergrenze.
 - Käufe: `purchase(sku)` → Zahlungsdialog des Anbieters; erst nach Server-Bestätigung (Webhook/Receipt-Prüfung, nicht im Client) `{ ok: true }`. Gutschrift über eine neue `core`-Action (z. B. `grantLeaves`) mit Idempotenz-Schlüssel im Save. Erstattungen/Abstürze sind laut GAME_DESIGN § 10 nicht Teil von v1.
 - Vor dem Einschalten: Datenschutz/Consent (DSGVO), Lizenz des SDK in `docs/ASSETS.md`/STATUS „Entscheidungen“, e2e „keine fremden Requests“ anpassen.
-## Offen / bekannte Bugs
-- BLOCKIERT: S9 ist fertig gebaut (PR #12 „S9: Balancing, Tutorial, Release“), aber zwei Abnahmekriterien kann nur Vincent prüfen: (1) Lighthouse Performance ≥ 80 (Mobile) – im Container (Headless-Chromium ohne GPU) Median 78, Spanne 71–82 über je 5 Läufe; bitte nach dem Deploy mit PageSpeed Insights oder Chrome-Lighthouse auf einem Rechner mit GPU messen. (2) Tutorial-Testlauf: einmal frisch (Inkognito) spielen und prüfen, ob man ohne Hilfe versteht, was zu tun ist. Wenn beides passt: PR mergen (Squash), Tag `v1.0.0` auf den Merge-Commit setzen, im Loop-Block `state: done`, `next: -`. Wenn nicht: Befund unter „Offen“ notieren, `state: idle`, `next: S9` – die nächste Session arbeitet auf `session/s9-release` weiter.
-- Lighthouse im Container schwankt stark (Benchmark-Index 1200–1700, gleiche Version 71–82). Weitere Hebel, falls auf echter Hardware < 80: Atlanten per `img.decode()` vor dem Hochladen dekodieren, Szenenaufbau auf mehrere Frames verteilen, `common.png` für Mobile in 1,5× statt 2×.
-- e2e „Blätter-Shop: Zeitsprung, Boost, Skin“ ist einmal unter Volllast geflakt (Panel nach Klick auf „+“ nicht sichtbar), 15/15 grün bei Wiederholung; Ursache nicht gefunden.
-- 30-fps-Deckel ohne GPU ist nur im Container geprüft (SwiftShader); auf echten Geräten mit gesperrter GPU ungeprüft.
-- HUD zeigt Zen weiter nicht (nur Standorte-Panel); UI_STYLE § 5 sieht im HUD nur Münzen/⚡/Blätter vor. ⚡ Kapazität bleibt ausgeblendet (§ 6.4, S9).
-- Skins (Sakura-Bar, Neon-Kasse) sind weiter eine Tönung der neuen Stations-Sprites, keine eigenen Sprites; global statt je Standort.
-- Alle Standorte nutzen weiter `DEFAULT_LAYOUT`; S8 gibt jedem Standort eigene Böden/Wände/Fenster (Themen-Atlas), aber keinen eigenen Grundriss.
-- Emoji stecken noch in i18n-Texten (Toasts „+2 🍃“, Zen „☯“, Kalender-Pille, Event-Panel-Liste) und als Fallback-`icon` in `data/events.ts`. Alle Bedienelemente (HUD, Leiste, Panels-Kopf, Event-Karte) nutzen SVG-Glyphen. Texte umzubauen hätte e2e-Erwartungen geändert – nach v1.0.
-- Statistik: Kosten-Balken (Gehalt, Werbung) aus UI_STYLE § 3.9 fehlen, weil das Spiel keine laufenden Kosten hat (Personal/Marketing sind Einmalkäufe). Tagesbilanz ist daher immer grün.
-- Stations-Bottom-Sheet: Antippen einer Station zoomt die Kamera nicht auf 1.3 (UI_STYLE § 4 „Kamera“); das Panel deckt im Hochformat ~55 % ab, die Station kann darunter liegen.
-- 60 fps auf Mittelklasse-Android nicht auf echtem Gerät gemessen (keine Hardware in der Session); Headless-Chromium (SwiftShader) wie bisher. Bitte mit `?debugSpawn=100` auf einem Handy prüfen. Die neuen Effekte sind gepoolt (Popups, Emotes, max. 6 Münz-Flüge) und die Ringe ein einziges `Graphics`.
-- Musik ist ein synthetischer 4-Takt-Loop (16 s); auf Dauer eintönig. Echte CC0-Musikdatei wäre eine Option (Lizenz in ASSETS.md).
-- Audio wird in e2e nur indirekt geprüft (Settings persistieren); ob Töne hörbar sind, lässt sich headless nicht testen.
-- Screenshots in `docs/screenshots/s8/` zeigen den Dev-Server (Debug-Hinweis „B = …“ sichtbar); README nutzt `docs/screenshots/v1/` aus dem Produktions-Build.
-- Kundentypen-Effekte wirken nur im Rate-Modell; die Figuren in der Szene zeigen sie nicht (kein Hype-Emote am Influencer, kein Merch-Weg der Touristen).
-- Event-Karte zeigt nur ein Event (das am aktiven Standort, sonst irgendeins); das Event-Panel listet alle. Banner zum Event-Start ist weiter ein (weißer) Info-Toast; ein eigenes Banner-Element hat S8 nicht gebaut.
-- Offline beendete Events werden still abgeschlossen (Blätter sind da, aber der Offline-Dialog nennt sie nicht). Idee: Zeile „Während du weg warst: Hitzewelle (+5 🍃)“ im Offline-Dialog.
-- Balance-Sim spielt Events mit (inkl. Beheben des Lieferengpasses), gibt aber keine Blätter aus (kein Zeitsprung/Boost) und kennt weder Erfolge noch Quests (laufen nur über `progressionStep` in der App). Blätter/h im Sim also nur Café-Level + Events + Influencer: 11–15/h; mit Erfolgen und Quests liegt die Frühphase im Richtwert 15–25/h (nicht gemessen) → S9.
-- Kalender-Events wirken auch auf Offline-Einnahmen und den Zeitsprung (sie gelten tage-/wochenweise, keine Spielzeit-Timer); Neujahr verdoppelt also auch Offline. Bewusst so, siehe Entscheidungen.
-- Kein Weg, ein laufendes Zufalls-Event vorzeitig zu beenden oder die Event-Häufigkeit einzustellen (Settings) – nicht im Design.
-- Freischalt-Café-Level der Standorte ab Tokio stehen weiter auf 15 (Design); ob das mit der neuen Kurve passt, ist ungeprüft – Sim spielt bisher nur bis Kyoto sinnvoll → S9.
-- Kein „Café-Level-Fortschritt anderer Standorte“-Hinweis im HUD (z. B. Badge, wenn ein anderer Standort etwas Kaufbares hat) – Idee für S9.
-- Achievement-Fortschritt „Café-Level“/„Stations-Level“ nimmt das aktuelle Level aller Standorte; nach einem Reset fällt der Balken noch nicht erreichter Stufen zurück (Erreichtes bleibt). Für Café-Level könnte S9 `bestLevel` nehmen.
-- Ohne Café-Level-Jagd pumpt der Greedy eine Station (neue Stationen bekommen auf Level 1 kaum Kunden-Anteil) – Hinweis für S9, ob neue Stationen attraktiver werden sollen.
-- Achievement-Prüfung und Quest-Tageswechsel laufen 1×/s per `setInterval` in `main.ts` (Wanduhr); im Hintergrund-Tab drosselt der Browser das, nachgeholt wird beim nächsten Aufruf.
-- Kein Plural-System für Toast-/Quest-Texte nötig gewesen; „Starte eine Kampagne“ ist fest Singular (Ziel 1).
-- 60 fps nur bedingt geprüft: Headless-Chromium ohne GPU (SwiftShader) schafft 60 fps bei 400×800 mit 40 Agenten, bei 1280×720 ~33 fps – Füllrate des Software-Renderers. Auf echtem Desktop-Chrome mit GPU bitte einmal gegenprüfen (`?debugSpawn=100`).
-- Kunden gehen nicht über die Kasse; die Kasse hat keine sichtbare Schlange (sie ist im Modell ein Engpass, keine Verkaufsstation).
-- Pinch-Zoom ist nur logisch umgesetzt, nicht auf echtem Touch-Gerät getestet.
-- `pages.yml` läuft weiter bei jedem Push auf main und schlägt fehl, solange Pages nicht aktiviert ist – erwartet, ignorieren (siehe Entscheidungen).
-- Marketing-Plakat vorm Café (GAME_DESIGN § 9, „Visuell“) fehlt. Kandidat für S8.
-- Auto-Kauf und Sauberkeit laufen offline nicht (siehe Entscheidungen).
-- Terrasse Stufe 2 gibt eine L-förmige Fläche; die fehlende Ecke (Stufe 3) ist beim Antippen trotzdem „im Café“ (Tap-Bonus) – kosmetisch egal.
-## Entscheidungen, die vom Plan abweichen
-- S9 Teil 2: Influencer-Hype (§ 7.5) hebt nur die Nachfrage, nicht die Sitzplatz-Kapazität, und wird aus dem Spawn ohne Hype berechnet (keine Rückkopplung). Er zählt zum Boost-Deckel ×12 und fehlt in Offline-Einnahmen und Zeitsprung – er ist ein 5-s-Boost aus aktiver Zeit, wie Hype, Boosts, Events und Kampagne (Entscheidung S4/S7). Mit Hype auch offline lag die Offline-Rückkehr bei 4–6 großen Käufen (Ziel 1–2).
-- S9 Teil 2: Kritiker: Trinkgeld-Anteil aus Zufriedenheit = 0,5 + 2 × (Zufriedenheit/100 − 0,5), nie negativ; „neutral“ = Basis-Zufriedenheit 50. Stammgast-Bonus wirkt auf das ganze Trinkgeld (inkl. Musik). Touristen-Merch-Bonus ist ein Gewicht in der Verteilung der Kunden auf die Stationen.
-- S9 Teil 2: `spawn.base` 0.25 → 0.21, um den Influencer-Hype auszugleichen (sonst Bäckerei 24 min, Reset nach 2 h 26 min).
-- S9 Teil 2: Schlanker Phaser-Build statt `import 'phaser'`. Wer in der Szene ein neues Phaser-Feature nutzt, muss das Modul in `src/phaserCustom.js` ergänzen (sonst `undefined` zur Laufzeit). Keine neue Abhängigkeit.
-- S9 Teil 2: Ohne GPU 30 fps statt 60 (nur Szene; Simulation und HUD laufen unverändert). CLAUDE.md-Ziel „60 fps auf Mittelklasse-Handy“ betrifft Geräte mit GPU und bleibt unberührt.
-- S9: Café-Level aus einer Stufen-Tabelle (`BALANCE.cafeLevel.steps` = 25, 35, 30, 23 … (Teil 2: Stufe 4 von 25 auf 23), danach 25; früher fix 25 je Level). Nur so kommen Iced-Bar (10 min) und Bäckerei (33 min) in den Richtwert, ohne Café-Level 10 und Kyoto zu verschieben. Ein ehemals erreichtes Café-Level kann durch die Migration sinken (Bestwert bleibt, Freischaltungen bleiben `unlocked`).
-- S9: Reinigungskraft ab Café-Level 2 für 3 500 (GAME_DESIGN § 6: Level 3, 500). Der Greedy kauft vorher kein Personal (Barista bringt bei Nachfrage-Limit nichts), sonst lag „Erster Personal-Kauf ~5 min“ bei 10 min.
-- S9: Zen-Faktor 1.8 statt 3 (GAME_DESIGN § 11.2): Der erste Reset kommt mit ~190 M verdient; 3 ergab 42 Zen statt 20–30.
-- S9: Sim-Definitionen für § 15: „Großer Kauf“ = nächste Matcha-Qualitätsstufe (größter Einzelkauf, § 8); „Tagesfortschritt eines aktiven Spielers“ = 90 min aktive Spielzeit (ab Stunde 1). Mit 1 h Tag wären es 44 %, mit 2 h 12 % – die Kurve wächst in Stunde 2 stark.
-- S9: Tutorial ist ein Hinweis, kein Modal: Overlay `pointer-events: none` außer der Blase; manuelle Schritte dunkeln ab, Aufgaben-Schritte nicht. Neue Z-Ebene `--z-tutorial: 45` (über Dialog-Scrim, unter Toasts) – Abweichung von UI_STYLE § 2.4. Bei offenem Panel dockt die Blase oben ohne Ring.
-- S9: `?tutorial=0` überspringt das Tutorial (wie `?debugSpawn` ein Test-Hook); alle älteren e2e-Specs nutzen es.
-- S9: Service Worker ohne `workbox-window`: `virtual:pwa-register` hätte die Abhängigkeit gebraucht. Eigene Registrierung (~40 Zeilen) schickt `SKIP_WAITING` an den wartenden Worker (Workbox `generateSW` versteht das) und lädt bei `controllerchange` neu. Nur im Produktions-Build.
-- S9: Splash deckt nur die Szene ab (z-index 1), HUD ist sofort bedienbar.
-- S9: Uhr-Manipulation: Zurückstellen bringt keine zweite Offline-Gutschrift, keine neuen Tagesaufgaben und keinen neuen Blätter-Tagesdeckel; Vorstellen gibt weiter höchstens den Offline-Deckel (wie bisher). Kalender-Events folgen bewusst weiter der lokalen Uhr (GAME_DESIGN § 12.2).
-- Vorgabe Vincent (2026-10-14): Kein Deploy durch die Sessions. Sessions bauen nur das Spiel (`pnpm build` muss grün sein); Vincent deployt selbst. Pages-Deploy, „Pages-URL erreichbar“ und der Pages-Link in der Abschlussnachricht entfallen als Abnahmekriterium. Ein roter `pages`-Workflow auf main blockiert nichts.
-- Neue Dev-Abhängigkeit `@vitest/coverage-v8` – nötig, um das Abnahmekriterium „Coverage core ≥ 90 %“ zu messen.
-- Kasse auf Level 0 liefert `checkout.baselineThroughput` (0.3/s) statt 0, sonst wäre der Start ohne Kauf blockiert (GAME_DESIGN lässt das offen).
-- `ActiveEvent`/`ActiveBoost.until` sind in `playtimeSec` gemessen (monoton), nicht in Wanduhrzeit.
-- `startCoins = 5`, damit das erste Upgrade (10.7 ¤) in unter 10 s möglich ist.
-- Meilensteine ab Nr. 4: gerade Nummer = Preis ×2, ungerade = Tempo ×2 (Nr. 1–3 sind Tempo).
-- `core` greift nie auf `localStorage` zu; der Adapter bekommt ein `StorageLike` übergeben.
-- Zusätzlich zu den Berlin-Daten liegen alle 6 Standorte mit Skalierung in `data/locations.ts`; Stationsmechanik ist für alle gleich.
-- v0-Save-Format ist ein erfundenes Ur-Format (flach, ein Café), nur um die Migrationskette zu testen.
-- Hype verfällt mit 0.5/s (GAME_DESIGN sagt nichts dazu) – sonst ließe sich der Balken über Stunden ansammeln; aktives Tippen bleibt belohnt.
-- Hype-Boost ist ein `ActiveBoost` mit id `hype`; erneutes Füllen verlängert auf 10 s, statt zu stapeln.
-- Tap-Deckel „10 Taps/s“ zählt pro ganzer Spielsekunde (`playtimeSec`), nicht per Wanduhr.
-- „+N“ = geschätzte Kunden im Café (Rate × 9 s Verweildauer) minus sichtbare, nur bei vollem 40er-Pool.
-- Münz-Popup zeigt den Durchschnittsumsatz pro bedientem Kunden (Einkommen/s ÷ bediente/s); gutgeschrieben wird nur im Rate-Modell.
-- Debug-Query `?debugSpawn=N` skaliert nur die sichtbaren Kunden (für Performance-Tests), nie die Einnahmen.
-- Scale-Modus `FIT 960×540` → `RESIZE` (Mobile-first/Hochformat); Kamera zoomt den Raum passend.
-- Neue Dev-Abhängigkeit `@axe-core/playwright` – automatisierte WCAG-2-A/AA-Prüfung von HUD, allen Panels und Stations-Panel in e2e (Lighthouse-a11y basiert ebenfalls auf axe; Lighthouse selbst läuft nur einmalig per `pnpm dlx`, nicht als Abhängigkeit).
-- Ambiente-Kauf (`core/economy/ambience.ts`, `data/ambience.ts`) schon in S3 statt S5, weil der Shop laut PLAN S3 Ambiente kaufbar listet; Effekte steckten bereits im Rate-Modell.
-- Zahlenformat nutzt jetzt `Intl.NumberFormat` (ohne Tausendertrennung, Suffixe bleiben K/M/B/T/aa…); Ausgabe identisch zu vorher.
-- Sprache: `?lang=` schlägt den gespeicherten Wert, der schlägt die Browser-Sprache. Wechsel in den Settings ändert `settings.lang`, `app.ts` baut das Overlay neu und schickt `ui:langChanged` an die Szene.
-- Offline-Dialog erst ab 60 s Abwesenheit (`UI_CONFIG.offlineDialogMinSec`); UI-Zeitkonstanten liegen in `data/ui.ts`.
-- Debug-Taste `B` nur noch im Dev-Server (`import.meta.env.DEV`); das Produktions-Build ist ohne Debug-Tasten spielbar.
-- IndexedDB-Backup bei jedem Autosave (alle 10 s), nur die letzten 3 bleiben.
-- `pages.yml` unverändert gelassen (Vorgabe Vincent: Sessions deployen nicht).
-- Save-Schema v3 (`mce.save.v3`): je Standort `cleanliness` (Start 100) und `autoBuy`; `marketing.cooldownUntil` neu (optional). Migration v2→v3 + Tests; v2-Schlüssel wird weiter gelesen.
-- Sauberkeit startet bei 100 (neues Café ist sauber) statt beim neutralen Wert 70 – so fällt sie ohne Reinigung sichtbar, statt sofort negativ zu sein.
-- Reinigung Stufe 1 „stoppt den Verfall auf 60 %“: liegt die Sauberkeit schon darunter, sinkt sie nur nicht weiter (springt nicht hoch). Ab Stufe 4 ist der Verfall 0 (nicht negativ); Aufwischen +5/min ab Stufe 3.
-- Personal-Tempo wirkt multiplikativ über Rollen je Station (`collectModifiers().staffSpeedMult` ist jetzt ein Record je Station). Die Kasse bekommt den Kassierer weiter über `getCheckoutThroughput`.
-- Bugfix: Social-Media-Manager wurde im Rate-Modell aus `ambience` statt aus `staff` gelesen.
-- Marketing: Kampagnen-Level Basis-Kosten 500 (Berlin), ab Café-Level 2 – beides im Design offen. Aktive Kampagne kostet max(2 min Einkommen, 50 × Standort-Skalierung), damit sie am Anfang nicht gratis ist.
-- Social-Media-Abklingzeit −10 % je Stufe multiplikativ (0.9^Stufe), sonst wäre sie bei Stufe 15 negativ.
-- Kampagne/Abklingzeit laufen in Spielzeit (`playtimeSec`) wie Boosts. Offline-Einnahmen (und der Tab-Wechsel-Lump) rechnen ohne zeitlich begrenzte Multiplikatoren (Boosts, Events, aktive Kampagne): sonst zählte ein 10-min-Boost bis zu 14 h. Gilt auch für den Hype-Boost aus S2.
-- Offline bleiben Sauberkeit und Zufriedenheit eingefroren und der Auto-Kauf kauft nichts (Rate aus dem Speicherzeitpunkt, wie PLAN § 2.3) – Idle soll nicht bestrafen.
-- Auto-Kauf: höchstens ein Level pro Tick (10 Hz) und Standort, immer die günstigste freigeschaltete Station; Schalter im Personal-Panel beim Filialleiter, ohne Filialleiter nicht aktivierbar.
-- Marketing als eigener Nav-Punkt (📣, 6 Buttons in der Leiste) statt Shop-Tab, wie GAME_DESIGN § 16.5 als eigener Screen.
-- Zufriedenheits-Detail öffnet über den (jetzt antippbaren) Zufriedenheits-Wert im HUD; HUD-Symbol und Kunden-Smileys wechseln 😊/😐/😟 bei 60/40 (`UI_CONFIG.mood`).
-- Personal-Panel erklärt jede Stufe mit Zahlen: „Jetzt: …“ und „Nächste Stufe: +X/s Einkommen“ bzw. Zufriedenheit langfristig, Sauberkeit/min, Offline-Stunden oder Abklingzeit (`previewStaffHire` in core).
-- `.panel-body` ist fokussierbar (`tabindex=0`), weil axe sonst bei Panels ohne aktive Buttons „scrollable-region-focusable“ meldet.
-- Balance-Sim: Greedy kauft jetzt auch Personal, Ambiente und Marketing-Level und bewertet Käufe nach eingeschwungenem Einkommen (Sauberkeit im Gleichgewicht, Zufriedenheit am Ziel); Kampagne nur, wenn sie sich in 10 min rechnet.
-- Kosten-Wachstum aller Stationen +0.07 gegenüber GAME_DESIGN § 4 (Matcha-Bar 1.14 … Workshop 1.21) – nötig für das S5-Abnahmekriterium „Café-Level 10 nach ~90 min“: mit Qualität (×1.5/Stufe), Level-Belohnungen und einem Greedy, der Café-Level jagt, kam der Spieler sonst nach 11 min auf Level 10. Gleichzeitig rücken Kasse, Iced-Bar und Bäckerei näher an ihre Zielzeiten. Feinjustierung in S9; GAME_DESIGN.md wurde nicht angepasst.
-- Balance-Sim: Greedy kauft zusätzlich „Café-Level-Jagd“ (billigster Weg zum nächsten Café-Level, wenn er ≤ 60 s Einkommen kostet) und die Terrasse, sobald sie eine Station blockiert. Ohne das pumpte er eine einzige Station und das Ergebnis war chaotisch (Café-Level 10 nach 64 min oder nie).
-- Ambiente-Freischaltung neu verteilt (Musik 2, WLAN 4, Terrasse 8), damit fast jedes Café-Level etwas freischaltet (§ 5.3). Café-Level 11 schaltet nichts frei (das Design sieht dort nichts vor).
-- Terrassen-Pflicht nach § 5.2 umgesetzt: Stationen ab Café-Level 9 (Zeremonie-Ecke, Workshop) brauchen Terrasse ≥ 1; Shop, Stations-Panel und Szene nennen den Grund.
-- Grid: Der Raum bleibt 12×12 (wie seit S2), die Terrasse legt 2 Reihen/Spalten davor (12×14, 14×14 bei Stufe 2/3) statt der Design-Werte 10×10 → 12×12 → 14×12 → 14×14 – der Startraum war schon 12×12.
-- Café-Level-Blätter: 1 🍃 ab Level 5, +1 alle 5 Level, max 3 (Design: „1–3“).
-- Achievements und Quests werden außerhalb des Ticks geprüft (`progressionStep(state, now, tzOffsetMin)`, 1×/s aus `main.ts`), weil sie die Wanduhr brauchen (lokale Mitternacht, Nachtschicht); `core` liest die Uhr nie selbst, Zeitzone kommt als Offset (`getTimezoneOffset`).
-- Quest-Fortschritt = Statistik-Zähler − Basiswert beim Ziehen; „Zufriedenheit 80“ zählt den Tages-Bestwert des aktiven Standorts. Der 5-🍃-Bonus wird automatisch mit der dritten abgeholten Quest gutgeschrieben.
-- Toasts für Erfolge/Level/Quests entstehen in der UI aus dem Zustandsvergleich (vorher/nachher) – kein Ereignis-Puffer im `GameState`. Einmaligkeit garantiert `meta.achievements`.
-- Achievement-Namen pro Art mit römischer Stufe („Münzsammler III“), Beschreibung mit Zielwert – statt 44 einzelner Namen.
-- Statistik-Zähler (`state.stats`) liegen global, nicht je Standort; Prestige (S6) soll sie nicht zurücksetzen.
-- Nav-Punkt „Erfolge“ öffnet das Panel „Fortschritt“ (Erfolge / Tagesaufgaben / Statistik, GAME_DESIGN § 16.9).
-- Kyoto braucht Berlin Café-Level 14 statt 15 (+10 Zen) – mit der aktuellen Kurve wird Café-Level 15 nie erreicht; mit 14 hält der Richtwert „Kyoto nach 3–4 h“ (Sim: 3 h 22 min). Übrige Standorte unverändert (15).
-- Freischalt-Bedingung prüft den Café-Level-**Bestwert** des Vorgängers (`LocationState.bestLevel`, überlebt den Reset). Sonst müsste man vor dem Reset Zen haben, das es erst durch den Reset gibt.
-- Zen für einen Standort wird verbraucht (GAME_DESIGN § 2: Zen „für Meta-Upgrades, Freischaltung von Standorten“), nicht nur als Schwelle geprüft.
-- Café-Level-Belohnung nach Reset: Münzen (30 s Einkommen) gibt es erneut als Neustart-Hilfe, Goldene Blätter nur für Level über dem Bestwert – sonst wäre jeder Reset eine Blätter-Quelle.
-- Start-Kapital = Basis-Startmünzen + Einkommen/s beim Reset × 600 s × Stufe (Einkommen zum Reset-Zeitpunkt, inkl. laufender Boosts).
-- Schnellstart nimmt die ersten N Stationen in Freischalt-Reihenfolge (Matcha-Bar, Kasse, To-go, Iced-Bar) auf Level 10, ohne Café-Level-Belohnung für den dadurch erreichten Level.
-- Neue Standorte starten mit `startCoins × Standort-Skalierung` (Kyoto 125), damit das erste Upgrade dort genauso schnell geht wie in Berlin.
-- Rabatt (Meta-Upgrade) gedeckelt bei 90 % (`BALANCE.maxDiscount`); bei Max-Stufe 15 sind es ohnehin nur 30 %.
-- Zen-Shop als zweiter Tab im Standorte-Panel statt eigenem Nav-Punkt (Nav hat schon 6 Buttons; Mobile zuerst).
-- Reset-Vorschau „+Y %“ = so viele Stufen „Globales Einkommen“, wie das Zen nach dem Reset bezahlt, × 10 %.
-- Reset-Bestätigung ist ein einzelner Dialog (mit Abbrechen), nicht doppelt wie beim Löschen – der Reset ist gewollter Spielfortschritt.
-- Balance-Sim: Meta-Upgrade-Priorität globales Einkommen, Schnellstart, Start-Kapital, Rabatt, Basis-Zufriedenheit (immer das günstigste); Offline-Effizienz und Tap-Stärke kauft der Greedy nicht (spielt weder offline noch tippt er). Zen für den nächsten Standort wird zurückgehalten, sobald dessen Café-Level-Bedingung erfüllt ist.
-- Zufalls-Events laufen **je Standort**: ein Event startet am gerade aktiven Standort und wirkt nur dort (`ActiveEvent.locationId`); Kalender-Events wirken überall. So hat „Lieferengpass beheben (5 min Einkommen)“ eine eindeutige Kasse und der Influencer-Ansturm (−10 Zufriedenheit) einen Ort.
-- Event-Plan deterministisch: `eventSchedule { seed, count, nextAt }`, das n-te Event zieht `drawEvent(seed, n)` (mulberry32). Seed neuer Spiele = Hash von `createdAt`; Neuladen würfelt nichts neu. Abstand 20–45 min Start-zu-Start, immer nur ein Zufalls-Event gleichzeitig.
-- Influencer-Besuch dauert fest 2 min (Design: „Spawn ×2.5 für 2 min, danach −10“); die Nachwirkung −10 Zufriedenheit wird beim Ende einmalig abgezogen. Alle anderen 3–10 min.
-- Lieferengpass: Qualität −1 wirkt auf Preis **und** Zufriedenheits-Beitrag der Qualität. Beheben kostet 5 min aktuelles Einkommen des Standorts (mindestens `startCoins`) und beendet das Event sofort mit 5 🍃; ohne Beheben endet es ohne Blätter, zählt aber als abgeschlossenes Event (Quest/Erfolg).
-- Abnahme „Events laufen offline weiter“: Offline (und beim Tab-Lump) steht die Spielzeit still, Event-Timer werden aber um die Abwesenheit verkürzt (`advanceEventsOffline`) und abgelaufene Events beim Laden abgeschlossen (Belohnung, Statistik). Der Event-Plan läuft nur in aktiver Spielzeit (Design: „alle 20–45 min aktive Spielzeit“). Offline-Einnahmen rechnen weiter ohne Event-/Boost-Multiplikatoren.
-- Boosts bleiben offline eingefroren (wie seit S4 für Hype/Kampagne); nur Events laufen in Echtzeit. Grund: ein gekaufter 30-min-Boost soll nicht verfallen, weil man den Tab schließt.
-- Boost-Deckel ×12 (GAME_DESIGN § 12.3) gilt je Typ über Events, Boosts und aktive Kampagne zusammen (`BOOST_RULES.maxMult`); dauerhafte Multiplikatoren (Qualität, Zen) zählen nicht dazu.
-- Gleiche Boost-Quelle verlängert um die volle Dauer (`addBoost`), nicht auf die volle Dauer – ein zweiter 30-min-Kauf ergibt 60 min. Hype behält sein S2-Verhalten (zurück auf 10 s).
-- Gratis-Boost (No-op-Monetarisierung): ×2 Einkommen für 10 min, alle 20 min aktive Spielzeit (`data/monetization.ts`, `data/leaves.ts`). Dauer stand nicht im Design. Erster nach 20 min Spielzeit. Knopf erscheint im HUD und im Blätter-Shop, sobald bereit.
-- Zeitsprung = Einkommen aller Standorte zu 100 % mit der Rate ohne zeitlich begrenzte Boosts (wie Offline, aber ohne Cap und ohne Effizienz). Spielzeit, Event- und Boost-Timer laufen dabei nicht – es ist Geld, keine Zeitreise. Zählt zu `earnedThisRun` (also auch zum Zen).
-- „Sofort-Fertigstellung einer Kampagne“ (PLAN) = „Kampagnen-Abklingzeit beenden“ (GAME_DESIGN § 10, 3 🍃) – gab es seit S4 im Marketing-Panel, jetzt auch im Blätter-Shop.
-- Quest sofort erledigen (4 🍃) setzt die Quest auf erledigt; abholen (3 🍃 + ggf. Bonus) muss man selbst. Technisch: Basiswert der Zähler-Quest wird so verschoben, dass der Fortschritt am Ziel bleibt.
-- Skins kosten 30 🍃, werden beim Kauf angelegt und lassen sich ab-/anlegen (`meta.skins.owned/equipped`). Wirkung nur Tönung der Station in der Szene.
-- Influencer-Drops als Erwartungswert im Tick: bediente Kunden × Influencer-Anteil (standortabhängig) × 1 %, Bruchteile sammeln sich in `leafDrops.fraction`, Deckel 10 pro lokalem Tag (Tageswechsel in `progressionStep`). Die sichtbaren Influencer-Figuren lassen nichts fallen (Figuren bleiben kosmetisch).
-- Event-Belohnungen und der Erfolg „erstes Event“ (5 🍃) kommen zusammen; Event-Quest „Beende ein Event“ ist aktiv (`QUESTS[…].enabled`).
-- Save-Schema v6 (`mce.save.v6`): `ActiveEvent` neu `{ id, locationId, startedAt, until }` (alte Events verworfen – es gab keine), `calendarEvents`, `eventSchedule`, `freeBoostAt`, `leafDrops`, `meta.skins`. Migration v5→v6 + Härtung (unbekannte Events/Skins raus, Boost-Multiplikatoren auf 1..12 geklemmt, Drop-Zähler gedeckelt). `mce.save.v5` in `LEGACY_KEYS`.
-- `[hidden] { display: none !important }` global in `style.css`: Klassen mit eigenem `display` (Flex-Zeilen, Pillen, Event-Karte) überstimmten sonst das `hidden`-Attribut.
-- Event-Karte wippt (`@keyframes bob`), bei `prefers-reduced-motion` nicht; Event-Partikel (Regen, Blüten, Funkeln) laufen dann ebenfalls nicht, nur der Farbfilter. e2e emuliert `reducedMotion`, weil Playwright ein dauerhaft animiertes Element nie als „stabil“ klickt.
-- PRNG/Hash (`mulberry32`, FNV-1a) aus `progression/quests.ts` nach `core/math/random.ts` gezogen, damit Events und Quests denselben nutzen.
-- S8: Sprites selbst gezeichnet **als Code** (`scripts/art/sprites.ts`, SVG) statt Kenney-Packs – Kenney hat kein Matcha-/Café-Inventar und nutzt Outlines/Texturen (widerspricht UI_STYLE § 4). Ausgabe wird eingecheckt; `pnpm art` nur nach Änderungen (braucht Chromium, nicht Teil von CI).
-- S8: Texture-Atlas mit eigenem Shelf-Packer in `scripts/build-art.ts` statt `free-tex-packer-core`/Vite-Plugin – keine neue Abhängigkeit. Rendern über das vorhandene `@playwright/test`.
-- S8: Audio komplett per Web Audio synthetisiert (keine Howler-Abhängigkeit, keine Audiodateien, keine Lizenzfrage). Phaser-Audio wird nicht genutzt.
-- S8: Save-Schema v7: `settings.sfxVolume`/`musicVolume` (Standard 0.7/0.4, `data/audio.ts`); Schalter `sfx`/`music` bleiben und stummen unabhängig. `mce.save.v6` in `LEGACY_KEYS`.
-- S8: Neues Token `--c-danger-ink` (#c42727): Weiß auf `--c-danger` hat nur 3.9:1; Löschen-Buttons, Badges und das Screen-X nutzen die tiefere Stufe (5.7:1). `.stat dt` in `--c-ink` statt `--c-ink-muted` (4.06:1 auf `--c-surface-2`).
-- S8: Qualitäts-Pille zeigt 6 Blätter (das Spiel hat 6 Qualitätsstufen, `data/quality.ts`), nicht 4 wie UI_STYLE § 3.3.
-- S8: Verwaltungs-Screen: jeder Tab bleibt ein eigenes Panel (eigene `panel-*`-Testid), der Screen bündelt sie über `createManageTabs`. Shop-Varianten haben eigene Keys (`shop`, `shop:quality`, `shop:ambience`), damit HUD-Qualität/Bauen nicht das gerade offene Shop-Panel wegklappen.
-- S8: Statistik zeigt Werte „pro Café-Tag“ (24 min Spielzeit = 1 Tag, wie die Uhr).
-- S8: Stationen haben je zwei Blickrichtungen (Theke nach +y oder ±x); Figuren zwei Richtungen × 2 Frames, die anderen zwei per `flipX`.
-- S8: Tag/Nacht hängt an `playtimeSec` (Start 9:00), nicht an der Wanduhr – rein kosmetisch, keine Einnahmen-Wirkung. Helper in `core/time/dayCycle.ts` (pur, getestet), Konstanten `DAY_CYCLE` in `data/ui.ts`.
-- S8: Warteschlangen-Tafel zählt alle wartenden Kunden im Café (Kunden laufen im Modell nicht über die Kasse).
-- S8: Kauf-Plopp bei jedem Level-Kauf einer Station und jedem Ambiente-Kauf; Shine nur beim ersten Kauf und bei neuer Ausbaustufe (25/100), damit es besonders bleibt.
-- S8: Bottom-Sheet deckt Zahnrad/Leiste ab (z-index Panel > HUD, wie Vorbild); e2e schließt Panels vor Klicks auf die Leiste bzw. aufs Café (Tagesaufgaben-Test angepasst, Sprachwechsel-Test prüft `aria-label` statt sichtbarem Nav-Text).
-- S8: PWA: `theme_color` #1d457b, PNG-Icons 192/512, Precache auch für `json` (Atlanten) und `woff2`.
-## Nächste Session: keine – Loop wartet auf Vincent (siehe BLOCKIERT unter „Offen“)
-Falls Vincent eine weitere S9-Runde anstößt (`state: idle`, `next: S9`): Branch `session/s9-release` auschecken (nicht neu anlegen), PR ist offen.
-- Lighthouse messen: `pnpm build && pnpm preview --port 4173`, dann `CHROME_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome pnpm dlx lighthouse "http://localhost:4173/Tycoon-/?lang=de" --form-factor=mobile --only-categories=performance --chrome-flags="--headless=new --no-sandbox"` – immer mindestens 5 Läufe, Median zählt. Rest-TBT steckt in den Phaser-Start-Tasks; Ideen unter „Offen“.
-- Fallen: Café-Level hängt an `BALANCE.cafeLevel.steps` – nie `% 25` rechnen, sondern `cafeLevelProgress`. Save-Schema v8. e2e-Specs öffnen mit `&tutorial=0`, außer sie testen das Tutorial. Phaser startet verzögert (`whenIdle` in `main.ts`) – e2e, die auf Szene/Atlas warten, mit `expect.poll`. Neue Phaser-Features in `src/phaserCustom.js` eintragen. `pkill -f "vite preview"` beendet auch die eigene Shell – Preview lieber auf neuem Port starten. Balancing reagiert empfindlich: `spawn.base` ±0.005 verschiebt Zeilen um Minuten, immer die ganze Tabelle prüfen.
-- e2e lokal: `PW_CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome pnpm e2e` (32 Tests, ~2 min).
 
-## Balancing-Snapshot (Sim-Ausgabe, `pnpm sim --hours 4`, S9 Teil 2)
-Alle Zeilen mit Zielwert liegen im Band ±20 % (Personal-Kauf 4–6 min, Iced-Bar 8–18 min, Bäckerei 24–36 min, Café-Level 10 72–108 min, Reset 2,4–3,6 h mit 16–36 Zen, Kyoto 3–4 h, Offline-Rückkehr 1–2,4 große Käufe, Idle-Anteil 16–36 %).
+## Offen / bekannte Bugs
+- BLOCKIERT (Vincent): (1) PR #12 „S9“ wartet weiter auf Lighthouse ≥ 80 auf echter Hardware und den Tutorial-Testlauf (siehe S9-Hinweise unten). (2) Dieser PR (Phase 2) baut auf `session/s9-release` auf; Reihenfolge: zuerst #12 mergen, dann diesen PR auf `main` umstellen (bei Squash-Merge von #12: `git rebase --onto main b969096 session/s10-service`, sonst konfliktfrei). Ein Tutorial-Testlauf mit dem neuen Café-Prinzip steht ebenfalls aus.
+- Balancing (S12): Sim-Tabelle unten liegt nah an den Richtwerten, aber nicht überall im ±20-%-Band: erstes Upgrade 11 s (< 10 s), erster Personal-Kauf 3 min (~5 min), Reset 2 h 3 min mit 19 Zen (~3 h), Kyoto 2 h 3 min (3–4 h), Offline-Rückkehr 3,3× nächste Qualitätsstufe (1–2×). Stellschrauben: `spawn.base` (jetzt 0,17), Köpfe-Kosten (Basis 100/100/150, Wachstum 1,7), `attachRate`/`basePrice` der Linien, `equipment.speedPerLevel`, Zen-Faktor. Nicht im Sim: Blätter aus Erfolgen/Quests (nur in der App).
+- Szene: Bei sehr hoher Nachfrage (`?debugSpawn`) wächst die Schlange über die drei Plätze hinaus zu einem Grüppchen (gewollt), die Bedienungen schaffen die Tischwege nicht – dann greift das 15-s-Ventil und Gäste holen „über die Theke“. Sitzende Gäste am rechten Platz blicken nicht exakt zum Tisch (nur Frontansicht der Sitzpose). Putzkräfte wischen nur, wenn Marker da sind (Sauberkeit < 100 und ein Sitzgast ist gegangen). Verkäufer stehen starr; Baristas bewegen sich nicht zwischen Geräten. Kein Kamera-Zoom auf die angetippte Ausstattung (UI_STYLE § 4), wie bisher.
+- Figuren sind blockig und ohne Gesicht (UI_STYLE § 4); Hut des Touristen verdeckt den Kopf. Feinschliff und Varianten (Haarfarben je Figur) für S12 denkbar.
+- Auslastungs-Balken der Statistik („Theken ausgelastet“) zeigt weiter bedient ÷ Gesamtdurchsatz; die neue Pipeline-Karte daneben ist aussagekräftiger – einer von beiden könnte weg.
+- Skins (Sakura-Bar → Matcha-Station, Neon-Kasse → Kasse) sind weiter nur Tönungen.
+- Alle Standorte nutzen denselben Grundriss; Böden/Wände kommen aus dem Themen-Atlas.
+- Übernommen aus S9: HUD zeigt Zen nicht; Emoji in i18n-Texten (Toasts, Zen, Kalender); Kosten-Balken in der Statistik fehlen (keine laufenden Kosten im Design); 60 fps auf Mittelklasse-Android nicht auf echtem Gerät gemessen (Headless-Chromium ohne GPU, Software-Renderer auf 30 fps gedeckelt); Musik ist ein synthetischer Loop; Backups ohne Wiederherstellen-UI für ältere Stände als die letzten 3; `pages.yml` schlägt auf main fehl, solange Pages nicht aktiviert ist (erwartet).
+- Achievement „Volle Karte“ zählt jetzt 9 Ausstattungen (inkl. Ausgabe-Station); bestehende Spieler, die alle alten Stationen hatten, behalten es (`meta.achievements`).
+
+## Entscheidungen, die vom Plan abweichen
+- Phase 2 (Vorgabe Vincent, 2026-10-15): bedientes Café statt Selbstbedienung. PLAN.md „Phase 2“, GAME_DESIGN § 4, § 6, § 7.2, § 7.3, § 14 und UI_STYLE § 4 wurden entsprechend umgeschrieben; die acht Verkaufsstationen wurden zu neun Ausstattungen der drei Theken, Bäcker/Tee-Meister entfielen (ein Barista bereitet alles zu).
+- Warenkorb-Modell statt Kunden-Verteilung nach Durchsatz: jeder Gast bestellt Matcha und jede weitere Linie mit `attachRate`. Grund: Eine neue, günstige Linie durfte den teuren Linien keine Kunden wegnehmen (das war in Phase 1 der Fall: „neue Stationen bekommen kaum Kunden-Anteil“). Preise der Linien ab Kaffeemaschine um ~30 % gesenkt (3/6/15/55/280/2100) und Anteile 25/20/25/18/12/6 %, damit der Bon nicht explodiert.
+- Personal-Köpfe wachsen mit 1,7 statt 1,5 je Kopf, `spawn.base` 0,21 → 0,17: Köpfe sind ein neuer, billiger Hebel für Durchsatz; ohne Dämpfung erreichte der Greedy Café-Level 10 in 48 min (Ziel 90).
+- Gründungsteam gratis (je 1 Verkäufer, Barista, Bedienung) statt „alles einstellen müssen“: Ein Idle-Spiel muss vom ersten Tick an Einkommen haben; jede weitere Kraft kostet. Nach einem Franchise-Reset gibt es das Team erneut.
+- Kasse Level 0 bleibt als „Handkasse“ mit Tempo 0,6 (statt Durchsatz 0,3/s wie in Phase 1); die Ausgabe-Station ist optional (Level 0 = Tempo 1), Bedienungen arbeiten auch ohne sie.
+- Putz-Modell neu statt „Verfall −25 % je Stufe, Untergrenze 60, Aufwischen ab Stufe 3“: Mit Köpfen und wachsendem Schmutz je Gast ist das Gleichgewicht `100 × (1 − Schmutz/Putzleistung)` anschaulicher und erklärt im Panel, warum ein großes Café mehr Putzkräfte braucht. Exakte Lösung der DGL im Tick, damit 10-s-Ticks wie 100 × 100 ms wirken (Test in `loop.test.ts`).
+- `SPOTLESS.cleanliness` 100 → 95, weil 100 im neuen Modell nur mit unendlich vielen Putzkräften erreichbar wäre.
+- Migration v8→v9 ist großzügig: Bedienungen bekommen die alte Kassierer-Stufe, Baristas die Summe aus Barista, Bäcker und Tee-Meister (gedeckelt 20), damit ein gewachsenes Café nicht an einer einzelnen Bedienung hängt.
+- Tutorial-Schritt „Personal“ verlangt eine Kraft über das Gründungsteam hinaus (`staffTotal ≥ 4`) statt „irgendein Personal“.
+- Touristen-Effekt (GAME_DESIGN § 7.5) wandert vom Merch-Regal auf die Kuchenvitrine (`attachRate × (1 + 0,5 × Touristen-Anteil)`).
+- Zwei neue Dev-Skripte ohne neue Abhängigkeit: `scripts/art/contact-sheet.ts` (Sprites prüfen) und `scripts/screenshots.ts` (Doku-Screenshots); beide nutzen das vorhandene `@playwright/test`.
+- Szene zeigt höchstens 3 Verkäufer, 7 Baristas (je gekauftem Gerät einer), 3 Bedienungen und 2 Putzkräfte, egal wie viele eingestellt sind – mehr Figuren hinter der Theke wären Gedränge ohne Mehrwert.
+- Dieser PR hat `session/s9-release` als Basis (nicht `main`), weil S9 noch nicht gemergt ist und Phase 2 auf dem S9-Code (Save v8, Tutorial, Kundentypen-Effekte) aufsetzt.
+- Frühere Entscheidungen (S1–S9) gelten unverändert und stehen in der Git-Historie dieser Datei (Stand `session/s9-release`).
+
+## Nächste Session: S12 – Balancing, Tutorial, Feinschliff (Phase 2)
+Startpunkt: PLAN.md „Phase 2“, Abschnitt S12, und die Punkte unter „Offen“. Branch `session/s12-polish` von `session/s10-service` (oder von `main`, sobald beides gemergt ist).
+- Balancing: `pnpm sim --hours 4`, Experimente mit `--set`, `--staffGrowth`, `--attachScale`; Ziel ±20 % für alle Zeilen in GAME_DESIGN § 15. Werte danach in `src/data` übernehmen (die Overrides schreiben nichts).
+- Tutorial: Schritte 4–6 könnten die Pipeline-Karte zeigen (Ziel `pipeline`-Testid); Texte stehen schon auf dem neuen Prinzip.
+- Szene-Feinschliff: Baristas wandern zwischen Geräten, Verkäufer-Animation, Sitzpose nach rechts, Kamera-Zoom auf die angetippte Ausstattung, Figuren-Varianten.
+- Fallen: Café-Level hängt an `BALANCE.cafeLevel.steps` – nie `% 25` rechnen. Save-Schema v9. e2e-Specs öffnen mit `&tutorial=0`, außer sie testen das Tutorial. Phaser startet verzögert (`whenIdle`) – e2e, die auf Szene/Atlas warten, mit `expect.poll`. Neue Sprites in `scripts/art/sprites.ts` zeichnen und `PW_CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome pnpm art` laufen lassen (`tests/art.test.ts` prüft Frames). Neue Instanz-Felder in `CafeScene.init()` zurücksetzen. Personal sind Köpfe (`getStaffLevel` liefert die Anzahl); Rollen mit `headcount: false` (Filialleiter, Social Media) bleiben Stufen. `computeLocationRates(...).stages`/`bottleneck` für alles, was die Pipeline zeigt.
+- e2e lokal: `PW_CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome pnpm e2e`.
+- S9-Hinweise (gelten weiter): Lighthouse messen mit `pnpm build && pnpm preview --port 4173`, dann `CHROME_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome pnpm dlx lighthouse "http://localhost:4173/Tycoon-/?lang=de" --form-factor=mobile --only-categories=performance --chrome-flags="--headless=new --no-sandbox"` (5 Läufe, Median).
+
+## Balancing-Snapshot (Sim-Ausgabe, `pnpm sim --hours 4`, Phase 2 Pass 1)
+Im Band ±20 %: Kasse, Kühl-/Eisfach (CL 3), Ofen (CL 5), Café-Level 10, Zen beim ersten Reset, Idle-Anteil. Außerhalb: erstes Upgrade (11 s), erster Personal-Kauf (zu früh), Reset/Kyoto (zu früh), Offline-Rückkehr (zu viel) → S12.
+
 Balance-Sim: 4 h, Greedy-Spieler (Stationen, Personal, Ambiente, Qualität, Marketing, Reset, Zen), Meilensteine Berlin erster Run
 | Meilenstein | Zielzeit | Ist |
 |---|---|---|
-| Erstes Upgrade | < 10 s | 9s |
-| Zweite Station (Kasse) | 1–2 min | 1m 51s |
-| Erster Personal-Kauf | ~5 min | 4m 44s |
-| Erste Reinigungskraft | – | 4m 44s |
+| Erstes Upgrade | < 10 s | 11s |
+| Kasse gekauft | 1–2 min | 2m 11s |
+| Erster Personal-Kauf | ~5 min | 3m 2s |
+| Erste Putzkraft | – | 5m 57s |
 | Erste Kampagne | – | — |
-| Iced-Bar (Café-Level 3) | 10–15 min | 11m 49s |
-| Bäckerei (Café-Level 5) | ~30 min | 32m 50s |
-| Café-Level 10 | ~90 min | 1h 39m |
+| Kühl-/Eisfach (Café-Level 3) | 10–15 min | 12m 57s |
+| Ofen (Café-Level 5) | ~30 min | 31m 23s |
+| Café-Level 10 | ~90 min | 1h 13m |
 | Café-Level 15 | – | — |
-| Qualität Stufe 1 (Café Grade) | – | 12m 14s |
-| Qualität Stufe 2 (Premium Grade) | – | 52m 7s |
-| Qualität Stufe 3 (Ceremonial Grade) | – | 1h 48m |
-| Erster Franchise-Reset | ~3 h (20–30 Zen) | 2h 53m (22 Zen) |
-| Kyoto freigeschaltet | 3–4 h | 2h 53m |
+| Qualität Stufe 1 (Café Grade) | – | 13m 41s |
+| Qualität Stufe 2 (Premium Grade) | – | 44m 16s |
+| Qualität Stufe 3 (Ceremonial Grade) | – | 1h 23m |
+| Erster Franchise-Reset | ~3 h (20–30 Zen) | 2h 3m (19 Zen) |
+| Kyoto freigeschaltet | 3–4 h | 2h 3m |
 | Erstes Zufalls-Event | 20–45 min | 32m 17s |
 | Tokio freigeschaltet | – | — |
-Offline nach 1 h, 8 h weg: +18.18 M = 2.27× nächste Qualitätsstufe (8.00 M), deckt die nächsten 87 Greedy-Käufe (Ziel: 1–2 große Käufe)
-Idle-Anteil: Offline-Nacht 18.18 M / aktiver Tag (1.5 h ab 1 h) 102.64 M = 18 % (Ziel 20–30 %)
-Prestige: 1 Resets, Zen verdient 22, übrig 0; Meta: globalIncome 2
+Offline nach 1 h, 8 h weg: +26.72 M = 3.34× nächste Qualitätsstufe (8.00 M), deckt die nächsten 93 Greedy-Käufe (Ziel: 1–2 große Käufe)
+Idle-Anteil: Offline-Nacht 26.72 M / aktiver Tag (1.5 h ab 1 h) 121.96 M = 22 % (Ziel 20–30 %)
+Prestige: 1 Resets, Zen verdient 19, übrig 4; Meta: globalIncome 1
 Events: 6 abgeschlossen (supplyShortage 1, heatwave 2, foodBlogger 2, rainyDay 1); Influencer-Blätter heute 10
-Goldene Blätter verdient 52 (je Stunde: h1 12, h2 17, h3 14, h4 9; ohne Erfolge/Quests, die laufen nur in der App)
-Standort berlin: Café-Level 8 (Bestwert 14, Resets 1), Einkommen/s 8.92 K
-Standort kyoto: Café-Level 8 (Bestwert 8, Resets 0), Einkommen/s 220.91 K
-Ende: Café-Level 8, Münzen 40.25 K, Einkommen/s 8.92 K
-Qualität 2, Goldene Blätter 52, Zufriedenheit 85.0, Sauberkeit 60.0, Kampagnen 0, Marketing-Level 17
-Personal: cleaner 1, barista 13, socialMedia 10, cashier 1; Ambiente: seats 10, decor 30, music 20, wifi 20
+Goldene Blätter verdient 63 (je Stunde: h1 10, h2 23, h3 14, h4 16; ohne Erfolge/Quests, die laufen nur in der App)
+Standort berlin: Café-Level 14 (Bestwert 14, Resets 1), Einkommen/s 77.48 K
+Standort kyoto: Café-Level 14 (Bestwert 14, Resets 0), Einkommen/s 1.82 M
+Ende: Café-Level 14, Münzen 1.64 M, Einkommen/s 77.48 K
+Qualität 3, Goldene Blätter 63, Zufriedenheit 91.5, Sauberkeit 68.4, Kampagnen 0, Marketing-Level 20
+Personal: cashier 3, barista 20, waiter 16, cleaner 13, socialMedia 15; Ambiente: seats 11, decor 30, music 20, wifi 20, terrace 1

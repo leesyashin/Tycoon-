@@ -71,7 +71,7 @@ test('Touch-Ziele ≥ 44 px im Hochformat (HUD, Leiste, Stations-Panel)', async 
   };
   await check();
   await page.getByTestId('nav-shop').click();
-  await page.getByTestId('shop-station-matchaBar').click();
+  await page.getByTestId('shop-station-matchaStation').click();
   await check();
   // Das Bottom-Sheet deckt Zahnrad und Leiste ab (wie im Vorbild); erst schließen.
   await page.getByTestId('panel-close').click();
@@ -86,10 +86,10 @@ test('Stations-Panel: Icon-Grid und Pfeile wechseln das Objekt, Ambiente kaufbar
   await expect(page.getByTestId('hud')).toBeVisible();
   await seedCoins(page, '5000');
   await page.getByTestId('nav-shop').click();
-  await page.getByTestId('shop-station-matchaBar').click();
-  await expect(page.getByTestId('tile-matchaBar')).toHaveAttribute('aria-current', 'true');
+  await page.getByTestId('shop-station-matchaStation').click();
+  await expect(page.getByTestId('tile-matchaStation')).toHaveAttribute('aria-current', 'true');
   await page.getByTestId('station-next').click();
-  await expect(page.getByTestId('tile-checkout')).toHaveAttribute('aria-current', 'true');
+  await expect(page.getByTestId('tile-coffeeMachine')).toHaveAttribute('aria-current', 'true');
   await page.getByTestId('tile-ambience-seats').click();
   await expect(page.getByTestId('ambience-level')).toHaveText('Lv 0/50');
   await page.getByTestId('ambience-buy-seats').click();

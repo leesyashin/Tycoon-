@@ -48,7 +48,12 @@ export function createPipelineCard(locId: string, testId = 'pipeline'): View {
       const cap = r.stages[row.stage];
       row.fill.style.width = `${((100 * cap) / max).toFixed(1)}%`;
       setText(row.value, t('pipeline.capacity', { amount: fmtSmall(cap, 2) }));
-      row.el.classList.toggle('is-bottleneck', row.stage === r.bottleneck);
+      // Nachfrage als „Engpass“ heißt: alles läuft – kein roter Balken, sondern grün.
+      row.el.classList.toggle(
+        'is-bottleneck',
+        row.stage === r.bottleneck && r.bottleneck !== 'demand',
+      );
+      row.el.classList.toggle('is-ok', row.stage === 'demand' && r.bottleneck === 'demand');
     }
     setText(served, t('pipeline.served', { amount: fmtSmall(r.served, 2) }));
     setText(bottleneck, t('pipeline.bottleneck', { stage: stageName(r.bottleneck) }));

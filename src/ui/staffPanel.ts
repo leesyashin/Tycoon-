@@ -81,9 +81,8 @@ function nextText(role: StaffRoleDef, s: GameState, locId: string, r: LocationRa
       locId,
     );
     const gain = after.stages[role.stage] - r.stages[role.stage];
-    if (r.bottleneck !== role.stage && r.bottleneck !== 'demand') {
+    if (r.bottleneck !== role.stage)
       return t('staff.next.none', { stage: stageName(r.bottleneck) });
-    }
     return t('staff.next.capacity', { amount: fmtSmall(gain, 2), stage: stageName(role.stage) });
   }
   return t('staff.next.none', { stage: stageName(r.bottleneck) });

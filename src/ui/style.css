@@ -1473,6 +1473,9 @@ legend {
 .pipeline-row .stat-bar-fill {
   background: var(--c-periwinkle);
 }
+.pipeline-row.is-ok .stat-bar-fill {
+  background: var(--c-success);
+}
 .pipeline-served {
   margin: 8px 0 0;
   font-weight: 700;
