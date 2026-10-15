@@ -11,6 +11,7 @@ import { COUNTER_TOP_PX, counterPropsAt } from '@data/art';
 import { LAYOUTS } from '@data/layouts';
 import { IsoCanvas, SHADE, shade, tint, type Vec3 } from './iso';
 import { C } from './palette';
+import { polyline, strut } from './shapes';
 import type { SpriteDef } from './sprites';
 
 /** Kachel-Sprite 64×104, untere Spitze der Kachel = Unterkante (Ursprung 0.5 / 1). */
@@ -2555,62 +2556,109 @@ const servingStation: Draw = (c, tier) => {
 };
 
 // ---------------------------------------------------------------------------------------------
-// Tische (Ambiente `seats`): vier Stufen, Sitzplätze bei u = 0.5 ± 0.42 bleiben gleich
+// Tische (Ambiente `seats`): vier Stufen, Sitzplätze bei u = 0.5 ± 0.42 bleiben gleich. Stühle je Stufe
+// passend zur Platte: Kobalt-Bistrostuhl → Eiche mit Polster → Bugholz mit Geflecht → Samtsessel mit Messing.
 // ---------------------------------------------------------------------------------------------
 type ChairStyle = 'steel' | 'cushion' | 'bentwood' | 'armchair';
 
+/** Stuhl auf der Fläche (u … u+0,18, v … v+0,18), Lehne außen (`back`), Sitz zur Tischmitte. */
 function chair(c: IsoCanvas, u: number, v: number, back: 'left' | 'right', style: ChairStyle) {
-  const frame =
-    style === 'steel'
-      ? C.stainlessDark
-      : style === 'cushion'
-        ? C.oak
-        : style === 'bentwood'
-          ? C.coffee
-          : C.brass;
-  const seat =
-    style === 'steel'
-      ? C.cobalt
-      : style === 'cushion'
-        ? C.sage
-        : style === 'bentwood'
-          ? C.wood
-          : C.velvet;
-  c.shadow(u - 0.02, v - 0.02, 0, 0.22, 0.22, 0.2);
-  const legs = style === 'armchair' ? 5 : 8;
-  for (const [lx, ly] of [
-    [u, v],
-    [u + 0.15, v],
-    [u, v + 0.15],
+  const bx = back === 'left' ? u - 0.005 : u + 0.155;
+  const legs: readonly [number, number][] = [
+    [u + 0.01, v + 0.01],
+    [u + 0.15, v + 0.01],
+    [u + 0.01, v + 0.15],
     [u + 0.15, v + 0.15],
-  ] as const)
-    c.box(lx, ly, 0, 0.03, 0.03, legs, shade(frame, 0.85));
-  if (style === 'armchair') {
-    c.bevel(u - 0.02, v - 0.02, 5, 0.22, 0.22, 5, C.velvet, { b: 2, edge: 0.15 });
-    const bx = back === 'left' ? u - 0.02 : u + 0.14;
-    c.bevel(bx, v - 0.02, 10, 0.06, 0.22, 10, C.velvet, { b: 2.5, edge: 0.15 });
-    c.bevel(u - 0.02, v - 0.02, 10, 0.22, 0.05, 4, shade(C.velvet, 0.95), { b: 1.5, edge: 0.12 });
-    c.bevel(u - 0.02, v + 0.15, 10, 0.22, 0.05, 4, shade(C.velvet, 0.95), { b: 1.5, edge: 0.12 });
+  ];
+  c.shadow(u - 0.03, v - 0.03, 0, 0.24, 0.24, 0.22);
+  if (style === 'steel') {
+    // Bistrostuhl aus Kobalt-Blech: gespreizte Beine, Sitz mit Wulst, gebogene Lehne mit Griffloch
+    const col = C.cobalt;
+    for (const [lx, ly] of legs) {
+      const sx = lx < u + 0.08 ? -0.02 : 0.02;
+      const sy = ly < v + 0.08 ? -0.02 : 0.02;
+      strut(c, [lx + sx, ly + sy, 0], [lx, ly, 8], shade(col, 0.8), 1.3);
+    }
+    c.bevel(u - 0.005, v - 0.005, 8, 0.19, 0.19, 1.6, col, { b: 0.7, edge: 0.3 });
+    c.flat(u + 0.02, v + 0.02, 9.61, 0.14, 0.14, shade(col, 0.88));
+    c.bevel(bx, v, 9.6, 0.03, 0.18, 9, col, { b: 0.8, edge: 0.25 });
+    c.flat(bx + 0.001, v + 0.065, 16, 0.028, 0.05, shade(col, 0.55));
     return;
   }
-  c.bevel(u, v, 8, 0.18, 0.18, style === 'cushion' ? 3 : 2.2, seat, {
-    b: style === 'cushion' ? 1.2 : 0.6,
-  });
-  const bx = back === 'left' ? u : u + 0.15;
-  if (style === 'bentwood') {
-    // Bugholzstuhl: dunkler Rahmen, Sitz aus Geflecht, runde Lehne mit innerem Bogen
-    c.flat(u + 0.03, v + 0.03, 10.21, 0.12, 0.12, tint(seat, 0.3));
-    c.box(bx, v + 0.01, 10.2, 0.03, 0.03, 9, frame);
-    c.box(bx, v + 0.14, 10.2, 0.03, 0.03, 9, frame);
-    c.bevel(bx, v - 0.01, 17.5, 0.03, 0.2, 4, frame, { b: 1.8 });
-    c.bevel(bx, v + 0.055, 12.5, 0.03, 0.07, 3.5, frame, { b: 1.4 });
-  } else {
-    c.box(bx, v, 10.2, 0.03, 0.18, 10, frame);
-    if (style === 'cushion')
-      c.bevel(back === 'left' ? bx + 0.03 : bx - 0.025, v + 0.02, 11, 0.025, 0.14, 8, seat, {
-        b: 0.8,
-      });
+  if (style === 'armchair') {
+    // Samtsessel: Messingbeine, Polster mit Biese, runde Lehne und Armlehnen, Knopfheftung
+    const vel = C.velvet;
+    for (const [lx, ly] of legs) {
+      c.cylinder(lx + 0.01, ly + 0.01, 0, 0.012, 4, C.brass, tint(C.brass, 0.3));
+    }
+    c.bevel(u - 0.03, v - 0.03, 4, 0.25, 0.25, 4.6, vel, { b: 2, edge: 0.14 });
+    c.bevel(u - 0.01, v - 0.01, 8.6, 0.21, 0.21, 1.6, tint(vel, 0.08), { b: 1, edge: 0.2 });
+    const bb = back === 'left' ? u - 0.035 : u + 0.15;
+    c.bevel(bb, v - 0.035, 8.6, 0.07, 0.26, 10.5, vel, { b: 2.6, edge: 0.16 });
+    for (const k of [0.05, 0.13, 0.21]) {
+      const fx = back === 'left' ? bb + 0.0701 : bb - 0.0001;
+      if (back === 'left') c.disc(fx, v - 0.035 + k, 15, 0.008, shade(vel, 0.6));
+    }
+    c.bevel(u - 0.03, v - 0.035, 8.6, 0.25, 0.055, 5, shade(vel, 0.96), { b: 1.8, edge: 0.14 });
+    c.bevel(u - 0.03, v + 0.18, 8.6, 0.25, 0.055, 5, shade(vel, 0.96), { b: 1.8, edge: 0.14 });
+    return;
   }
+  if (style === 'bentwood') {
+    // Bugholzstuhl: dunkles Gestell, runder Geflechtsitz, Ring unter dem Sitz, Lehne mit Doppelbogen
+    const wood = C.coffee;
+    for (const [lx, ly] of legs) {
+      const sx = lx < u + 0.08 ? -0.015 : 0.015;
+      const sy = ly < v + 0.08 ? -0.015 : 0.015;
+      strut(c, [lx + sx, ly + sy, 0], [lx, ly, 8.4], wood, 1.4);
+    }
+    c.disc(u + 0.09, v + 0.09, 4, 0.1, shade(wood, 0.9));
+    c.disc(u + 0.09, v + 0.09, 4.4, 0.08, C.wood);
+    c.cylinder(u + 0.09, v + 0.09, 8.4, 0.115, 1.4, wood, C.wood);
+    c.disc(u + 0.09, v + 0.09, 9.85, 0.085, tint(C.wood, 0.25));
+    for (let k = -1; k <= 1; k++)
+      strut(
+        c,
+        [u + 0.09 + k * 0.03, v + 0.03, 9.9],
+        [u + 0.09 + k * 0.03, v + 0.15, 9.9],
+        shade(C.wood, 0.85),
+        0.35,
+      );
+    const bu = back === 'left' ? u + 0.005 : u + 0.17;
+    for (const vv of [v + 0.02, v + 0.16]) strut(c, [bu, vv, 9.8], [bu, vv, 18], wood, 1.3);
+    const arc = (z0: number, rise: number): Vec3[] => {
+      const pts: Vec3[] = [];
+      for (let k = 0; k <= 6; k++) {
+        const t = k / 6;
+        pts.push([bu, v + 0.02 + t * 0.14, z0 + Math.sin(t * Math.PI) * rise]);
+      }
+      return pts;
+    };
+    polyline(c, arc(18, 1.6), wood, 1.4);
+    polyline(c, arc(13.6, 1.4), wood, 1.1);
+    return;
+  }
+  // Eichenstuhl mit Polstersitz und Rückenpolster (Salbei)
+  const wood = C.oak;
+  const pad = C.sage;
+  for (const [lx, ly] of legs) c.box(lx, ly, 0, 0.03, 0.03, 8, shade(wood, 0.88));
+  c.box(u + 0.01, v + 0.01, 6.6, 0.17, 0.17, 1, shade(wood, 0.8));
+  c.bevel(u - 0.005, v - 0.005, 8, 0.19, 0.19, 1.4, wood, { b: 0.5 });
+  c.bevel(u + 0.005, v + 0.005, 9.4, 0.17, 0.17, 1.6, pad, { b: 1, edge: 0.18 });
+  c.box(bx, v, 9.4, 0.03, 0.03, 10, wood);
+  c.box(bx, v + 0.15, 9.4, 0.03, 0.03, 10, wood);
+  c.bevel(back === 'left' ? bx + 0.02 : bx - 0.02, v + 0.02, 12.5, 0.03, 0.14, 7, pad, {
+    b: 1,
+    edge: 0.18,
+  });
+  c.box(bx, v, 19.4, 0.03, 0.18, 1, shade(wood, 0.95));
+}
+
+/** Tasse auf Untertasse mit Matcha-Schaum (oder Kaffee). */
+function cupOnSaucer(c: IsoCanvas, u: number, v: number, z: number, cup: string, foam: string) {
+  c.cylinder(u, v, z, 0.06, 0.6, C.white, tint(C.white, 0.3));
+  c.cylinder(u, v, z + 0.6, 0.035, 3.2, cup, foam);
+  c.disc(u - 0.008, v - 0.006, z + 3.82, 0.014, tint(foam, 0.5));
+  c.box(u + 0.032, v - 0.008, z + 1.4, 0.016, 0.016, 1.4, cup);
 }
 
 /** Runder Tisch auf Säulenfuß mit zwei Stühlen (links/rechts) je Stufe. */
@@ -2618,42 +2666,105 @@ export function drawTable(c: IsoCanvas, tier: 1 | 2 | 3 | 4) {
   const style: ChairStyle =
     (['steel', 'cushion', 'bentwood', 'armchair'] as const)[tier - 1] ?? 'steel';
   chair(c, 0.02, 0.42, 'left', style);
-  // Stufe 1: Bistrotisch aus Edelstahl mit blauen Hockern (Kiez-Look), danach edler.
-  const base = tier === 4 ? C.brass : tier === 1 ? C.stainlessDark : C.ink;
-  c.shadowDisc(0.5, 0.5, 0, 0.18, 0.24);
-  c.cylinder(0.5, 0.5, 0, 0.15, 1.5, base, tint(base, 0.2));
-  c.cylinder(0.5, 0.5, 1.5, 0.045, 11.5, base);
-  if (tier === 4) c.shine(0.5, 0.5, 1.5, 0.045, 11.5, base);
-  const top = tier === 1 ? C.stainless : tier === 2 ? C.cream : C.marble;
-  // Stufe 4: Marmorplatte mit Messingkante
-  c.cylinder(0.5, 0.5, 13, 0.28, 2.5, tier === 4 ? C.brass : top, top);
-  if (tier >= 3) {
-    // Marmorader als schmaler Streifen
-    c.poly(
+  c.shadowDisc(0.5, 0.5, 0, 0.2, 0.26);
+  const top = 13;
+  if (tier === 1) {
+    // Bistrotisch: gusseiserne Fußplatte, Edelstahlsäule, Edelstahlplatte mit Wulstrand
+    c.cylinder(0.5, 0.5, 0, 0.15, 1.2, C.castIron, tint(C.castIron, 0.2));
+    c.frustum(0.5, 0.5, 1.2, 0.08, 0.04, 1.6, C.castIron, C.castIron);
+    c.cylinder(0.5, 0.5, 2.8, 0.035, 10.2, C.stainless);
+    c.shine(0.5, 0.5, 2.8, 0.035, 10.2, C.stainless, 0.5);
+    c.cylinder(0.5, 0.5, top, 0.28, 1.6, C.stainlessDark, C.stainless);
+    c.cylinder(0.5, 0.5, top + 1.6, 0.265, 0.5, C.stainless, C.stainlessLight);
+    c.disc(0.44, 0.45, top + 2.11, 0.08, tint(C.stainlessLight, 0.4));
+    c.cylinder(0.43, 0.56, top + 2.1, 0.04, 5, C.cobalt, C.matchaFoam);
+    c.cylinder(0.43, 0.56, top + 7.1, 0.042, 0.8, C.white, C.white);
+    c.cylinder(0.6, 0.44, top + 2.1, 0.022, 3.6, C.glass, tint(C.glass, 0.4));
+    c.cylinder(0.6, 0.44, top + 5.7, 0.023, 1, C.stainless, C.stainlessLight);
+  } else if (tier === 2) {
+    // Tischdecke mit Saum über rundem Tisch, Tassen, Vase mit Kirschzweig
+    c.cylinder(0.5, 0.5, 0, 0.14, 1.2, C.ink, tint(C.ink, 0.2));
+    c.cylinder(0.5, 0.5, 1.2, 0.04, 9.6, C.ink);
+    c.frustum(0.5, 0.5, 10.4, 0.325, 0.295, 5.2, C.linen, C.white);
+    c.cylinder(0.5, 0.5, 10.4, 0.327, 0.9, shade(C.linen, 0.88), shade(C.linen, 0.88));
+    c.disc(0.5, 0.5, 15.62, 0.17, tint(C.matchaFoam, 0.35));
+    cupOnSaucer(c, 0.42, 0.56, 15.6, C.cup, C.matchaFoam);
+    cupOnSaucer(c, 0.58, 0.6, 15.6, C.cup, C.coffee);
+    c.cylinder(0.6, 0.41, 15.6, 0.028, 6, C.glass, tint(C.glass, 0.4));
+    strut(c, [0.6, 0.41, 21], [0.57, 0.4, 26], C.woodDark, 0.6);
+    strut(c, [0.6, 0.41, 21], [0.64, 0.42, 25], C.woodDark, 0.6);
+    for (const [du, dv, z] of [
+      [-0.03, -0.01, 26],
+      [0.04, 0.01, 25],
+      [0.0, 0.0, 24],
+    ] as const)
+      c.dome(0.6 + du, 0.41 + dv, z, 0.02, 1.8, C.sakura);
+  } else if (tier === 3) {
+    // Marmorplatte mit Adern auf Gussfuß mit drei Füßen, Kerze im Glas, Croissant
+    for (let k = 0; k < 3; k++) {
+      const a = (k / 3) * Math.PI * 2 + 0.6;
+      strut(
+        c,
+        [0.5, 0.5, 2.6],
+        [0.5 + Math.cos(a) * 0.16, 0.5 + Math.sin(a) * 0.16, 0.2],
+        C.castIron,
+        1.6,
+      );
+    }
+    c.cylinder(0.5, 0.5, 1.8, 0.04, 11.2, C.castIron);
+    c.shine(0.5, 0.5, 1.8, 0.04, 11.2, C.castIron, 0.3);
+    c.cylinder(0.5, 0.5, top, 0.28, 2.4, shade(C.marble, 0.92), C.marble);
+    for (const [a0, a1] of [
       [
-        [0.36, 0.42, 15.52],
-        [0.4, 0.4, 15.52],
-        [0.62, 0.62, 15.52],
-        [0.58, 0.64, 15.52],
+        [0.34, 0.44],
+        [0.6, 0.64],
       ],
-      C.marbleVein,
-    );
-  }
-  if (tier === 2) c.disc(0.5, 0.5, 15.6, 0.18, C.matchaFoam);
-  c.cylinder(0.44, 0.54, 15.5, 0.045, 5, tier === 1 ? C.cobalt : C.cup, C.matchaFoam);
-  if (tier === 2) {
-    c.cylinder(0.6, 0.42, 15.5, 0.025, 6, C.glass, C.glass);
-    c.dome(0.6, 0.42, 21.5, 0.03, 3, C.sakura);
-  }
-  if (tier === 3) {
-    c.cylinder(0.6, 0.42, 15.5, 0.03, 4, C.glass, C.glass);
-    c.glowFlat(0.55, 0.37, 19.5, 0.1, 0.1, C.glow, 0.7, 1.2);
-    c.dome(0.6, 0.42, 19.5, 0.012, 2.2, C.glow);
-  }
-  if (tier === 4) {
-    c.cylinder(0.6, 0.42, 15.5, 0.02, 8, C.brass);
-    c.frustum(0.6, 0.42, 23.5, 0.07, 0.035, 5, C.cream, C.cream);
-    c.glowFlat(0.5, 0.32, 15.6, 0.2, 0.2, C.glow, 0.5, 2);
+      [
+        [0.5, 0.3],
+        [0.66, 0.46],
+      ],
+    ] as const)
+      strut(c, [a0[0], a0[1], top + 2.42], [a1[0], a1[1], top + 2.42], C.marbleVein, 0.6);
+    cupOnSaucer(c, 0.42, 0.57, top + 2.4, C.cup, C.matchaFoam);
+    c.cylinder(0.56, 0.62, top + 2.4, 0.07, 0.5, C.white, C.white);
+    c.dome(0.56, 0.62, top + 2.9, 0.05, 2.2, C.oakLight);
+    c.group(0.75, () => c.cylinder(0.6, 0.42, top + 2.4, 0.032, 4, C.glass, tint(C.glass, 0.4)));
+    c.cylinder(0.6, 0.42, top + 2.4, 0.02, 3, C.cream, C.white);
+    c.glowFlat(0.54, 0.36, top + 6.4, 0.12, 0.12, C.glow, 0.7, 1.2);
+    c.dome(0.6, 0.42, top + 5.4, 0.01, 2, C.glow);
+  } else {
+    // Marmor mit Messingkante auf Messingsäule, Tischlampe mit Plisseeschirm, Tassen, Macarons
+    c.cylinder(0.5, 0.5, 0, 0.15, 1.2, C.brass, tint(C.brass, 0.3));
+    c.frustum(0.5, 0.5, 1.2, 0.08, 0.045, 2, C.brass, C.brass);
+    c.cylinder(0.5, 0.5, 3.2, 0.045, 9.8, C.brass);
+    c.shine(0.5, 0.5, 3.2, 0.045, 9.8, C.brass, 0.5);
+    c.cylinder(0.5, 0.5, top, 0.29, 2.6, C.brass, C.marble);
+    c.shine(0.5, 0.5, top, 0.29, 2.6, C.brass, 0.4);
+    c.disc(0.5, 0.5, top + 2.61, 0.27, C.marble);
+    strut(c, [0.33, 0.45, top + 2.62], [0.62, 0.66, top + 2.62], C.marbleVein, 0.6);
+    cupOnSaucer(c, 0.42, 0.57, top + 2.6, C.white, C.matchaFoam);
+    c.cylinder(0.57, 0.63, top + 2.6, 0.065, 0.5, C.gold, tint(C.gold, 0.3));
+    for (const [du, dv, col] of [
+      [-0.02, -0.01, C.sakura],
+      [0.02, 0.01, C.matchaFoam],
+      [0.0, 0.03, C.cream],
+    ] as const)
+      c.cylinder(0.57 + du, 0.63 + dv, top + 3.1, 0.018, 1.2, col, tint(col, 0.3));
+    c.glowFlat(0.48, 0.3, top + 2.7, 0.24, 0.24, C.glow, 0.5, 2);
+    c.cylinder(0.6, 0.42, top + 2.6, 0.04, 0.8, C.brass, tint(C.brass, 0.3));
+    c.cylinder(0.6, 0.42, top + 3.4, 0.012, 7, C.brass);
+    c.glowFlat(0.52, 0.34, top + 9.5, 0.16, 0.16, C.glow, 0.55, 1.6);
+    c.frustum(0.6, 0.42, top + 9.6, 0.075, 0.04, 5.4, C.linen, tint(C.linen, 0.5));
+    for (let k = 0; k < 4; k++) {
+      const a = (-0.2 + k * 0.25) * Math.PI;
+      strut(
+        c,
+        [0.6 + Math.cos(a) * 0.072, 0.42 + Math.sin(a) * 0.072, top + 9.8],
+        [0.6 + Math.cos(a) * 0.042, 0.42 + Math.sin(a) * 0.042, top + 14.8],
+        shade(C.linen, 0.85),
+        0.35,
+      );
+    }
   }
   chair(c, 0.82, 0.42, 'right', style);
 }
