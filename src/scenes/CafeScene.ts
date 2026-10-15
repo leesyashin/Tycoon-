@@ -15,8 +15,12 @@ import {
   CHAR_WALK,
   CUSTOMER_LOOKS,
   SCENE_FX,
+  counterLookTier,
+  counterPropsAt,
   staffLookFor,
   stationLookTier,
+  tableLookTier,
+  type LookTier,
 } from '@data/art';
 import type { StaffRoleId } from '@data/staff';
 import { DAY_CYCLE, UI_THEME } from '@data/ui';
@@ -47,8 +51,13 @@ const RATES_REFRESH_MS = 200;
 const POPUP_POOL = 24;
 const EMOTE_POOL = 8;
 const LABEL_MAX_SCALE = 1.8;
-/** Rückwand-Geräte stehen dicht: jedes zweite Label sitzt höher, damit sie sich nicht überdecken. */
+/**
+ * Rückwand-Geräte stehen dicht. In Originalgröße stehen ihre Labels als Treppe (je Kachel 16 px tiefer) frei;
+ * beim Herauszoomen wachsen die Labels, dann sitzt jedes zweite um so viel höher (mal Label-Skalierung).
+ */
 const LABEL_STAGGER = 14;
+/** Ab dieser Label-Skalierung (= herausgezoomt) wird versetzt. */
+const LABEL_STAGGER_FROM = 1.05;
 /** HUD-Münzsymbol in CSS-Pixeln vom linken oberen Rand (Ziel des Münz-Flugs). */
 const HUD_COIN = { x: 34, y: 34 };
 const DEPTH = { wall: -2000, floor: -1000, label: 10_000, overlay: 20_000 } as const;
@@ -60,6 +69,9 @@ interface StationView {
   placement: StationPlacement;
   sprite: Phaser.GameObjects.Image;
   label: Phaser.GameObjects.Text;
+  /** Label-Höhe ohne Versatz und ob es beim Herauszoomen versetzt wird (jedes zweite Rückwand-Gerät). */
+  labelY: number;
+  stagger: boolean;
   shownLevel: number;
   /** Gezeigter Sperrzustand: frei, Café-Level fehlt oder Terrasse fehlt. */
   shownLock: 'open' | 'level' | 'terrace' | '';
@@ -71,6 +83,15 @@ interface TableView {
   placement: TablePlacement;
   sprite: Phaser.GameObjects.Image;
   dirt: Phaser.GameObjects.Image;
+}
+
+/** Modul der Gästetheke (auch unter Kasse und Ausgabe). */
+interface CounterView {
+  x: number;
+  sprite: Phaser.GameObjects.Image;
+  /** Deko-Variante (`COUNTER_PROPS`), 0 unter einem Gerät. */
+  variant: number;
+  facesX: boolean;
 }
 
 interface StaffFigure {
@@ -110,6 +131,10 @@ export class CafeScene extends Phaser.Scene {
   private controls!: CameraControls;
   private stations: StationView[] = [];
   private tables: TableView[] = [];
+  private counters: CounterView[] = [];
+  /** Gezeigte Optik-Stufe der Theke (0 bis zum ersten Zeichnen). */
+  private shownCounterTier = 0;
+  private sparkles!: Phaser.GameObjects.Particles.ParticleEmitter;
   private agentSprites: Phaser.GameObjects.Image[] = [];
   private agentPrev: { x: number; y: number }[] = [];
   private waiterFigures: StaffFigure[] = [];
@@ -154,6 +179,8 @@ export class CafeScene extends Phaser.Scene {
   init(): void {
     this.stations = [];
     this.tables = [];
+    this.counters = [];
+    this.shownCounterTier = 0;
     this.agentSprites = [];
     this.agentPrev = [];
     this.waiterFigures = [];
@@ -239,6 +266,17 @@ export class CafeScene extends Phaser.Scene {
       emitting: false,
     });
     this.leaves.setDepth(DEPTH.overlay);
+    this.sparkles = this.add.particles(0, 0, ATLAS.common, {
+      frame: FRAME.sparkle,
+      speed: { min: 30, max: 90 },
+      angle: { min: 200, max: 340 },
+      gravityY: 90,
+      lifespan: 900,
+      scale: { start: ART_SCALE * 1.5, end: 0 },
+      alpha: { start: 1, end: 0 },
+      emitting: false,
+    });
+    this.sparkles.setDepth(DEPTH.overlay);
 
     this.room = new Phaser.Geom.Rectangle();
     this.updateRoomBounds(getLocation(state, this.locationId).ambience['terrace'] ?? 0);
@@ -265,6 +303,7 @@ export class CafeScene extends Phaser.Scene {
       this.scale.off('resize', onResize);
       window.removeEventListener('keydown', onKey);
     });
+    this.refreshCounter(state, false);
     this.refreshStations(state, false);
     this.refreshTables(state, false);
   }
@@ -286,6 +325,7 @@ export class CafeScene extends Phaser.Scene {
     if (!this.rates || this.ratesAge >= RATES_REFRESH_MS) {
       this.rates = computeLocationRates(state, this.locationId);
       this.ratesAge = 0;
+      this.refreshCounter(state, true);
       this.refreshStations(state, true);
       this.refreshTables(state, true);
       this.createAmbience(state);
@@ -328,7 +368,8 @@ export class CafeScene extends Phaser.Scene {
     if (zoom === this.labelZoom) return;
     this.labelZoom = zoom;
     const f = Phaser.Math.Clamp(1 / zoom, 1, LABEL_MAX_SCALE);
-    for (const v of this.stations) v.label.setScale(f);
+    const lift = f > LABEL_STAGGER_FROM ? LABEL_STAGGER * f : 0;
+    for (const v of this.stations) v.label.setScale(f).setY(v.labelY - (v.stagger ? lift : 0));
     for (const p of this.popups) p.setScale(f);
     this.moreText.setScale(f);
     this.board?.text.setScale(f);
@@ -435,35 +476,74 @@ export class CafeScene extends Phaser.Scene {
     }
   }
 
-  /** Durchgehende Theke: Module ohne Gerät; Kasse und Ausgabe stehen als Ausstattung in der Reihe. */
+  /**
+   * Durchgehende Gästetheke in der Optik-Stufe des Cafés. Unter Kasse und Ausgabe liegt ein leeres Modul,
+   * auf dem das Gerät steht; Antippen öffnet die Kasse bzw. das Gerät darauf.
+   */
   private createCounter(): void {
-    for (const c of this.layout.counter) {
-      const w = this.world(c);
-      this.sprite(w.x, w.y + TILE_H, FRAME.counter(false))
+    const modules = [
+      ...this.layout.counter.map((tile) => ({
+        tile,
+        stationId: REGISTER_ID,
+        variant: counterPropsAt(tile.x),
+        facesX: false,
+      })),
+      ...this.layout.stations
+        .filter((p) => getStationDef(p.stationId).area !== 'bar')
+        .map((p) => ({ tile: p.tile, stationId: p.stationId, variant: 0, facesX: p.facesX })),
+    ];
+    for (const m of modules) {
+      const w = this.world(m.tile);
+      const sprite = this.sprite(
+        w.x,
+        w.y + TILE_H,
+        FRAME.counter(1, m.variant, m.facesX),
+        ATLAS.furniture,
+      )
         .setOrigin(0.5, 1)
-        .setDepth(isoDepth(c.x, c.y, 5))
+        .setDepth(isoDepth(m.tile.x, m.tile.y, 5))
         .setInteractive({ useHandCursor: true, pixelPerfect: false })
-        .setData('stationId', REGISTER_ID);
+        .setData('stationId', m.stationId);
+      this.counters.push({ x: m.tile.x, sprite, variant: m.variant, facesX: m.facesX });
     }
+    this.counters.sort((a, b) => a.x - b.x);
+  }
+
+  /** Theke folgt dem Café-Level (`COUNTER_LOOK_CAFE_LEVELS`); beim Aufstieg ploppen die Module nacheinander. */
+  private refreshCounter(state: GameState, animate: boolean): void {
+    const tier: LookTier = counterLookTier(getLocation(state, this.locationId).level);
+    if (tier === this.shownCounterTier) return;
+    const upgrade = animate && this.shownCounterTier > 0 && tier > this.shownCounterTier;
+    this.shownCounterTier = tier;
+    this.counters.forEach((v, i) => {
+      v.sprite.setFrame(FRAME.counter(tier, v.variant, v.facesX));
+      if (upgrade) this.plop(v.sprite, i * SCENE_FX.counterWaveMs);
+    });
+    const mid = this.counters[Math.floor(this.counters.length / 2)];
+    if (upgrade && mid) this.newLook(this.restBounds(mid.sprite));
   }
 
   private createStations(): void {
     for (const p of this.layout.stations) {
       const w = this.world(p.tile);
-      const sprite = this.sprite(w.x, w.y + TILE_H, FRAME.ghost)
+      // Geräte auf der Theke liegen über ihrem Thekenmodul.
+      const onCounter = getStationDef(p.stationId).area !== 'bar';
+      const sprite = this.sprite(w.x, w.y + TILE_H, FRAME.ghost, ATLAS.furniture)
         .setOrigin(0.5, 1)
-        .setDepth(isoDepth(p.tile.x, p.tile.y, 5))
+        .setDepth(isoDepth(p.tile.x, p.tile.y, onCounter ? 5.5 : 5))
         .setInteractive({ useHandCursor: true, pixelPerfect: false });
       sprite.setData('stationId', p.stationId);
-      const stagger = p.tile.y === 0 && p.tile.x % 2 === 0 ? LABEL_STAGGER : 0;
+      const labelY = w.y - STATION_TOP + TILE_H / 2;
       const label = this.makeText(13, UI_THEME.textCss)
-        .setPosition(w.x, w.y - STATION_TOP - stagger + TILE_H / 2)
+        .setPosition(w.x, labelY)
         .setDepth(DEPTH.label);
       this.stations.push({
         id: p.stationId,
         placement: p,
         sprite,
         label,
+        labelY,
+        stagger: p.tile.y === 0 && p.tile.x % 2 === 0,
         shownLevel: -1,
         shownLock: '',
         shownTint: -1,
@@ -476,13 +556,13 @@ export class CafeScene extends Phaser.Scene {
   private createTables(): void {
     for (const p of this.layout.tables) {
       const w = this.world(p.tile);
-      const sprite = this.sprite(w.x, w.y + TILE_H, FRAME.table(0))
+      const sprite = this.sprite(w.x, w.y + TILE_H, FRAME.table(0), ATLAS.furniture)
         .setOrigin(0.5, 1)
         .setDepth(isoDepth(p.tile.x, p.tile.y, 5))
         .setVisible(false)
         .setInteractive({ useHandCursor: true, pixelPerfect: false })
         .setData('stationId', TABLE_OBJECT);
-      const dirt = this.sprite(w.x, w.y + TILE_H, FRAME.dirt)
+      const dirt = this.sprite(w.x, w.y + TILE_H, FRAME.dirt, ATLAS.furniture)
         .setOrigin(0.5, 1)
         .setDepth(isoDepth(p.tile.x, p.tile.y, 5.5))
         .setVisible(false);
@@ -530,7 +610,7 @@ export class CafeScene extends Phaser.Scene {
     for (const a of this.layout.ambience) {
       if ((loc.ambience[a.id] ?? 0) < a.minLevel) continue;
       const w = this.world(a.tile);
-      const img = this.sprite(w.x, w.y + TILE_H, FRAME.ambience(a.id))
+      const img = this.sprite(w.x, w.y + TILE_H, FRAME.ambience(a.id), ATLAS.furniture)
         .setOrigin(0.5, 1)
         .setDepth(isoDepth(a.tile.x, a.tile.y, 5));
       this.ambienceImages.push(img);
@@ -538,7 +618,10 @@ export class CafeScene extends Phaser.Scene {
     if (!first) this.plop(this.ambienceImages[this.ambienceImages.length - 1]);
   }
 
-  /** Tische nach `seats`-Stufe ein-/ausblenden; ein neuer Tisch ploppt. */
+  /**
+   * Tische nach `seats`-Stufe ein-/ausblenden; ein neuer Tisch ploppt. Erreicht die Zahl der Tische eine neue
+   * Optik-Stufe (`TABLE_LOOK_LEVELS`), ploppen alle Tische nacheinander im neuen Design.
+   */
   private refreshTables(state: GameState, animate: boolean): void {
     const level = getLocation(state, this.locationId).ambience['seats'] ?? 0;
     if (level === this.shownTables) return;
@@ -546,14 +629,19 @@ export class CafeScene extends Phaser.Scene {
     this.shownTables = level;
     const visible = new Set(visibleTables(this.layout, level));
     const frame = FRAME.table(level);
+    const upgrade = animate && before > 0 && tableLookTier(level) > tableLookTier(before);
+    let wave = 0;
     for (const v of this.tables) {
       const show = visible.has(v.placement);
       if (v.sprite.frame.name !== frame) v.sprite.setFrame(frame);
-      if (v.sprite.visible === show) continue;
-      v.sprite.setVisible(show);
+      const appears = v.sprite.visible !== show && show;
+      if (v.sprite.visible !== show) v.sprite.setVisible(show);
       if (!show) v.dirt.setVisible(false);
-      if (show && animate && before >= 0) this.plop(v.sprite);
+      if (show && upgrade) this.plop(v.sprite, wave++ * SCENE_FX.counterWaveMs);
+      else if (appears && animate && before >= 0) this.plop(v.sprite);
     }
+    const first = this.tables.find((v) => v.sprite.visible);
+    if (upgrade && first) this.newLook(this.restBounds(first.sprite));
   }
 
   /** Nach Sprachwechsel alle Stations-Texte neu setzen. */
@@ -597,19 +685,25 @@ export class CafeScene extends Phaser.Scene {
       v.shownLock = shownLock;
       const onCounter = getStationDef(v.id).area !== 'bar';
       if (level > 0) {
-        v.sprite.setFrame(FRAME.station(v.id, level, v.placement.facesX)).setAlpha(1);
+        v.sprite
+          .setFrame(FRAME.station(v.id, level, v.placement.facesX))
+          .setAlpha(1)
+          .setVisible(true);
         v.label.setText(t('scene.station.level', { level }));
         if (animate && before >= 0 && level > before) {
+          // Maße vor dem Plopp nehmen: währenddessen ist das Sprite auf 0 skaliert.
+          const bounds = this.restBounds(v.sprite);
+          const newTier = stationLookTier(level) !== stationLookTier(before);
           this.plop(v.sprite);
-          if (before === 0 || stationLookTier(level) !== stationLookTier(before)) {
-            this.shine(v.sprite);
-          }
+          if (before === 0 || newTier) this.shine(v.sprite, bounds);
+          if (before > 0 && newTier) this.newLook(bounds);
         }
       } else {
-        // Kasse und Ausgabe stehen als leeres Thekenmodul da, Geräte an der Rückwand als Bauplatz.
+        // Kasse und Ausgabe: nur das leere Thekenmodul darunter; Geräte an der Rückwand als Bauplatz.
         v.sprite
-          .setFrame(onCounter ? FRAME.counter(v.placement.facesX) : FRAME.ghost)
-          .setAlpha(unlocked || onCounter ? 1 : 0.45);
+          .setFrame(FRAME.ghost)
+          .setVisible(!onCounter)
+          .setAlpha(unlocked ? 1 : 0.45);
         v.label.setText(
           silent
             ? ''
@@ -624,13 +718,15 @@ export class CafeScene extends Phaser.Scene {
     }
   }
 
-  /** Kauf-Plopp: Scale 0 → 1.1 → 1 (UI_STYLE § 4). */
-  private plop(target: Phaser.GameObjects.Image | undefined): void {
+  /** Kauf-Plopp: Scale 0 → 1.1 → 1 (UI_STYLE § 4); mit `delay` als Welle über mehrere Objekte. */
+  private plop(target: Phaser.GameObjects.Image | undefined, delay = 0): void {
     if (!target || reducedMotion()) return;
+    this.tweens.killTweensOf(target);
     target.setScale(0);
     this.tweens.add({
       targets: target,
       scale: { from: 0, to: ART_SCALE * SCENE_FX.plopOvershoot },
+      delay,
       duration: SCENE_FX.plopMs * 0.7,
       ease: 'Back.Out',
       onComplete: () =>
@@ -638,10 +734,43 @@ export class CafeScene extends Phaser.Scene {
     });
   }
 
-  /** Weißer Shine-Sweep über das Objekt (Level-up / neue Ausbaustufe). */
-  private shine(target: Phaser.GameObjects.Image): void {
+  /** Maße eines Sprites in Ruhe (unabhängig von einem laufenden Plopp). */
+  private restBounds(target: Phaser.GameObjects.Image): Phaser.Geom.Rectangle {
+    const w = target.frame.width * ART_SCALE;
+    const h = target.frame.height * ART_SCALE;
+    return new Phaser.Geom.Rectangle(
+      target.x - w * target.originX,
+      target.y - h * target.originY,
+      w,
+      h,
+    );
+  }
+
+  /** Neue Optik-Stufe: Funken und „Neues Design!“ über dem Objekt (kosmetisch). */
+  private newLook(b: Phaser.Geom.Rectangle): void {
     if (reducedMotion()) return;
-    const b = target.getBounds();
+    // Sichtbarer Inhalt beginnt etwa im oberen Drittel des Kachel-Sprites.
+    const top = b.top + b.height * 0.25;
+    this.sparkles.explode(SCENE_FX.newLookSparkles, b.centerX, top + b.height * 0.15);
+    const text = this.makeText(13, UI_THEME.goldCss)
+      .setText(t('scene.station.newLook'))
+      .setPosition(b.centerX, top)
+      .setDepth(DEPTH.overlay)
+      .setScale(Phaser.Math.Clamp(1 / this.cameras.main.zoom, 1, LABEL_MAX_SCALE));
+    this.tweens.add({
+      targets: text,
+      y: top - 22,
+      alpha: { from: 1, to: 0 },
+      duration: SCENE_FX.newLookMs,
+      ease: 'Quad.In',
+      onComplete: () => text.destroy(),
+    });
+  }
+
+  /** Weißer Shine-Sweep über das Objekt (Level-up / neue Ausbaustufe). */
+  private shine(target: Phaser.GameObjects.Image, bounds?: Phaser.Geom.Rectangle): void {
+    if (reducedMotion()) return;
+    const b = bounds ?? this.restBounds(target);
     const s = this.sprite(b.left, b.centerY, FRAME.shine)
       .setBlendMode(Phaser.BlendModes.ADD)
       .setDepth(target.depth + 1)
@@ -660,7 +789,8 @@ export class CafeScene extends Phaser.Scene {
     const p = this.layout.stations.find((s) => s.stationId === 'matchaStation');
     if (!p) return;
     const w = this.world(p.tile);
-    this.steam = this.add.particles(w.x - 6, w.y - 8, ATLAS.common, {
+    // Über dem Kessel links auf der Arbeitsplatte (alle Stufen an derselben Stelle).
+    this.steam = this.add.particles(w.x - 6, w.y - 28, ATLAS.common, {
       frame: FRAME.steam,
       speedY: { min: -18, max: -10 },
       speedX: { min: -4, max: 4 },

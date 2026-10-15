@@ -1,30 +1,39 @@
 /**
- * Kontaktbogen zum Prüfen der Sprites ohne Spielstart (Phase 2):
- *   PW_CHROMIUM=… pnpm tsx scripts/art/contact-sheet.ts stations out.png
+ * Kontaktbogen zum Prüfen der Sprites ohne Spielstart:
+ *   PW_CHROMIUM=… pnpm tsx scripts/art/contact-sheet.ts stations out.png     (Geräte × 5 Stufen, je Zeile ein Gerät)
+ *   PW_CHROMIUM=… pnpm tsx scripts/art/contact-sheet.ts counter out.png      (Thekenmodule je Stufe und Deko)
+ *   PW_CHROMIUM=… pnpm tsx scripts/art/contact-sheet.ts furniture out.png    (Tische, Ambiente, Schmutz-Marker)
  *   PW_CHROMIUM=… pnpm tsx scripts/art/contact-sheet.ts figures out.png
  *   PW_CHROMIUM=… pnpm tsx scripts/art/contact-sheet.ts figures out.png 'waiter|sit-'   (nur passende Namen)
- * Rendert die SVGs aus `sprites.ts` vergrößert in ein Raster mit Beschriftung. Nicht Teil von `pnpm art`.
+ * Rendert die SVGs vergrößert in ein Raster mit Beschriftung. Nicht Teil von `pnpm art`.
  */
 import { writeFileSync } from 'node:fs';
 import { chromium } from '@playwright/test';
-import { ambienceSprites, stationSprites } from './sprites';
+import { ambienceSprites, type SpriteDef } from './sprites';
+import { EQUIPMENT_IDS, TIERS, stationIconSvg, stationSprites, tableSprites } from './equipment';
 import { characterSprites } from './figures';
 
 const which = process.argv[2] ?? 'stations';
 const out = process.argv[3] ?? 'contact-sheet.png';
-const all = [...stationSprites(), ...ambienceSprites(), ...characterSprites()];
-const sets: Record<string, { re: RegExp; scale: number; cols: number }> = {
-  stations: {
-    re: /^station-.*-a$|^counter-a$|^ambience-seats|^fx-dirt$|^ambience-(decor|terrace)$/,
-    scale: 3,
-    cols: 6,
+// Kasse und Ausgabe mit ihrem Thekenmodul, wie sie in der Szene stehen.
+const devices: SpriteDef[] = EQUIPMENT_IDS.flatMap((id) =>
+  TIERS.map((tier) => ({ name: `${id}-${String(tier)}`, svg: stationIconSvg(id, tier) })),
+);
+const sets: Record<string, { list: () => SpriteDef[]; scale: number; cols: number }> = {
+  stations: { list: () => devices, scale: 3, cols: 5 },
+  counter: {
+    list: () => stationSprites().filter((s) => /^counter-.*-a$/.test(s.name)),
+    scale: 2.5,
+    cols: 4,
   },
-  figures: { re: /^(customer|staff)-/, scale: 4, cols: 10 },
+  furniture: { list: () => [...tableSprites(), ...ambienceSprites()], scale: 3, cols: 4 },
+  figures: { list: characterSprites, scale: 4, cols: 10 },
 };
-const set = sets[which] ?? { re: /./, scale: 2, cols: 8 };
+const set = sets[which] ?? sets['stations'];
+if (!set) throw new Error(`Unknown set: ${which}`);
 // Optionaler dritter Parameter: zusätzlicher Filter als regulärer Ausdruck (z. B. 'waiter|sit-').
 const only = process.argv[4] ? new RegExp(process.argv[4]) : /./;
-const list = all.filter((s) => set.re.test(s.name) && only.test(s.name));
+const list = set.list().filter((s) => only.test(s.name));
 const browser = await chromium.launch(
   process.env['PW_CHROMIUM'] ? { executablePath: process.env['PW_CHROMIUM'] } : {},
 );
@@ -56,8 +65,8 @@ const png = await page.evaluate(
       const y = Math.floor(i / cols) * ch + 2;
       ctx.drawImage(img, x, y, (img.width * scale) / 2, (img.height * scale) / 2);
       ctx.fillStyle = '#fff';
-      ctx.font = '10px sans-serif';
-      ctx.fillText(name.replace(/^(station|ambience|customer|staff)-/, ''), x, y + ch - 6);
+      ctx.font = '11px sans-serif';
+      ctx.fillText(name.replace(/^(ambience|customer|staff)-/, ''), x, y + ch - 6);
     });
     return canvas.toDataURL('image/png');
   },

@@ -4,14 +4,62 @@
 import type { CustomerTypeId } from './customerTypes';
 import type { StaffRoleId } from './staff';
 
-/** Ab diesen Stations-Leveln wechselt die Optik (PLAN S8: Level 1/25/100). */
-export const STATION_LOOK_LEVELS = [1, 25, 100] as const;
+/**
+ * Ab diesen Leveln bekommt eine Ausstattung ein edleres Aussehen (UI_STYLE § 4): fünf Stufen, jeweils an
+ * einem Meilenstein (GAME_DESIGN § 4), damit „schneller“ und „schöner“ zusammenfallen.
+ */
+export const STATION_LOOK_LEVELS = [1, 10, 25, 50, 100] as const;
 
-/** Optik-Stufe 1..3 einer Station; Level 0 zeigt Stufe 1 (als Umriss/Ghost in der Szene). */
-export function stationLookTier(level: number): 1 | 2 | 3 {
-  if (level >= STATION_LOOK_LEVELS[2]) return 3;
-  if (level >= STATION_LOOK_LEVELS[1]) return 2;
-  return 1;
+export type LookTier = 1 | 2 | 3 | 4 | 5;
+
+/** Stufe 1, 2, … zu einer aufsteigenden Schwellen-Liste; unter der ersten Schwelle Stufe 1. */
+function tierFor(value: number, thresholds: readonly number[]): number {
+  let tier = 1;
+  thresholds.forEach((t, i) => {
+    if (value >= t) tier = i + 1;
+  });
+  return tier;
+}
+
+/** Optik-Stufe 1..5 einer Ausstattung; Level 0 zeigt Stufe 1 (als Bauplatz bzw. leere Theke). */
+export function stationLookTier(level: number): LookTier {
+  return tierFor(level, STATION_LOOK_LEVELS) as LookTier;
+}
+
+/** Level, ab dem die nächste Optik kommt; `null`, wenn die edelste Stufe erreicht ist. */
+export function nextStationLookLevel(level: number): number | null {
+  return STATION_LOOK_LEVELS.find((l) => l > Math.max(level, 1)) ?? null;
+}
+
+/** Die Gästetheke wird mit dem Café-Level edler (Kiefer → … → Nachtblau/Gold), rein kosmetisch. */
+export const COUNTER_LOOK_CAFE_LEVELS = [1, 3, 6, 10, 15] as const;
+
+export function counterLookTier(cafeLevel: number): LookTier {
+  return tierFor(cafeLevel, COUNTER_LOOK_CAFE_LEVELS) as LookTier;
+}
+
+/**
+ * Deko auf den Thekenmodulen je Spalte x (0 = leer, 1 = Becher/Glasglocke, 2 = Karte/Spender, 3 = Pflanze);
+ * unter Kasse und Ausgabe liegt immer ein leeres Modul.
+ */
+export const COUNTER_PROPS = [3, 0, 1, 0, 2, 0, 1, 0, 3, 2] as const;
+
+export function counterPropsAt(x: number): number {
+  return COUNTER_PROPS[Math.abs(Math.trunc(x)) % COUNTER_PROPS.length] ?? 0;
+}
+
+/** Tische (Ambiente `seats`): vier Optik-Stufen nach Anzahl gekaufter Tische. */
+export const TABLE_LOOK_LEVELS = [1, 13, 25, 40] as const;
+
+export type TableTier = 1 | 2 | 3 | 4;
+
+export function tableLookTier(seatsLevel: number): TableTier {
+  return tierFor(seatsLevel, TABLE_LOOK_LEVELS) as TableTier;
+}
+
+/** Stufe der nächsten Tisch-Optik; `null` auf der letzten Stufe. */
+export function nextTableLookLevel(seatsLevel: number): number | null {
+  return TABLE_LOOK_LEVELS.find((l) => l > Math.max(seatsLevel, 1)) ?? null;
 }
 
 /** Szene-Effekte (Millisekunden, Pixel in Weltkoordinaten). */
@@ -21,6 +69,11 @@ export const SCENE_FX = {
   plopOvershoot: 1.1,
   /** Weißer Shine-Sweep beim Level-up. */
   shineMs: 450,
+  /** Neue Optik-Stufe: Funken und „Neues Design!“ über dem Gerät. */
+  newLookMs: 1400,
+  newLookSparkles: 14,
+  /** Die Theke wird edler: Module ploppen nacheinander von links nach rechts (Versatz je Modul). */
+  counterWaveMs: 45,
   /** Münz-Flug ins HUD. */
   coinFlyMs: 650,
   /** Höchstens so viele fliegende Münzen gleichzeitig. */

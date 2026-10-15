@@ -1,43 +1,137 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   CHAR_FRAMES,
   CHAR_WALK,
+  COUNTER_LOOK_CAFE_LEVELS,
+  COUNTER_PROPS,
   CUSTOMER_LOOKS,
   STAFF_LOOKS,
   STAFF_WALKERS,
+  STATION_LOOK_LEVELS,
+  TABLE_LOOK_LEVELS,
+  counterLookTier,
+  counterPropsAt,
+  nextStationLookLevel,
+  nextTableLookLevel,
   staffLookFor,
   stationLookTier,
+  tableLookTier,
 } from '@data/art';
 import { STATIONS } from '@data/stations';
-import { AMBIENCE } from '@data/ambience';
+import { AMBIENCE, getAmbienceDef } from '@data/ambience';
+import { BALANCE } from '@data/balance';
 import { CUSTOMER_TYPES } from '@data/customerTypes';
+import { LAYOUTS } from '@data/layouts';
 import { STAFF_ROLES } from '@data/staff';
 import { characterSprites } from '../scripts/art/figures';
+import {
+  COUNTER_VARIANTS,
+  EQUIPMENT_IDS,
+  TABLE_TIERS,
+  TIERS,
+  stationSprites,
+  tableSprites,
+} from '../scripts/art/equipment';
+import { ambienceSprites } from '../scripts/art/sprites';
 
-const common = JSON.parse(readFileSync('public/assets/sprites/common.json', 'utf8')) as {
-  frames: Record<string, unknown>;
-};
+type Atlas = { frames: Record<string, unknown> };
+const common = JSON.parse(readFileSync('public/assets/sprites/common.json', 'utf8')) as Atlas;
+const furniture = JSON.parse(readFileSync('public/assets/sprites/furniture.json', 'utf8')) as Atlas;
 
-describe('Stations-Optik', () => {
-  it('Stufen wechseln bei Level 25 und 100', () => {
-    expect(stationLookTier(0)).toBe(1);
-    expect(stationLookTier(24)).toBe(1);
-    expect(stationLookTier(25)).toBe(2);
-    expect(stationLookTier(99)).toBe(2);
-    expect(stationLookTier(100)).toBe(3);
+describe('Ausstattungs-Optik', () => {
+  it('fünf Stufen, Wechsel bei Level 10, 25, 50 und 100', () => {
+    expect([0, 1, 9, 10, 24, 25, 49, 50, 99, 100, 500].map(stationLookTier)).toEqual([
+      1, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5,
+    ]);
+  });
+  it('jede neue Optik kommt mit einem Meilenstein (×2 Tempo bzw. Preis)', () => {
+    for (const level of STATION_LOOK_LEVELS.slice(1))
+      expect(BALANCE.milestones.levels).toContain(level);
+  });
+  it('nennt das Level der nächsten Optik, auf der letzten Stufe nichts', () => {
+    expect(nextStationLookLevel(0)).toBe(10);
+    expect(nextStationLookLevel(1)).toBe(10);
+    expect(nextStationLookLevel(10)).toBe(25);
+    expect(nextStationLookLevel(99)).toBe(100);
+    expect(nextStationLookLevel(100)).toBeNull();
+  });
+  it('Theke wird mit dem Café-Level edler, Stufen steigen monoton', () => {
+    expect(counterLookTier(1)).toBe(1);
+    expect(counterLookTier(COUNTER_LOOK_CAFE_LEVELS[1])).toBe(2);
+    expect(counterLookTier(BALANCE.cafeLevel.max)).toBe(5);
+    for (let l = 1; l < BALANCE.cafeLevel.max; l++)
+      expect(counterLookTier(l + 1)).toBeGreaterThanOrEqual(counterLookTier(l));
+  });
+  it('Deko-Varianten der Theke sind gezeichnet', () => {
+    for (const v of COUNTER_PROPS) expect(COUNTER_VARIANTS).toContain(v);
+    expect(counterPropsAt(0)).toBe(COUNTER_PROPS[0]);
+    expect(counterPropsAt(COUNTER_PROPS.length + 2)).toBe(COUNTER_PROPS[2]);
+  });
+  it('Tische: vier Stufen, alle mit der Höchststufe der Tische erreichbar', () => {
+    expect(TABLE_TIERS).toHaveLength(TABLE_LOOK_LEVELS.length);
+    expect(tableLookTier(0)).toBe(1);
+    expect(tableLookTier(12)).toBe(1);
+    expect(tableLookTier(13)).toBe(2);
+    expect(tableLookTier(40)).toBe(4);
+    expect(nextTableLookLevel(12)).toBe(13);
+    expect(nextTableLookLevel(40)).toBeNull();
+    const max = TABLE_LOOK_LEVELS[TABLE_LOOK_LEVELS.length - 1] ?? 0;
+    expect(max).toBeLessThanOrEqual(getAmbienceDef('seats').maxLevel);
+  });
+  it('jede Ausstattung aus data/stations hat eine Zeichnung', () => {
+    expect([...EQUIPMENT_IDS].sort()).toEqual(STATIONS.map((s) => s.id).sort());
+    expect(TIERS).toHaveLength(STATION_LOOK_LEVELS.length);
   });
 });
 
-describe('Atlas (pnpm art)', () => {
-  it('enthält jede Station in 3 Stufen und 2 Blickrichtungen', () => {
+describe('Möbel-Atlas (pnpm art)', () => {
+  it('enthält jede Ausstattung in 5 Stufen; Variante „b“ nur, wo ein Grundriss sie braucht', () => {
     for (const s of STATIONS)
-      for (const tier of [1, 2, 3])
-        for (const f of ['a', 'b'])
-          expect(common.frames[`station-${s.id}-${String(tier)}-${f}`]).toBeDefined();
+      for (const tier of TIERS)
+        expect(furniture.frames[`station-${s.id}-${String(tier)}-a`]).toBeDefined();
+    for (const layout of Object.values(LAYOUTS))
+      for (const p of layout.stations.filter((x) => x.facesX))
+        for (const tier of TIERS)
+          expect(furniture.frames[`station-${p.stationId}-${String(tier)}-b`]).toBeDefined();
   });
-  it('enthält Ambiente', () => {
-    for (const a of AMBIENCE) expect(common.frames[`ambience-${a.id}`]).toBeDefined();
+  it('enthält die Theke in 5 Stufen je Deko-Variante, Tische in 4 Stufen, Bauplatz', () => {
+    for (const tier of TIERS)
+      for (const v of COUNTER_VARIANTS)
+        expect(furniture.frames[`counter-${String(tier)}-${String(v)}-a`]).toBeDefined();
+    for (const tier of TABLE_TIERS) expect(furniture.frames[`table-${String(tier)}`]).toBeDefined();
+    for (const f of ['station-ghost', 'fx-dirt']) expect(furniture.frames[f]).toBeDefined();
+  });
+  it('enthält Ambiente (Tische als `table-*`)', () => {
+    for (const a of AMBIENCE.filter((x) => x.id !== 'seats'))
+      expect(furniture.frames[`ambience-${a.id}`]).toBeDefined();
+  });
+  it('ist aktuell (nach Änderungen an der Ausstattung `pnpm art`)', () => {
+    const drawn = [...stationSprites(), ...tableSprites(), ...ambienceSprites()].map((s) => s.name);
+    expect(Object.keys(furniture.frames).sort()).toEqual(drawn.sort());
+  });
+  it('Zeichnungen sind gültig und eindeutig benannt', () => {
+    const sprites = [...stationSprites(), ...tableSprites()];
+    expect(new Set(sprites.map((s) => s.name)).size).toBe(sprites.length);
+    for (const s of sprites) expect(s.svg).not.toMatch(/NaN|undefined|Infinity/);
+  });
+  it('DOM-Icons gibt es für jede Stufe', () => {
+    const icon = (name: string) => `public/assets/sprites/icons/${name}.png`;
+    for (const s of STATIONS)
+      for (const tier of TIERS)
+        expect(existsSync(icon(`station-${s.id}-${String(tier)}`))).toBe(true);
+    for (const tier of TABLE_TIERS)
+      expect(existsSync(icon(`ambience-seats-${String(tier)}`))).toBe(true);
+    for (const a of AMBIENCE.filter((x) => x.id !== 'seats'))
+      expect(existsSync(icon(`ambience-${a.id}`))).toBe(true);
+  });
+});
+
+describe('Figuren-Atlas (pnpm art)', () => {
+  it('enthält keine Möbel (eigener Atlas mit eigener Palette)', () => {
+    expect(
+      Object.keys(common.frames).filter((k) => /^(station|counter|table|ambience)-/.test(k)),
+    ).toEqual([]);
   });
   it('enthält jede Kunden-Variante mit 2 Richtungen × (Stehen + 2 Lauf-Frames) und Sitzpose', () => {
     const frames = [CHAR_FRAMES.stand, ...CHAR_FRAMES.walk];
@@ -73,10 +167,6 @@ describe('Atlas (pnpm art)', () => {
   });
   it('Lauf-Zyklus nutzt nur gerenderte Frames', () => {
     for (const f of CHAR_WALK.cycle) expect([CHAR_FRAMES.stand, ...CHAR_FRAMES.walk]).toContain(f);
-  });
-  it('enthält Thekenmodul, Tisch mit Tischdecke und Schmutz-Marker (Phase 2)', () => {
-    for (const f of ['counter-a', 'counter-b', 'ambience-seats-2', 'fx-dirt', 'station-ghost'])
-      expect(common.frames[f]).toBeDefined();
   });
 });
 

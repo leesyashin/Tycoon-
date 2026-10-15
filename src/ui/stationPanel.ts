@@ -23,7 +23,7 @@ import { attachRate, customerTypeShares, type StageId } from '@core/customers';
 import { getStaffLevel } from '@core/staff';
 import { STATIONS, getStationDef, type StationArea } from '@data/stations';
 import { AMBIENCE, getAmbienceDef } from '@data/ambience';
-import { stationLookTier } from '@data/art';
+import { stationLookTier, tableLookTier } from '@data/art';
 import { BALANCE } from '@data/balance';
 import { h, on, setDisabled, setText } from './dom';
 import { fmt, fmtSmall } from './format';
@@ -62,10 +62,10 @@ export function objectKey(o: ObjectRef): string {
   return o.kind === 'station' ? o.id : `ambience-${o.id}`;
 }
 
+/** Icon in der Optik-Stufe des Levels: Geräte (5 Stufen) und Tische (4 Stufen) werden edler. */
 function objectIcon(o: ObjectRef, level: number): string {
-  return o.kind === 'station'
-    ? `station-${o.id}-${String(stationLookTier(level))}`
-    : `ambience-${o.id}`;
+  if (o.kind === 'station') return `station-${o.id}-${String(stationLookTier(level))}`;
+  return o.id === 'seats' ? `ambience-seats-${String(tableLookTier(level))}` : `ambience-${o.id}`;
 }
 
 function objectName(locId: string, o: ObjectRef): string {
@@ -393,19 +393,14 @@ export function createAmbienceObjectPanel(
   });
   on(btn, 'click', () => store.dispatch((s) => buyAmbience(s, locId, ambienceId)));
   const grid = objectGrid(locId, ref, open);
+  const img = h('img', { class: 'station-card-icon', alt: '', width: 64, height: 64 });
   const el = h(
     'div',
     { class: 'station-panel' },
     h(
       'div',
       { class: 'card station-card' },
-      h('img', {
-        class: 'station-card-icon',
-        alt: '',
-        width: 64,
-        height: 64,
-        src: spriteIconUrl(objectIcon(ref, 1)),
-      }),
+      img,
       h('div', {}, h('h3', { text: name }), level),
       h(
         'div',
@@ -423,6 +418,8 @@ export function createAmbienceObjectPanel(
       el,
       update(s) {
         const lvl = getLocation(s, locId).ambience[ambienceId] ?? 0;
+        const src = spriteIconUrl(objectIcon(ref, lvl));
+        if (img.getAttribute('src') !== src) img.src = src;
         const unlocked = isAmbienceUnlocked(s, locId, ambienceId);
         const maxed = isAmbienceMaxed(s, locId, ambienceId);
         const cost = getNextAmbienceCost(s, locId, ambienceId);
