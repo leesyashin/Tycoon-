@@ -25,7 +25,10 @@ export function previewStaffHire(
   const settled = (s: GameState): number => {
     const l = getLocation(s, locationId);
     const served = computeLocationRates(s, locationId).served;
-    const eq = withLocation(s, locationId, { ...l, cleanliness: cleanlinessEquilibrium(l, served) });
+    const eq = withLocation(s, locationId, {
+      ...l,
+      cleanliness: cleanlinessEquilibrium(l, served),
+    });
     return computeLocationRates(eq, locationId).satisfaction.target;
   };
   return {

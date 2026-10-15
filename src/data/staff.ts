@@ -1,6 +1,6 @@
 /**
  * Personal-Rollen nach GAME_DESIGN § 6 (Phase 2): die vier Service-Rollen zählen als Köpfe, die parallel
- * arbeiten; Filialleiter und Social-Media-Manager bleiben Stufen. Kosten für Berlin (×1), Wachstum 1.5.
+ * arbeiten; Filialleiter und Social-Media-Manager bleiben Stufen. Kosten für Berlin (×1), Wachstum 1.7 je Kopf (Stufen-Rollen 1.5).
  */
 export type StaffRoleId = 'cashier' | 'barista' | 'waiter' | 'cleaner' | 'manager' | 'socialMedia';
 
@@ -26,7 +26,7 @@ export const STAFF_ROLES: readonly StaffRoleDef[] = [
     id: 'cashier',
     unlockCafeLevel: 1,
     baseCost: 100,
-    growth: 1.5,
+    growth: 1.7,
     maxLevel: 20,
     headcount: true,
     stage: 'order',
@@ -36,7 +36,7 @@ export const STAFF_ROLES: readonly StaffRoleDef[] = [
     id: 'barista',
     unlockCafeLevel: 1,
     baseCost: 100,
-    growth: 1.5,
+    growth: 1.7,
     maxLevel: 20,
     headcount: true,
     stage: 'production',
@@ -46,7 +46,7 @@ export const STAFF_ROLES: readonly StaffRoleDef[] = [
     id: 'waiter',
     unlockCafeLevel: 1,
     baseCost: 150,
-    growth: 1.5,
+    growth: 1.7,
     maxLevel: 20,
     headcount: true,
     stage: 'service',
@@ -56,7 +56,7 @@ export const STAFF_ROLES: readonly StaffRoleDef[] = [
     id: 'cleaner',
     unlockCafeLevel: 2,
     baseCost: 3_500,
-    growth: 1.5,
+    growth: 1.7,
     maxLevel: 20,
     headcount: true,
     stage: 'cleaning',

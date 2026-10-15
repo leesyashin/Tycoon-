@@ -40,7 +40,11 @@ export function cleanlinessEquilibrium(loc: LocationState, servedPerSec: number)
  * Sauberkeit nach `dtSec` Sekunden – exakte Lösung der linearen Gleichung
  * dc/dt = power × (1 − c/max) − dirt, damit lange Ticks dasselbe ergeben wie viele kurze.
  */
-export function advanceCleanliness(loc: LocationState, dtSec: number, servedPerSec: number): number {
+export function advanceCleanliness(
+  loc: LocationState,
+  dtSec: number,
+  servedPerSec: number,
+): number {
   const max = BALANCE.cleanliness.max;
   const minutes = Math.max(0, dtSec) / 60;
   const power = cleaningPower(loc);

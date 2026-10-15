@@ -115,7 +115,9 @@ describe('Freischalt-Tabelle und Café-Level (GAME_DESIGN § 5.3)', () => {
   it('Level-Aufstieg gibt 30 s Einkommen und ab Level 5 Blätter, genau einmal', () => {
     // 24 Stations-Level = Café-Level 1; der nächste Kauf hebt auf Level 2.
     let s = patch(fresh(), { coins: D(1e9), satisfaction: 50 });
-    s = patch(s, { stations: { ...loc(s).stations, matchaStation: { level: 24, unlocked: true } } });
+    s = patch(s, {
+      stations: { ...loc(s).stations, matchaStation: { level: 24, unlocked: true } },
+    });
     const before = buyStation(s, L, 'register', 0 as never);
     expect(before).toBe(s);
     const income = computeLocationRates(

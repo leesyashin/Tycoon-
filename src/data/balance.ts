@@ -27,7 +27,7 @@ export const BALANCE = {
   },
 
   spawn: {
-    base: 0.21,
+    base: 0.17,
     cafeLevelExponent: 0.9,
     capacityBase: 2,
     perSeat: 2,

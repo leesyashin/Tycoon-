@@ -41,7 +41,14 @@ const make = (patch: Partial<LocationState> = {}): GameState => {
   const s = createInitialState(0);
   const base = getLocation(s, LOC);
   const stations = { ...base.stations };
-  for (const id of ['matchaStation', 'register', 'coffeeMachine', 'iceBox', 'oven', 'ceremonySet']) {
+  for (const id of [
+    'matchaStation',
+    'register',
+    'coffeeMachine',
+    'iceBox',
+    'oven',
+    'ceremonySet',
+  ]) {
     stations[id] = { level: 10, unlocked: true };
   }
   return withLocation(s, LOC, {

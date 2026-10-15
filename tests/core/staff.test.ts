@@ -68,7 +68,7 @@ describe('Personal: Daten und Kosten', () => {
       ['barista', 'cashier', 'cleaner', 'manager', 'socialMedia', 'waiter'].sort(),
     );
     for (const r of STAFF_ROLES) {
-      expect(r.growth).toBe(1.5);
+      expect(r.growth).toBe(r.headcount ? 1.7 : 1.5);
       expect(r.maxLevel).toBeGreaterThan(0);
       expect(r.founding).toBeGreaterThanOrEqual(0);
       if (r.stage) expect(r.headcount).toBe(true);
@@ -83,21 +83,24 @@ describe('Personal: Daten und Kosten', () => {
     expect(getLocation(createInitialState(0), LOC).staff).toEqual(foundingStaff());
   });
 
-  it('Kosten = base × 1.5^Anzahl × Standort-Skalierung', () => {
+  it('Kosten = base × g^Anzahl × Standort-Skalierung', () => {
     const b = getStaffDef('barista');
     expect(getStaffCost(b, 0, LOC).toNumber()).toBeCloseTo(100);
-    expect(getStaffCost(b, 3, LOC).toNumber()).toBeCloseTo(100 * 1.5 ** 3);
+    expect(getStaffCost(b, 3, LOC).toNumber()).toBeCloseTo(100 * b.growth ** 3);
     expect(getStaffCost(b, 0, 'kyoto').toNumber()).toBeCloseTo(100 * 25);
-    // Der zweite Barista (nach dem gratis ersten) kostet base × 1.5.
-    expect(getNextStaffCost(createInitialState(0), LOC, 'barista').toNumber()).toBeCloseTo(150);
+    // Der zweite Barista (nach dem gratis ersten) kostet base × g.
+    expect(getNextStaffCost(createInitialState(0), LOC, 'barista').toNumber()).toBeCloseTo(
+      100 * b.growth,
+    );
   });
 
   it('Einstellen zieht Münzen ab und erhöht die Anzahl', () => {
+    const g = getStaffDef('barista').growth;
     const s = make({ coins: D(250) });
     const n = hireStaff(s, LOC, 'barista');
     expect(loc(n).staff['barista']).toBe(2);
-    expect(loc(n).coins.toNumber()).toBeCloseTo(100);
-    expect(getNextStaffCost(n, LOC, 'barista').toNumber()).toBeCloseTo(225);
+    expect(loc(n).coins.toNumber()).toBeCloseTo(250 - 100 * g);
+    expect(getNextStaffCost(n, LOC, 'barista').toNumber()).toBeCloseTo(100 * g ** 2);
   });
 
   it('gesperrt, zu teuer oder maximal → kein Kauf', () => {
@@ -131,11 +134,12 @@ describe('Service-Pipeline (GAME_DESIGN § 7.2)', () => {
     expect(productionCapacity(l, LOC)).toBeCloseTo(0.25);
     const three = loc(make({ staff: team({ barista: 3 }) }));
     expect(productionCapacity(three, LOC)).toBeCloseTo(0.75);
-    // Kaffeemaschine dazu: 45 % der Gäste × 3 s mehr Arbeit je Gast.
+    // Kaffeemaschine dazu: ihr Anteil der Gäste × 3 s mehr Arbeit je Gast.
     const coffee = loc(
       make({ stations: { ...l.stations, coffeeMachine: { level: 1, unlocked: true } } }),
     );
-    expect(productionCapacity(coffee, LOC)).toBeCloseTo(1 / (4 + 0.45 * 3));
+    const attach = getStationDef('coffeeMachine').attachRate;
+    expect(productionCapacity(coffee, LOC)).toBeCloseTo(1 / (4 + attach * 3));
   });
 
   it('Ausgabe: Bedienungen × Tempo / Ø Servicezeit (Übergabe und Tischservice gemischt)', () => {
@@ -157,7 +161,10 @@ describe('Service-Pipeline (GAME_DESIGN § 7.2)', () => {
     expect(b.bottleneck).toBe('production');
     const w = computeLocationRates(busy({ cashier: 10, barista: 10, waiter: 1 }), LOC);
     expect(w.bottleneck).toBe('service');
-    const quiet = computeLocationRates(make({ staff: team({ cashier: 5, barista: 5, waiter: 5 }) }), LOC);
+    const quiet = computeLocationRates(
+      make({ staff: team({ cashier: 5, barista: 5, waiter: 5 }) }),
+      LOC,
+    );
     expect(quiet.bottleneck).toBe('demand');
     expect(quiet.served).toBeCloseTo(quiet.spawnRate);
   });
@@ -175,10 +182,13 @@ describe('Service-Pipeline (GAME_DESIGN § 7.2)', () => {
 
   it('eine Kraft an einer anderen Stufe bringt nichts, wenn die Nachfrage begrenzt', () => {
     const s = make({ staff: team({ cashier: 5, barista: 5, waiter: 5 }) });
-    const more = withLocation(s, LOC, { ...loc(s), staff: team({ cashier: 6, barista: 5, waiter: 5 }) });
-    expect(computeLocationRates(more, LOC).incomePerSec.eq(computeLocationRates(s, LOC).incomePerSec)).toBe(
-      true,
-    );
+    const more = withLocation(s, LOC, {
+      ...loc(s),
+      staff: team({ cashier: 6, barista: 5, waiter: 5 }),
+    });
+    expect(
+      computeLocationRates(more, LOC).incomePerSec.eq(computeLocationRates(s, LOC).incomePerSec),
+    ).toBe(true);
   });
 
   it('ohne Personal an einer Stufe steht die Pipeline', () => {
@@ -235,7 +245,9 @@ describe('Sauberkeit (GAME_DESIGN § 7.3, Phase 2)', () => {
     expect(cleanlinessEquilibrium(two, 0)).toBeGreaterThan(cleanlinessEquilibrium(one, 0));
     // Viele Gäste machen mehr Dreck als eine Putzkraft schafft.
     expect(cleanlinessEquilibrium(one, 5)).toBe(0);
-    expect(cleanlinessEquilibrium(loc(make({ staff: team({ cleaner: 20 }) })), 5)).toBeGreaterThan(0);
+    expect(cleanlinessEquilibrium(loc(make({ staff: team({ cleaner: 20 }) })), 5)).toBeGreaterThan(
+      0,
+    );
   });
 
   it('advanceCleanliness löst die Gleichung exakt: ein langer Schritt = viele kurze', () => {
@@ -357,14 +369,15 @@ describe('Personal-Vorschau', () => {
     const dirty = make({ cleanliness: 30 });
     const cleaner = previewStaffHire(dirty, LOC, 'cleaner');
     const served = computeLocationRates(dirty, LOC).served;
-    const eq = cleanlinessEquilibrium(
-      { ...loc(dirty), staff: team({ cleaner: 1 }) },
-      served,
-    );
+    const eq = cleanlinessEquilibrium({ ...loc(dirty), staff: team({ cleaner: 1 }) }, served);
     // Ohne Putzkraft geht es langfristig auf 0; mit einer auf das Gleichgewicht.
     expect(cleaner.satisfactionDelta).toBeCloseTo(BALANCE.satisfaction.cleanlinessWeight * eq, 6);
     // Eine Kraft an einer Stufe, die nicht bremst, bringt kein Einkommen.
-    const idle = previewStaffHire(make({ staff: team({ cashier: 5, barista: 5, waiter: 5 }) }), LOC, 'cashier');
+    const idle = previewStaffHire(
+      make({ staff: team({ cashier: 5, barista: 5, waiter: 5 }) }),
+      LOC,
+      'cashier',
+    );
     expect(idle.incomeDelta.toNumber()).toBe(0);
   });
 });

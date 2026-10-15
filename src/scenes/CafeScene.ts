@@ -8,7 +8,7 @@ import {
   type GridPos,
   type StationPlacement,
 } from '@data/layouts';
-import { STATIONS, CHECKOUT_ID, getStationDef } from '@data/stations';
+import { STATIONS, REGISTER_ID, getStationDef } from '@data/stations';
 import { SCENE_FX, stationLookTier } from '@data/art';
 import { DAY_CYCLE, UI_THEME } from '@data/ui';
 import { getLocation, type GameState } from '@core/GameState';
@@ -566,7 +566,7 @@ export class CafeScene extends Phaser.Scene {
 
   /** Warteschlangen-Tafel über der Kasse: dunkle Tafel, rote LED-Zahl (UI_STYLE § 3.10). */
   private createBoard(): void {
-    const p = this.layout.stations.find((s) => s.stationId === CHECKOUT_ID);
+    const p = this.layout.stations.find((s) => s.stationId === REGISTER_ID);
     if (!p) return;
     const w = this.world(p.tile);
     const x = w.x;
@@ -589,7 +589,7 @@ export class CafeScene extends Phaser.Scene {
 
   private refreshBoard(): void {
     if (!this.board) return;
-    const checkout = this.stations.find((s) => s.id === CHECKOUT_ID);
+    const checkout = this.stations.find((s) => s.id === REGISTER_ID);
     const show = (checkout?.shownLevel ?? 0) > 0;
     this.board.bg.setVisible(show);
     this.board.text.setVisible(show);

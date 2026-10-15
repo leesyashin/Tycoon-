@@ -7,9 +7,10 @@ import {
   buyStation,
   collectModifiers,
   getBulkCost,
-  getCheckoutThroughput,
   getNextAmbienceCost,
   getStationPrice,
+  getStationSpeed,
+  getStationWorkSeconds,
   isAmbienceMaxed,
   isAmbienceUnlocked,
   isStationUnlocked,
@@ -18,15 +19,26 @@ import {
   resolveAmount,
   type BulkAmount,
 } from '@core/economy';
-import { CHECKOUT_ID, STATIONS, getStationDef } from '@data/stations';
+import { attachRate, customerTypeShares, type StageId } from '@core/customers';
+import { getStaffLevel } from '@core/staff';
+import { STATIONS, getStationDef, type StationArea } from '@data/stations';
 import { AMBIENCE, getAmbienceDef } from '@data/ambience';
 import { stationLookTier } from '@data/art';
+import { BALANCE } from '@data/balance';
 import { h, on, setDisabled, setText } from './dom';
-import { fmt } from './format';
+import { fmt, fmtSmall } from './format';
 import { icon } from './icons';
 import type { PanelContent } from './panel';
-import { lockedReason, productName, stationName } from './labels';
+import { areaName, lockedReason, productName, roleName, stageName, stationName } from './labels';
+import { stageLoadPct } from './pipeline';
 import { spriteIconUrl } from './sprites';
+
+/** Stufe der Pipeline, an der ein Theken-Bereich arbeitet. */
+const AREA_STAGE: Record<StationArea, StageId> = {
+  order: 'order',
+  bar: 'production',
+  service: 'service',
+};
 
 const AMOUNTS: { amount: BulkAmount; key: string }[] = [
   { amount: 1, key: 'ui.buy.x1' },
@@ -175,7 +187,10 @@ function chipsFor(): { el: HTMLElement; set(a: string, b: string): void } {
   };
 }
 
-/** Stations-Panel (GAME_DESIGN § 16.2, UI_STYLE § 3.8): Detailkarte, Kauf ×1/×10/×100/Max, Icon-Grid. */
+/**
+ * Stations-Panel (GAME_DESIGN § 16.2, UI_STYLE § 3.8): Detailkarte der Ausstattung (Bereich, Produkt, Preis,
+ * Arbeitszeit, Einkommen, Auslastung der Stufe), Kauf ×1/×10/×100/Max, Icon-Grid.
+ */
 export function createStationPanel(
   store: Store,
   stationId: string,
@@ -183,21 +198,28 @@ export function createStationPanel(
 ): PanelContent {
   const def = getStationDef(stationId);
   const locId = store.getState().activeLocationId;
-  const isCheckout = stationId === CHECKOUT_ID;
+  const isLine = def.area === 'bar';
+  const stage = AREA_STAGE[def.area];
   const ref: ObjectRef = { kind: 'station', id: stationId };
 
   const level = h('span', { class: 'station-level', 'data-testid': 'station-level' });
-  const stat = (label: string): [HTMLElement, HTMLElement] => {
-    const value = h('dd');
+  const stat = (label: string, testId?: string): [HTMLElement, HTMLElement] => {
+    const value = h('dd', testId ? { 'data-testid': testId } : {});
     return [h('div', { class: 'stat' }, h('dt', { text: label }), value), value];
   };
   const [priceRow, price] = stat(t('station.panel.price'));
-  const [incomeRow, income] = stat(
-    t(isCheckout ? 'station.panel.throughput' : 'station.panel.income'),
+  const [incomeRow, income] = stat(t('station.panel.income'));
+  const [workRow, work] = stat(
+    t(def.area === 'order' ? 'station.panel.orderTime' : 'station.panel.workTime'),
+    'station-work',
   );
-  const [customersRow, customers] = stat(t('station.panel.customers'));
+  const [speedRow, speed] = stat(t('station.panel.speed'));
+  const [capRow, cap] = stat(t('station.panel.capacity'), 'station-capacity');
+  const load = h('p', { class: 'muted', 'data-testid': 'station-load' });
   const milestone = h('p', { class: 'muted' });
   const product = h('p', { class: 'muted', 'data-testid': 'station-product' });
+  const attach = h('p', { class: 'muted', 'data-testid': 'station-attach' });
+  const staff = h('p', { class: 'muted', 'data-testid': 'station-staff' });
   const locked = h('p', { class: 'locked-hint' });
   const img = h('img', { class: 'station-card-icon', alt: '', width: 64, height: 64 });
 
@@ -220,24 +242,31 @@ export function createStationPanel(
     'div',
     { class: 'card station-card' },
     img,
-    h('div', {}, h('h3', { text: stationName(locId, stationId) }), level),
+    h(
+      'div',
+      {},
+      h('h3', { text: stationName(locId, stationId) }),
+      h('span', { class: 'station-area', text: areaName(def.area) }),
+      level,
+    ),
     h(
       'div',
       { class: 'station-extra' },
       h('p', { class: 'muted', text: t(`station.${locId}.${stationId}.desc`) }),
-      isCheckout ? null : product,
+      isLine ? product : null,
+      isLine ? attach : null,
       h(
         'dl',
         { class: 'stats' },
-        isCheckout ? null : priceRow,
-        incomeRow,
-        isCheckout ? null : customersRow,
+        isLine ? priceRow : null,
+        isLine ? incomeRow : null,
+        isLine || def.area === 'order' ? workRow : null,
+        def.area === 'service' ? speedRow : null,
+        capRow,
       ),
+      load,
       milestone,
-      h('p', {
-        class: 'muted',
-        text: t('station.panel.staff', { role: t(`staff.${def.staffRole}.name`) }),
-      }),
+      staff,
       locked,
     ),
   );
@@ -257,26 +286,48 @@ export function createStationPanel(
     if (img.getAttribute('src') !== src) img.src = src;
     setText(level, t('station.panel.level', { level: lvl }));
     const rates = computeLocationRates(s, locId);
-    if (isCheckout) {
-      const mods = collectModifiers(s);
-      const th = getCheckoutThroughput(lvl, loc.staff['cashier'] ?? 0, mods.speedMult);
-      const perSec = t('station.panel.perSec', { amount: fmt(s, th) });
-      setText(income, perSec);
-      chips.set(perSec, '');
-    } else {
-      const priceMult = collectModifiers(s, locId).priceMult;
-      setText(price, fmt(s, getStationPrice(def, lvl, locId).mul(priceMult)));
+    const mods = collectModifiers(s, locId);
+    const stageCap = t('pipeline.capacity', { amount: fmtSmall(rates.stages[stage], 2) });
+    setText(cap, stageCap);
+    setText(
+      load,
+      t('station.panel.stageLoad', {
+        stage: stageName(stage),
+        pct: fmtSmall(stageLoadPct(rates, stage), 0),
+      }),
+    );
+    if (isLine) {
+      setText(price, fmt(s, getStationPrice(def, lvl, locId).mul(mods.priceMult)));
       setText(
         product,
         t('station.panel.product', { product: productName(stationId, loc.quality) }),
       );
+      setText(
+        attach,
+        t('station.panel.attach', {
+          pct: fmtSmall(100 * attachRate(def, customerTypeShares(locId).tourist), 0),
+        }),
+      );
       const inc = t('station.panel.perSec', {
         amount: fmt(s, rates.perStationIncome[stationId] ?? 0),
       });
-      const cust = t('station.panel.perSec', { amount: fmt(s, rates.perStation[stationId] ?? 0) });
       setText(income, inc);
-      setText(customers, cust);
-      chips.set(inc, '');
+      const sec = getStationWorkSeconds(def, lvl);
+      setText(
+        work,
+        Number.isFinite(sec) ? t('station.panel.seconds', { sec: fmtSmall(sec, 1) }) : '–',
+      );
+      chips.set(inc, stageCap);
+    } else if (def.area === 'order') {
+      const sec = BALANCE.order.orderTime / getStationSpeed(def, lvl);
+      setText(work, t('station.panel.seconds', { sec: fmtSmall(sec, 1) }));
+      chips.set(stageCap, '');
+    } else {
+      setText(
+        speed,
+        t('station.panel.speedValue', { mult: fmtSmall(getStationSpeed(def, lvl), 2) }),
+      );
+      chips.set(stageCap, '');
     }
     const next = nextMilestone(lvl);
     const isPrice = milestoneCounts(next).price > milestoneCounts(lvl).price;
@@ -284,7 +335,16 @@ export function createStationPanel(
       milestone,
       t('station.panel.nextMilestone', {
         level: next,
-        effect: t(isPrice ? 'station.panel.milestone.price' : 'station.panel.milestone.speed'),
+        effect: t(
+          isPrice && isLine ? 'station.panel.milestone.price' : 'station.panel.milestone.speed',
+        ),
+      }),
+    );
+    setText(
+      staff,
+      t('station.panel.staffCount', {
+        count: getStaffLevel(loc, def.staffRole),
+        role: roleName(def.staffRole),
       }),
     );
     setText(locked, unlocked ? '' : lockedReason(s, locId, stationId, def.unlockCafeLevel));

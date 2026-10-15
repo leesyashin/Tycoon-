@@ -121,7 +121,10 @@ describe('Preis und Tempo', () => {
 describe('Café-Level und Käufe', () => {
   it('Café-Level aus Σ Stations-Level über die Stufen-Tabelle, max 50', () => {
     const loc = getLocation(fresh(), 'berlin');
-    const at = (level: number) => ({ ...loc, stations: { matchaStation: { level, unlocked: true } } });
+    const at = (level: number) => ({
+      ...loc,
+      stations: { matchaStation: { level, unlocked: true } },
+    });
     const { steps, stepAfter } = BALANCE.cafeLevel;
     expect(computeCafeLevel(loc)).toBe(1);
     expect(cafeLevelThreshold(1)).toBe(0);
@@ -137,7 +140,10 @@ describe('Café-Level und Käufe', () => {
   });
   it('Fortschritt zum nächsten Café-Level', () => {
     const loc = getLocation(fresh(), 'berlin');
-    const at = (level: number) => ({ ...loc, stations: { matchaStation: { level, unlocked: true } } });
+    const at = (level: number) => ({
+      ...loc,
+      stations: { matchaStation: { level, unlocked: true } },
+    });
     const t3 = cafeLevelThreshold(3);
     expect(cafeLevelProgress(at(t3 + 4))).toEqual({
       done: 4,
