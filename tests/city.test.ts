@@ -282,6 +282,16 @@ describe('Stadtviertel: Ausrichtung der Fahrzeuge und Ampeln', () => {
     }
   });
 
+  it('Briefkästen am Bordstein zeigen den Einwurf quer zur Straße, zum Gehweg hin', () => {
+    const boxes = CITY.props.filter((p) => p.kind === 'mailbox');
+    expect(boxes.length).toBeGreaterThan(0);
+    for (const p of boxes) {
+      const [dx, dy] = propFacing(p) ?? [0, 0];
+      const road = groundAt(p.x - dx, p.y - dy) === 'road';
+      expect(road, `${label(p)} Rücken zur Fahrbahn`).toBe(true);
+    }
+  });
+
   it('Fußgängerampeln zeigen quer über ihre Fahrbahn zu den Wartenden gegenüber', () => {
     const lights = CITY.props.filter((p) => p.kind === 'pedLight');
     expect(lights.length).toBeGreaterThan(0);

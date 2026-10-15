@@ -324,6 +324,8 @@ export function propFacing(p: PropDef): readonly [number, number] | null {
     case 'foodtruck':
       return across(1);
     case 'pedLight':
+    case 'mailbox':
+      // nach +v gezeichnet; quer gestellt nur, wenn gespiegelt
       return FLIP_ON_V.includes(p.kind) ? across(1) : [0, 1];
     case 'trafficLight':
       return along(1);
@@ -594,7 +596,7 @@ function streetProps(ground: readonly GroundArea[], buildings: readonly Building
     }
     if ((s + 60) % 17 === 9) {
       out.push({ kind: 'scooters', x: s, y: far - 0.3, axis: 'u' });
-      out.push({ kind: 'mailbox', x: far - 0.4, y: s - 1.5 });
+      out.push({ kind: 'mailbox', x: far - 0.4, y: s - 1.5, axis: 'v' });
     }
     if ((s + 60) % 23 === 11) {
       out.push({ kind: 'litfass', x: s, y: far - 0.15 });
@@ -1284,6 +1286,7 @@ export function propFrame(p: PropDef): string {
 export const FLIP_ON_V: readonly PropKind[] = [
   // Fußgängerampel: Lichter nach +v; an der Fahrbahn entlang y müssen sie nach +x über die Straße zeigen
   'pedLight',
+  'mailbox',
   'railing',
   'parked',
   'bikes',
