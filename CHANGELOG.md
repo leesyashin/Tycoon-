@@ -4,6 +4,18 @@ Alle nennenswerten Änderungen an Matcha Café Empire. Format angelehnt an [Keep
 
 ## [Unreleased]
 
+### Café mit Leben, Ampeln und Endausbau (2026-10-15)
+
+Vorgabe Vincent: Das Personal soll an den Geräten immer etwas tun wie kleine Arbeiter, die Kasse umgedreht sein,
+die Fortschrittskreise sauber, Ampeln auf die Straßen, mehr Leben und am Ende ein richtig edler, detailreicher Laden.
+
+- Baristas arbeiten sichtbar an ihrem Gerät, bringen das Fertige zur Ausgabe und stellen es ab; dort stehen je nach Gerät Matcha-Latte, Kaffee, Iced Matcha, Croissant, Kuchen oder Chawan, bis eine Bedienung es mitnimmt. Die Geräte dampfen, frieren, glühen, stauben Matcha-Pulver oder funkeln, solange jemand daran arbeitet.
+- Die Kasse ist umgedreht: Bildschirm und Tasten zeigen zum Verkäufer, der tippt, solange jemand bestellt; nach jeder Bestellung springt die Kassenlade auf. Zum Gast zeigen Kundendisplay, Kartenterminal und Trinkgeldglas.
+- Saubere Fortschrittsringe: weiße Scheibe, helle Spur, grüner Bogen mit runden Enden – über Bestellendem, Baristas und wischenden Putzkräften.
+- Die Schlange bleibt aufgeräumt (höchstens sechs Figuren, der Rest auf der Tafel); Putzkräfte wischen den Boden, wenn kein Tisch dreckig ist; Musiknoten über der Anlage, Dampf über den Tassen.
+- Autoampeln mit Rot, Rot-Gelb, Grün und Gelb an der Kreuzung am Café; Autos halten auch bei Gelb. Radfahrer im Verkehr, Tauben, die auffliegen, wenn jemand kommt, sprudelnder Brunnen im Park.
+- Endausbau nach Deko-Level: Terrazzo mit Messing-Fugen, später heller Marmor mit Einlegern, Riffelpaneele mit Messingleiste, Blumenkästen auf der Fassade, Opalglas-Leuchten, Olivenbäume und ein Kronleuchter.
+
 ### Kiez-Café und Stadtviertel, Runde 2 (2026-10-15)
 
 - Das Café ist kein Viereck mehr: verglaster Wintergarten mit Holzboden vorn links. Draußen kommen mit jeder Terrassen-Stufe mehr Tische mit Sonnenschirmen dazu, und Gäste sitzen dort.
