@@ -9,7 +9,14 @@ import {
   type StationPlacement,
 } from '@data/layouts';
 import { STATIONS, CHECKOUT_ID, getStationDef } from '@data/stations';
-import { SCENE_FX, stationLookTier } from '@data/art';
+import {
+  CHAR_FRAMES,
+  CHAR_WALK,
+  CUSTOMER_LOOKS,
+  SCENE_FX,
+  staffLookFor,
+  stationLookTier,
+} from '@data/art';
 import { DAY_CYCLE, UI_THEME } from '@data/ui';
 import { getLocation, type GameState } from '@core/GameState';
 import type { Store } from '@core/store';
@@ -25,7 +32,7 @@ import { getLang, t } from '@i18n/index';
 import { CustomerCrowd, type Agent } from './agents/crowd';
 import { CameraControls } from './cameraControls';
 import { TILE_H, TILE_W, toGrid, toScreen } from './iso/iso';
-import { ART_SCALE, ATLAS, CHAR_FOOT_ORIGIN_Y, FRAME, atlasUrls } from './art';
+import { ART_SCALE, ATLAS, CHAR_FOOT_ORIGIN_Y, CHAR_OVERLAY_Y, FRAME, atlasUrls } from './art';
 import { REGISTRY, UI_EVENTS, getStore } from './registry';
 
 const WALL_H = 64;
@@ -37,7 +44,6 @@ const RATES_REFRESH_MS = 200;
 const POPUP_POOL = 24;
 const EMOTE_POOL = 8;
 const LABEL_MAX_SCALE = 2.2;
-const WALK_FRAME_SEC = 0.18;
 /** HUD-Münzsymbol in CSS-Pixeln vom linken oberen Rand (Ziel des Münz-Flugs). */
 const HUD_COIN = { x: 34, y: 34 };
 const DEPTH = { wall: -2000, floor: -1000, label: 10_000, overlay: 20_000 } as const;
@@ -66,6 +72,12 @@ const reducedMotion = (): boolean => window.matchMedia('(prefers-reduced-motion:
 function facing(dx: number, dy: number): { dir: 'front' | 'back'; flip: boolean } {
   if (Math.abs(dx) > Math.abs(dy)) return { dir: dx > 0 ? 'front' : 'back', flip: true };
   return { dir: dy >= 0 ? 'front' : 'back', flip: false };
+}
+
+/** Frame im Lauf-Zyklus nach `sec` Sekunden Gehen. */
+function walkFrame(sec: number): number {
+  const c = CHAR_WALK.cycle;
+  return c[Math.floor(sec / CHAR_WALK.stepSec) % c.length] ?? CHAR_FRAMES.stand;
 }
 
 export class CafeScene extends Phaser.Scene {
@@ -163,7 +175,7 @@ export class CafeScene extends Phaser.Scene {
     this.createStations();
     this.createAmbience(state);
     this.agentSprites = this.crowd.agents.map(() =>
-      this.sprite(0, 0, FRAME.customer('student', 'front', 0))
+      this.sprite(0, 0, FRAME.customer('student', CUSTOMER_LOOKS.student[0] ?? '', 'front', 0))
         .setOrigin(0.5, CHAR_FOOT_ORIGIN_Y)
         .setVisible(false),
     );
@@ -684,15 +696,19 @@ export class CafeScene extends Phaser.Scene {
 
   /** Personal-Figuren (kosmetisch): je Station mit eingestellter Rolle eine Figur daneben, plus Reinigungskraft. */
   private createStaff(): void {
+    const perRole = new Map<string, number>();
     for (const p of this.layout.stations) {
       const spot = staffSpot(p);
       const w = this.world(spot);
       const role = getStationDef(p.stationId).staffRole;
+      // Mehrere Stationen derselben Rolle zeigen verschiedene Figuren (nur Optik).
+      const n = perRole.get(role) ?? 0;
+      perRole.set(role, n + 1);
       const look = facing(p.queueDir.x, p.queueDir.y);
       const sprite = this.sprite(
         w.x,
         w.y + TILE_H * 0.5,
-        FRAME.staff(role, look.dir === 'front' ? 'front' : 'back'),
+        FRAME.staff(role, staffLookFor(role, n), look.dir === 'front' ? 'front' : 'back'),
       )
         .setOrigin(0.5, CHAR_FOOT_ORIGIN_Y)
         .setFlipX(look.flip)
@@ -701,7 +717,7 @@ export class CafeScene extends Phaser.Scene {
       this.staffViews.push({ stationId: p.stationId, sprite });
     }
     const start = this.world({ x: CLEANER_AREA.min, y: CLEANER_AREA.min });
-    this.cleaner = this.sprite(start.x, start.y, FRAME.staff('cleaner'))
+    this.cleaner = this.sprite(start.x, start.y, FRAME.staff('cleaner', staffLookFor('cleaner', 0)))
       .setOrigin(0.5, CHAR_FOOT_ORIGIN_Y)
       .setVisible(false);
   }
@@ -730,8 +746,9 @@ export class CafeScene extends Phaser.Scene {
     const y = p.y + TILE_H / 2;
     const from = toGrid(this.cleaner.x, this.cleaner.y - TILE_H / 2);
     const look = facing(gx - from.x, gy - from.y);
+    const cleanerLook = staffLookFor('cleaner', 0);
     this.cleaner.setFlipX(look.flip);
-    let frame = 0;
+    let frame: number = CHAR_FRAMES.stand;
     this.tweens.add({
       targets: this.cleaner,
       x: p.x,
@@ -739,13 +756,14 @@ export class CafeScene extends Phaser.Scene {
       duration: CLEANER_AREA.moveEverySec * 500,
       onUpdate: (tw) => {
         this.cleaner.setDepth(isoDepth(gx, gy, 6));
-        const f = Math.floor((tw.elapsed / 1000 / WALK_FRAME_SEC) % 2);
+        const f = walkFrame(tw.elapsed / 1000);
         if (f !== frame) {
           frame = f;
-          this.cleaner.setFrame(FRAME.staff('cleaner', look.dir, f));
+          this.cleaner.setFrame(FRAME.staff('cleaner', cleanerLook, look.dir, f));
         }
       },
-      onComplete: () => this.cleaner.setFrame(FRAME.staff('cleaner', look.dir, 0)),
+      onComplete: () =>
+        this.cleaner.setFrame(FRAME.staff('cleaner', cleanerLook, look.dir, CHAR_FRAMES.stand)),
     });
   }
 
@@ -779,9 +797,10 @@ export class CafeScene extends Phaser.Scene {
         const st = this.layout.stations.find((q) => q.stationId === a.stationId);
         look = st ? facing(st.tile.x - a.x, st.tile.y - a.y) : facing(0, 1);
       }
-      const walkFrame =
-        moving && !still ? Math.floor(this.walkClock / WALK_FRAME_SEC + a.id) % 2 : 0;
-      const frame = FRAME.customer(a.type, look.dir, walkFrame);
+      // Stehend Frame 0, laufend im Zyklus versetzt je Agent (reduzierte Bewegung: immer Stehen).
+      const frameNo =
+        moving && !still ? walkFrame(this.walkClock + a.id * CHAR_WALK.stepSec) : CHAR_FRAMES.stand;
+      const frame = FRAME.customer(a.type, a.look, look.dir, frameNo);
       if (s.frame.name !== frame) s.setFrame(frame);
       s.setFlipX(look.flip)
         .setVisible(true)
@@ -792,7 +811,7 @@ export class CafeScene extends Phaser.Scene {
       m.setVisible(queueing);
       if (queueing) {
         if (m.frame.name !== moodFrame) m.setFrame(moodFrame);
-        m.setPosition(x, y - 24).setDepth(DEPTH.label - 1);
+        m.setPosition(x, y - CHAR_OVERLAY_Y).setDepth(DEPTH.label - 1);
       }
     }
   }
@@ -806,7 +825,7 @@ export class CafeScene extends Phaser.Scene {
       if (!a.active || a.phase !== 'serve' || a.serveTotal <= 0) continue;
       const p = toScreen(a.x, a.y);
       const x = p.x;
-      const y = p.y + TILE_H / 2 - 28;
+      const y = p.y + TILE_H / 2 - CHAR_OVERLAY_Y - r - 1;
       const frac = Phaser.Math.Clamp(1 - a.timer / a.serveTotal, 0, 1);
       g.fillStyle(UI_THEME.navy900, 0.6);
       g.fillCircle(x, y, r);
@@ -881,8 +900,9 @@ export class CafeScene extends Phaser.Scene {
     const kinds = ['heart', 'note', 'star'] as const;
     const kind = kinds[Math.floor(Math.random() * kinds.length)] ?? 'heart';
     const p = toScreen(gx, gy);
+    const top = p.y + TILE_H / 2 - CHAR_OVERLAY_Y;
     e.setFrame(FRAME.emote(kind))
-      .setPosition(p.x + 8, p.y - 18)
+      .setPosition(p.x + 8, top)
       .setAlpha(1)
       .setVisible(true);
     if (reducedMotion()) {
@@ -891,7 +911,7 @@ export class CafeScene extends Phaser.Scene {
     }
     this.tweens.add({
       targets: e,
-      y: p.y - 30,
+      y: top - 12,
       alpha: { from: 1, to: 0 },
       duration: SCENE_FX.emoteMs,
       ease: 'Quad.In',

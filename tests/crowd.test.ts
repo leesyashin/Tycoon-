@@ -6,7 +6,8 @@ import { createInitialState, getLocation, type GameState } from '@core/GameState
 import { computeLocationRates, customerTypeShares, pickCustomerType } from '@core/customers';
 import { createStore } from '@core/store';
 import { serialize } from '@core/save';
-import { CustomerCrowd, serveDuration } from '@scenes/agents/crowd';
+import { CustomerCrowd, pickLook, serveDuration } from '@scenes/agents/crowd';
+import { CUSTOMER_LOOKS } from '@data/art';
 
 /** Deterministischer Zufall für reproduzierbare Tests. */
 function lcg(seed = 1): () => number {
@@ -63,6 +64,21 @@ describe('Kundentypen', () => {
 });
 
 describe('Kunden-Agenten (kosmetisch)', () => {
+  it('jede Figur trägt eine Variante ihres Typs, gemischt über die Varianten', () => {
+    expect(pickLook('student', 0)).toBe(CUSTOMER_LOOKS.student[0]);
+    expect(pickLook('student', 0.999999)).toBe(CUSTOMER_LOOKS.student.at(-1));
+    expect(pickLook('critic', 1)).toBe(CUSTOMER_LOOKS.critic.at(-1));
+    expect(pickLook('critic', -1)).toBe(CUSTOMER_LOOKS.critic[0]);
+    const crowd = new CustomerCrowd(getLayout('berlin'), 'berlin', lcg(5));
+    run(crowd, { matchaBar: 3, togoWindow: 3 }, 20);
+    const seen = new Set<string>();
+    for (const a of crowd.agents) {
+      if (!a.active) continue;
+      expect(CUSTOMER_LOOKS[a.type]).toContain(a.look);
+      seen.add(a.look);
+    }
+    expect(seen.size).toBeGreaterThan(3);
+  });
   it('bei 1 Kunde/s sind Kunden unterwegs und kaufen', () => {
     const crowd = new CustomerCrowd(getLayout('berlin'), 'berlin', lcg());
     const purchases = run(crowd, { matchaBar: 1 }, 30);
