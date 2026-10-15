@@ -71,6 +71,11 @@ export interface CafeLayout {
   gridSize: number;
   terrace: TerraceArea[];
   entrance: GridPos;
+  /**
+   * Gehweg vor dem Eingang (Stadtviertel, `data/city.ts`): Gäste kommen den Gehweg entlang, biegen hier zur Tür
+   * ab und gehen nachher zur Seite weg. `spread` = wie weit links/rechts sie auftauchen (Kacheln).
+   */
+  street: { curb: GridPos; spreadMin: number; spreadMax: number };
   /** Knoten, an dem der Eingangsgang den Gastraum erreicht. */
   junction: GridPos;
   /** Zeilen, auf denen gelaufen wird (zwischen den Tischreihen). */
@@ -175,6 +180,7 @@ const DEFAULT_LAYOUT: CafeLayout = {
     { minLevel: 3, from: { x: 12, y: 12 }, to: { x: 13, y: 13 } },
   ],
   entrance: ENTRANCE,
+  street: { curb: { x: AISLE_X, y: 13.6 }, spreadMin: 2, spreadMax: 6 },
   junction: JUNCTION,
   walkRows: { top: 4, bottom: 10 },
   counter: [0, 2, 3, 4, 5, 6, 7, 8, 9].map((x) => ({ x, y: COUNTER_Y })),

@@ -38,7 +38,8 @@ import { Decimal } from '@core/math/bignum';
 import { getLang, t } from '@i18n/index';
 import { CustomerCrowd, type Agent } from './agents/crowd';
 import { CameraControls } from './cameraControls';
-import { TILE_H, TILE_W, toGrid, toScreen } from './iso/iso';
+import { CityView } from './city/CityView';
+import { TILE_H, TILE_W, isoDepth, toGrid, toScreen } from './iso/iso';
 import { ART_SCALE, ATLAS, CHAR_FOOT_ORIGIN_Y, CHAR_OVERLAY_Y, FRAME, atlasUrls } from './art';
 import { REGISTRY, UI_EVENTS, getStore } from './registry';
 
@@ -102,9 +103,6 @@ interface StaffFigure {
 /** Größe der Farbfilter (Event, Nacht): deckt jeden Kamera-Ausschnitt ab, egal wie weit gezoomt. */
 const OVERLAY_SIZE = 20_000;
 
-/** Tiefe nach Grid-Position; Feinsortierung innerhalb einer Diagonale über `bias`. */
-const isoDepth = (x: number, y: number, bias = 0): number => (x + y) * 10 + bias;
-
 // Einmal abfragen, `matches` folgt Änderungen live (vorher lief `matchMedia` in jedem Frame).
 const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
 const reducedMotion = (): boolean => motionQuery.matches;
@@ -128,6 +126,7 @@ export class CafeScene extends Phaser.Scene {
   /** Reset-Zähler des gezeigten Standorts; ändert er sich, wird der Raum neu aufgebaut. */
   private prestigeCount = 0;
   private crowd!: CustomerCrowd;
+  private city!: CityView;
   private controls!: CameraControls;
   private stations: StationView[] = [];
   private tables: TableView[] = [];
@@ -225,6 +224,14 @@ export class CafeScene extends Phaser.Scene {
     this.layout = getLayout(this.locationId);
     this.crowd = new CustomerCrowd(this.layout, this.locationId);
 
+    // Stadtviertel zuerst: liegt komplett hinter dem Café (eigene, negative Tiefen).
+    const n = this.layout.gridSize;
+    this.city = new CityView(
+      this,
+      this.locationId,
+      { x0: 0, y0: 0, x1: n, y1: n },
+      DEPTH.overlay - 1,
+    );
     this.drawRoom();
     this.createCounter();
     this.createStations();
@@ -283,7 +290,8 @@ export class CafeScene extends Phaser.Scene {
     this.createEventFx();
     this.createNight();
     this.createSteam();
-    this.controls = new CameraControls(this, this.room);
+    // Schwenken über das Viertel; die Startansicht passt weiter auf den Raum (`fitCamera`).
+    this.controls = new CameraControls(this, CityView.panBounds());
     this.fitCamera();
     const onResize = (): void => this.fitCamera();
     this.scale.on('resize', onResize);
@@ -320,6 +328,7 @@ export class CafeScene extends Phaser.Scene {
     }
     const dt = deltaMs / 1000;
     this.walkClock += dt;
+    this.city.update(dt, reducedMotion());
     this.scaleLabels();
     this.ratesAge += deltaMs;
     if (!this.rates || this.ratesAge >= RATES_REFRESH_MS) {
@@ -440,11 +449,11 @@ export class CafeScene extends Phaser.Scene {
     for (let i = 0; i < n; i++) {
       const window = i % WINDOW_EVERY === 1;
       const pu = toScreen(i, 0);
-      this.sprite(pu.x, pu.y - WALL_H - 4, window ? 'wall-u-window' : 'wall-u', theme)
+      this.sprite(pu.x, pu.y - WALL_H - 4, window ? 'wall-u-deco' : 'wall-u', theme)
         .setOrigin(0, 0)
         .setDepth(DEPTH.wall);
       const pv = toScreen(0, i);
-      this.sprite(pv.x - TILE_W / 2, pv.y - WALL_H - 4, window ? 'wall-v-window' : 'wall-v', theme)
+      this.sprite(pv.x - TILE_W / 2, pv.y - WALL_H - 4, window ? 'wall-v-deco' : 'wall-v', theme)
         .setOrigin(0, 0)
         .setDepth(DEPTH.wall);
       if (window) {
@@ -928,6 +937,7 @@ export class CafeScene extends Phaser.Scene {
     this.nightTint.setAlpha(night * DAY_CYCLE.nightAlpha);
     this.nightTint.setVisible(night > 0);
     for (const g of this.glows) g.setAlpha(night * 0.8);
+    this.city.setNight(night);
   }
 
   /**

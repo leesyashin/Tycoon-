@@ -31,7 +31,7 @@ export function nextStationLookLevel(level: number): number | null {
   return STATION_LOOK_LEVELS.find((l) => l > Math.max(level, 1)) ?? null;
 }
 
-/** Die Gästetheke wird mit dem Café-Level edler (Kiefer → … → Nachtblau/Gold), rein kosmetisch. */
+/** Die Gästetheke wird mit dem Café-Level edler (Kobalt-Lack/Edelstahl → … → Nachtblau/Gold), rein kosmetisch. */
 export const COUNTER_LOOK_CAFE_LEVELS = [1, 3, 6, 10, 15] as const;
 
 export function counterLookTier(cafeLevel: number): LookTier {

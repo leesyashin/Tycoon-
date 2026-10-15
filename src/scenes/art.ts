@@ -11,6 +11,8 @@ export const ATLAS = {
   /** Ausstattung in fünf Stufen, Thekenmodule, Tische, Ambiente (eigene Palette, eigene Textur). */
   furniture: 'furniture',
   theme: (locationId: string) => `theme-${locationId}`,
+  /** Straßen-Objekte und Fahrzeuge des Stadtviertels (alle Standorte). */
+  city: 'city',
 } as const;
 
 /** Sprites liegen in doppelter Auflösung vor. */
@@ -56,6 +58,17 @@ export const FRAME = {
   staff: (role: string, look: string, dir: 'front' | 'back' = 'front', frame = 0) =>
     `staff-${role}-${look}-${dir}-${String(frame)}`,
   mood: (id: string) => `mood-${id}`,
+  // Themen-Atlas: Fassaden-Module der Altbauten (`scripts/art/city.ts`)
+  facadeGround: (cell: string, face: 'a' | 'b') => `fac-${cell}-${face}`,
+  facadeUpper: (cell: string, color: number, face: 'a' | 'b') =>
+    `fac-${cell}-${String(color)}-${face}`,
+  cornice: (color: number, face: 'a' | 'b') => `fac-cornice-${String(color)}-${face}`,
+  /** Warme Scheiben eines erleuchteten Fensters (nachts über dem Modul). */
+  facadeLit: (cell: string, face: 'a' | 'b') => `fac-lit-${cell}-${face}`,
+  // Atlas `city`
+  car: (type: number, front: boolean) => `car-${String(type)}-${front ? 'f' : 'b'}`,
+  boat: (front: boolean) => `boat-${front ? 'f' : 'b'}`,
+  pedLight: (go: boolean) => `pedLight-${go ? 'go' : 'stop'}`,
   emote: (id: 'heart' | 'note' | 'star') => `emote-${id}`,
 } as const;
 

@@ -1,0 +1,492 @@
+{
+ "frames": {
+  "bench-u": {
+   "frame": {
+    "x": 390,
+    "y": 2,
+    "w": 128,
+    "h": 224
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 224
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 224
+   }
+  },
+  "bench-v": {
+   "frame": {
+    "x": 520,
+    "y": 2,
+    "w": 128,
+    "h": 224
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 224
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 224
+   }
+  },
+  "bikes": {
+   "frame": {
+    "x": 650,
+    "y": 2,
+    "w": 128,
+    "h": 224
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 224
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 224
+   }
+  },
+  "bin": {
+   "frame": {
+    "x": 780,
+    "y": 2,
+    "w": 128,
+    "h": 224
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 224
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 224
+   }
+  },
+  "boat-b": {
+   "frame": {
+    "x": 2,
+    "y": 340,
+    "w": 352,
+    "h": 176
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 352,
+    "h": 176
+   },
+   "sourceSize": {
+    "w": 352,
+    "h": 176
+   }
+  },
+  "boat-f": {
+   "frame": {
+    "x": 356,
+    "y": 340,
+    "w": 352,
+    "h": 176
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 352,
+    "h": 176
+   },
+   "sourceSize": {
+    "w": 352,
+    "h": 176
+   }
+  },
+  "bollard": {
+   "frame": {
+    "x": 910,
+    "y": 2,
+    "w": 128,
+    "h": 224
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 224
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 224
+   }
+  },
+  "cafeSign": {
+   "frame": {
+    "x": 1040,
+    "y": 2,
+    "w": 128,
+    "h": 224
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 224
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 224
+   }
+  },
+  "car-0-b": {
+   "frame": {
+    "x": 710,
+    "y": 340,
+    "w": 192,
+    "h": 128
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 192,
+    "h": 128
+   },
+   "sourceSize": {
+    "w": 192,
+    "h": 128
+   }
+  },
+  "car-0-f": {
+   "frame": {
+    "x": 904,
+    "y": 340,
+    "w": 192,
+    "h": 128
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 192,
+    "h": 128
+   },
+   "sourceSize": {
+    "w": 192,
+    "h": 128
+   }
+  },
+  "car-1-b": {
+   "frame": {
+    "x": 1098,
+    "y": 340,
+    "w": 192,
+    "h": 128
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 192,
+    "h": 128
+   },
+   "sourceSize": {
+    "w": 192,
+    "h": 128
+   }
+  },
+  "car-1-f": {
+   "frame": {
+    "x": 1292,
+    "y": 340,
+    "w": 192,
+    "h": 128
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 192,
+    "h": 128
+   },
+   "sourceSize": {
+    "w": 192,
+    "h": 128
+   }
+  },
+  "car-2-b": {
+   "frame": {
+    "x": 1486,
+    "y": 340,
+    "w": 192,
+    "h": 128
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 192,
+    "h": 128
+   },
+   "sourceSize": {
+    "w": 192,
+    "h": 128
+   }
+  },
+  "car-2-f": {
+   "frame": {
+    "x": 1680,
+    "y": 340,
+    "w": 192,
+    "h": 128
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 192,
+    "h": 128
+   },
+   "sourceSize": {
+    "w": 192,
+    "h": 128
+   }
+  },
+  "car-3-b": {
+   "frame": {
+    "x": 2,
+    "y": 518,
+    "w": 192,
+    "h": 128
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 192,
+    "h": 128
+   },
+   "sourceSize": {
+    "w": 192,
+    "h": 128
+   }
+  },
+  "car-3-f": {
+   "frame": {
+    "x": 196,
+    "y": 518,
+    "w": 192,
+    "h": 128
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 192,
+    "h": 128
+   },
+   "sourceSize": {
+    "w": 192,
+    "h": 128
+   }
+  },
+  "lamp": {
+   "frame": {
+    "x": 1170,
+    "y": 2,
+    "w": 128,
+    "h": 224
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 224
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 224
+   }
+  },
+  "linden": {
+   "frame": {
+    "x": 2,
+    "y": 2,
+    "w": 192,
+    "h": 336
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 192,
+    "h": 336
+   },
+   "sourceSize": {
+    "w": 192,
+    "h": 336
+   }
+  },
+  "lindenSmall": {
+   "frame": {
+    "x": 196,
+    "y": 2,
+    "w": 192,
+    "h": 336
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 192,
+    "h": 336
+   },
+   "sourceSize": {
+    "w": 192,
+    "h": 336
+   }
+  },
+  "litfass": {
+   "frame": {
+    "x": 1300,
+    "y": 2,
+    "w": 128,
+    "h": 224
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 224
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 224
+   }
+  },
+  "pedLight-go": {
+   "frame": {
+    "x": 1430,
+    "y": 2,
+    "w": 128,
+    "h": 224
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 224
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 224
+   }
+  },
+  "pedLight-stop": {
+   "frame": {
+    "x": 1560,
+    "y": 2,
+    "w": 128,
+    "h": 224
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 224
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 224
+   }
+  },
+  "planter": {
+   "frame": {
+    "x": 1690,
+    "y": 2,
+    "w": 128,
+    "h": 224
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 128,
+    "h": 224
+   },
+   "sourceSize": {
+    "w": 128,
+    "h": 224
+   }
+  },
+  "railing": {
+   "frame": {
+    "x": 390,
+    "y": 518,
+    "w": 192,
+    "h": 96
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 192,
+    "h": 96
+   },
+   "sourceSize": {
+    "w": 192,
+    "h": 96
+   }
+  }
+ },
+ "meta": {
+  "image": "city.png",
+  "size": {
+   "w": 1874,
+   "h": 648
+  },
+  "scale": "2"
+ }
+}

@@ -23,6 +23,7 @@ import {
   tableSprites,
 } from './art/equipment';
 import { characterSprites, staffPortrait } from './art/figures';
+import { citySprites, facadeSprites } from './art/city';
 import { encodePalettePng } from './art/png';
 
 const OUT = 'public/assets/sprites';
@@ -212,7 +213,9 @@ const ambience = ambienceSprites();
 const tables = tableSprites();
 writeAtlas('common', await pack([...characterSprites(), ...fxSprites()]));
 writeAtlas('furniture', await pack([...stationSprites(), ...tables, ...ambience]));
-for (const loc of LOCATIONS) writeAtlas(`theme-${loc}`, await pack(themeSprites(loc), 1024));
+for (const loc of LOCATIONS)
+  writeAtlas(`theme-${loc}`, await pack([...themeSprites(loc), ...facadeSprites(loc)], 2048));
+writeAtlas('city', await pack(citySprites(), 2048));
 
 // DOM-Icons: jede Ausstattung in jeder Stufe (Kasse/Ausgabe mit Thekenmodul), Tische je Stufe, Ambiente,
 // Filialleiter-Portrait.

@@ -111,8 +111,8 @@ const AMBIENCE: Record<string, (c: IsoCanvas) => void> = {
     c.cylinder(0.5, 0.5, 0, 0.1, 1.2, C.ink);
     c.cylinder(0.5, 0.5, 0, 0.03, 34, C.white);
     c.cylinder(0.5, 0.5, 11, 0.2, 2, C.white, tint(C.wood, 0.4));
-    terraceChair(c, 0.15, 0.45, C.teal, 'left');
-    terraceChair(c, 0.6, 0.15, C.teal, 'right');
+    terraceChair(c, 0.15, 0.45, C.cobalt, 'left');
+    terraceChair(c, 0.6, 0.15, C.cobalt, 'right');
     // Sonnenschirm (Achteck, zwei Farbflächen statt Streifen-Textur)
     const [cx, cy] = c.p([0.5, 0.5, 34]);
     const r = 26;
@@ -129,7 +129,7 @@ const AMBIENCE: Record<string, (c: IsoCanvas) => void> = {
       const a0 = (i / 8) * Math.PI * 2;
       const a1 = ((i + 1) / 8) * Math.PI * 2;
       const lit = Math.sin((a0 + a1) / 2) > 0;
-      const col = i % 2 ? C.white : C.terracotta;
+      const col = i % 2 ? C.white : C.cobalt;
       c.raw(`<polygon points="${pts(a0, a1)}" fill="${lit ? col : shade(col, 0.85)}"/>`);
     }
   },
@@ -286,18 +286,30 @@ export interface ThemeArt {
   frame: string;
   terrace: string;
   accent: string;
+  /** Glasierte Fliesen im unteren Wanddrittel (statt Sockelleiste in `wallTrim`). */
+  wainscot?: string;
+  /** Wandschmuck jeder dritten Wandkachel: Fenster oder (Kiez-Café) Leuchtkasten-Karte bzw. Becherregal. */
+  deco?: 'window' | 'lightbox';
+  /** Niedrige Vorderwand (Fassade zur Straße) und ihre Abdeckung; Standard: Wandfarbe. */
+  front?: string;
+  frontCap?: string;
 }
 
 export const THEME_ART: Record<string, ThemeArt> = {
+  // Kiez-Café im Stil der knallblauen Berliner Kettencafés: Terrazzo, weiße Wände, blaue Fliesen, Edelstahl.
   berlin: {
-    floorA: C.wood,
-    floorB: shade(C.wood, 0.93),
-    wall: C.cream,
-    wallTrim: C.terracotta,
+    floorA: C.terrazzo,
+    floorB: C.terrazzoDark,
+    wall: C.white,
+    wallTrim: C.stainless,
     window: C.glass,
-    frame: C.white,
-    terrace: C.woodDark,
-    accent: C.matcha,
+    frame: C.stainless,
+    terrace: C.terrazzoDark,
+    accent: C.cobalt,
+    wainscot: C.cobaltTile,
+    deco: 'lightbox',
+    front: C.cobalt,
+    frontCap: C.stainless,
   },
   kyoto: {
     floorA: '#d9d39a',
@@ -363,39 +375,103 @@ function tile(color: string, edge: string): string {
   return c.svg();
 }
 
-/** Wandsegment entlang u (eine Kachel), Fläche zeigt nach +v. `window` setzt ein Fenster. */
-function wallSegU(t: ThemeArt, h: number, withWindow: boolean): string {
-  const c = new IsoCanvas(32, 16 + h + 4, 0, h + 4);
-  c.wallV(0, 0, 0, 1, h, shade(t.wall, 0.95));
-  c.wallV(0, 0.001, 0, 1, 6, t.wallTrim);
-  c.wallV(0, 0.001, h - 3, 1, 3, tint(t.wall, 0.3));
-  if (withWindow) {
-    c.wallV(0.18, 0.002, 18, 0.64, 34, t.frame);
-    c.wallV(0.24, 0.003, 21, 0.52, 28, t.window);
-    c.wallV(0.24, 0.004, 33, 0.52, 3, t.frame);
+/** Höhe der Fliesen im unteren Wandteil (Kiez-Café). */
+const WAINSCOT_H = 28;
+
+/**
+ * Eine Wandfläche als Funktion: `face(u0, z, w, h, color)` zeichnet in der Wandebene (u0 entlang der Wand),
+ * `shadeF` ist die Seitenhelligkeit der Wand (links 95 %, rechts 80 %).
+ */
+type Face = (a: number, z: number, w: number, h: number, color: string, layer?: number) => void;
+
+/** Wand mit Sockel bzw. Fliesenspiegel, oberer Abschlussleiste und optional Fenster/Leuchtkasten/Regal. */
+function wallFace(t: ThemeArt, h: number, face: Face, f: number, deco: 'none' | 'u' | 'v') {
+  face(0, 0, 1, h, shade(t.wall, f));
+  if (t.wainscot) {
+    // Glasierte Fliesen (4 × 8 je Kachel) mit hellen Fugen, Edelstahl-Sockel und -Abschlussleiste
+    const tile = shade(t.wainscot, f);
+    const fuge = shade(tint(t.wainscot, 0.55), f);
+    face(0, 0, 1, WAINSCOT_H, tile, 1);
+    for (let z = 3 + 5; z < WAINSCOT_H; z += 5) face(0, z, 1, 0.5, fuge, 2);
+    for (let row = 0, z = 3; z < WAINSCOT_H; row++, z += 5)
+      for (let a = row % 2 ? 0.0625 : 0.125; a < 1; a += 0.125)
+        face(a, z, 0.012, Math.min(5, WAINSCOT_H - z), fuge, 2);
+    face(0, 0, 1, 3, shade(t.wallTrim, f), 3);
+    face(0, WAINSCOT_H, 1, 1.5, shade(tint(t.wallTrim, 0.3), f), 3);
+  } else {
+    face(0, 0, 1, 6, shade(t.wallTrim, f), 1);
   }
+  face(0, h - 3, 1, 3, shade(tint(t.wall, 0.3), f), 1);
+  if (deco === 'none') return;
+  if (t.deco !== 'lightbox') {
+    face(0.18, 18, 0.64, 34, shade(t.frame, f), 4);
+    face(0.24, 21, 0.52, 28, shade(t.window, f + 0.05 > 1 ? 1 : f + 0.05), 5);
+    face(0.24, 33, 0.52, 3, shade(t.frame, f), 6);
+    return;
+  }
+  if (deco === 'u') {
+    // Leuchtkasten-Menü: Edelstahlrahmen, weiße Fläche, Blatt-Emblem und Zeilen als Balken (keine Schrift)
+    face(0.12, 34, 0.76, 24, shade(t.frame, f), 4);
+    face(0.15, 35.5, 0.7, 21, C.lightbox, 5);
+    face(0.2, 44, 0.16, 9, C.matcha, 6);
+    face(0.24, 46, 0.08, 5, C.matchaFoam, 7);
+    for (let i = 0; i < 4; i++) {
+      face(0.42, 52 - i * 4.4, 0.26, 1.6, C.cobalt, 6);
+      face(0.74, 52 - i * 4.4, 0.06, 1.6, C.cobaltLight, 6);
+    }
+    face(0.2, 38, 0.16, 1.4, C.cobalt, 6);
+  } else {
+    // Wandregal: zwei Edelstahlböden mit blauen Bechern und Matcha-Dosen
+    for (const z of [36, 48]) {
+      face(0.08, z, 0.84, 1.6, shade(t.frame, f), 4);
+      for (let k = 0; k < 5; k++) {
+        const a = 0.14 + k * 0.15;
+        const col = (k + z) % 3 === 0 ? C.matcha : k % 2 ? C.cobalt : C.white;
+        face(a, z + 1.6, 0.08, k % 2 ? 6 : 7.5, shade(col, f), 5);
+        face(a, z + (k % 2 ? 6.6 : 8.1), 0.08, 1, shade(tint(col, 0.4), f), 6);
+      }
+    }
+  }
+}
+
+/** Wandsegment entlang u (eine Kachel), Fläche zeigt nach +v. `deco` setzt Fenster bzw. Leuchtkasten. */
+function wallSegU(t: ThemeArt, h: number, deco: boolean): string {
+  const c = new IsoCanvas(32, 16 + h + 4, 0, h + 4);
+  wallFace(
+    t,
+    h,
+    (a, z, w, hh, color, layer = 0) => c.wallV(a, layer * 0.001, z, w, hh, color),
+    0.95,
+    deco ? 'u' : 'none',
+  );
   return c.svg();
 }
 
 /** Wandsegment entlang v, Fläche zeigt nach +u. */
-function wallSegV(t: ThemeArt, h: number, withWindow: boolean): string {
+function wallSegV(t: ThemeArt, h: number, deco: boolean): string {
   const c = new IsoCanvas(32, 16 + h + 4, 32, h + 4);
-  c.wallU(0, 0, 0, 1, h, shade(t.wall, 0.8));
-  c.wallU(0.001, 0, 0, 1, 6, shade(t.wallTrim, 0.85));
-  c.wallU(0.001, 0, h - 3, 1, 3, tint(t.wall, 0.2));
-  if (withWindow) {
-    c.wallU(0.002, 0.18, 18, 0.64, 34, shade(t.frame, 0.85));
-    c.wallU(0.003, 0.24, 21, 0.52, 28, shade(t.window, 0.9));
-    c.wallU(0.004, 0.24, 33, 0.52, 3, shade(t.frame, 0.85));
-  }
+  wallFace(
+    t,
+    h,
+    (a, z, w, hh, color, layer = 0) => c.wallU(layer * 0.001, a, z, w, hh, color),
+    0.8,
+    deco ? 'v' : 'none',
+  );
   return c.svg();
 }
 
-/** Niedrige Vorderwand (25 %) als Quader, damit sie Tiefe hat. */
+/** Niedrige Vorderwand (25 %) als Quader, damit sie Tiefe hat; im Kiez-Café blau mit Edelstahl-Abdeckung. */
 function frontWall(t: ThemeArt, alongU: boolean): string {
   const c = new IsoCanvas(64, 32 + WALL.front + 2, 32, WALL.front + 2);
-  if (alongU) c.box(0, 0.88, 0, 1, 0.12, WALL.front, t.wall, { top: tint(t.wall, 0.3) });
-  else c.box(0.88, 0, 0, 0.12, 1, WALL.front, t.wall, { top: tint(t.wall, 0.3) });
+  const body = t.front ?? t.wall;
+  const cap = t.frontCap ?? tint(t.wall, 0.3);
+  if (alongU) {
+    c.box(0, 0.88, 0, 1, 0.12, WALL.front - 2, body, { top: cap });
+    c.box(0, 0.87, WALL.front - 2, 1, 0.14, 2, cap);
+  } else {
+    c.box(0.88, 0, 0, 0.12, 1, WALL.front - 2, body, { top: cap });
+    c.box(0.87, 0, WALL.front - 2, 0.14, 1, 2, cap);
+  }
   return c.svg();
 }
 
@@ -405,6 +481,19 @@ export function themeSprites(locationId: string): SpriteDef[] {
   const entrance = new IsoCanvas(64, 32, 32, 0);
   entrance.flat(0, 0, 0, 1, 1, t.floorA);
   entrance.flat(0.15, 0.15, 0, 0.7, 0.7, t.accent);
+  if (t.deco === 'lightbox') {
+    // Fußmatte mit hellem Blatt-Emblem
+    entrance.flat(0.2, 0.2, 0, 0.6, 0.6, shade(t.accent, 0.9));
+    entrance.poly(
+      [
+        [0.36, 0.64, 0],
+        [0.38, 0.42, 0],
+        [0.62, 0.36, 0],
+        [0.6, 0.58, 0],
+      ],
+      C.white,
+    );
+  }
   const deck = new IsoCanvas(64, 32, 32, 0);
   deck.flat(0, 0, 0, 1, 1, t.terrace);
   for (let i = 1; i < 4; i++) deck.flat(0, i * 0.25 - 0.02, 0, 1, 0.04, shade(t.terrace, 0.85));
@@ -414,9 +503,9 @@ export function themeSprites(locationId: string): SpriteDef[] {
     { name: 'entrance', svg: entrance.svg() },
     { name: 'terrace', svg: deck.svg() },
     { name: 'wall-u', svg: wallSegU(t, WALL.back, false) },
-    { name: 'wall-u-window', svg: wallSegU(t, WALL.back, true) },
+    { name: 'wall-u-deco', svg: wallSegU(t, WALL.back, true) },
     { name: 'wall-v', svg: wallSegV(t, WALL.back, false) },
-    { name: 'wall-v-window', svg: wallSegV(t, WALL.back, true) },
+    { name: 'wall-v-deco', svg: wallSegV(t, WALL.back, true) },
     { name: 'front-u', svg: frontWall(t, true) },
     { name: 'front-v', svg: frontWall(t, false) },
   ];

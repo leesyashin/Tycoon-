@@ -4,6 +4,16 @@ Alle nennenswerten Änderungen an Matcha Café Empire. Format angelehnt an [Keep
 
 ## [Unreleased]
 
+### Kiez-Café im LAP-Stil und Stadtviertel (2026-10-15)
+
+Vorgabe Vincent: Das Café soll aussehen wie ein Berliner LAP-Coffee-Laden, und wie bei Hotel Empire Tycoon soll
+auch die Umgebung mit Straßen und Gebäuden zu sehen sein.
+
+- Café in Blau, Edelstahl und Weiß: Terrazzo-Boden, blau geflieste Wände mit Leuchtkasten-Menü, blaue Fassadenkante, Nasenschild und Pflanzkübel; Theke und Geräte-Unterschränke in den ersten drei Stufen aus Kobalt-Lack, gebürstetem Edelstahl und blauen Fliesen; blaue To-go-Becher, Edelstahl-Bistrotische mit blauen Hockern, blau-weiße Terrassenschirme.
+- Das Café steht jetzt als Eckladen in einem Berliner Altbau-Block: Gehwege, Kreuzung mit Zebrastreifen und Ampeln, zehn Altbauten mit Läden, Balkonen und Stuck, Kiezpark, Kanal mit Brücke, Linden, Gaslaternen, Litfaßsäule, Fahrräder.
+- Leben auf der Straße: Autos halten an der Ampel, Passanten warten auf Grün, ein Ausflugsdampfer fährt auf dem Kanal; Gäste kommen über den Gehweg ins Café. Nachts leuchten Laternen und Fenster.
+- Die Kamera kann über das ganze Viertel schwenken; Startansicht bleibt das Café.
+
 ### Ausstattung wird mit dem Level edler (2026-10-15)
 
 Vorgabe Vincent: Theke, Küche, Kaffeemaschine, Matcha-Station und alle anderen Geräte im Hotel-Empire-Look neu

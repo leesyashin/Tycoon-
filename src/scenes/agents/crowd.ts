@@ -47,6 +47,8 @@ export interface Agent {
   /** Versatz im Gedränge hinter der sichtbaren Schlange. */
   jx: number;
   jy: number;
+  /** Beim Gehen: schon zur Tür hinaus und auf dem Gehweg unterwegs. */
+  outside: boolean;
 }
 
 export type WaiterPhase = 'idle' | 'toTable' | 'serve' | 'back';
@@ -139,6 +141,7 @@ export class CustomerCrowd {
         waited: 0,
         jx: 0,
         jy: 0,
+        outside: false,
       });
     }
     for (let i = 0; i < CROWD.maxWaiters; i++) {
@@ -218,6 +221,13 @@ export class CustomerCrowd {
     return { purchases, spawned };
   }
 
+  /** Punkt auf dem Gehweg links oder rechts vom Eingang (Erscheinen und Verschwinden der Gäste). */
+  private sidewalkPoint(): GridPos {
+    const { curb, spreadMin, spreadMax } = this.layout.street;
+    const side = this.rng() < 0.5 ? -1 : 1;
+    return { x: curb.x + side * (spreadMin + this.rng() * (spreadMax - spreadMin)), y: curb.y };
+  }
+
   private spawn(): boolean {
     const free = this.agents.find((a) => !a.active);
     if (!free || this.totalRate <= 0) return false;
@@ -226,10 +236,17 @@ export class CustomerCrowd {
     free.type = pickCustomerType(this.shares, this.rng());
     free.look = pickLook(free.type, this.rng());
     free.phase = 'walkIn';
-    free.x = this.layout.entrance.x;
-    free.y = this.layout.entrance.y;
-    free.path = this.layout.order.path.map((p) => ({ ...p }));
+    // Vom Gehweg her: seitlich auftauchen, zur Tür abbiegen, dann wie bisher zur Schlange.
+    const start = this.sidewalkPoint();
+    free.x = start.x;
+    free.y = start.y;
+    free.path = [
+      { ...this.layout.street.curb },
+      { ...this.layout.entrance },
+      ...this.layout.order.path.map((p) => ({ ...p })),
+    ];
     free.timer = 0;
+    free.outside = false;
     free.serveTotal = 0;
     free.table = -1;
     free.spot = 0;
@@ -290,7 +307,14 @@ export class CustomerCrowd {
         this.leaveTable(a);
         return;
       case 'leave':
-        if (follow(a, step)) this.release(a);
+        if (!follow(a, step)) return;
+        if (a.outside) {
+          this.release(a);
+          return;
+        }
+        // An der Tür angekommen: über den Gehweg zur Seite weg.
+        a.outside = true;
+        a.path = [{ ...this.layout.street.curb }, this.sidewalkPoint()];
         return;
     }
   }

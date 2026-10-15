@@ -37,6 +37,8 @@ test('Assets laden lokal: Atlanten, Schriften, Icon-Sprite – keine fehlenden F
   await expect.poll(() => urls.some((u) => u.endsWith('/assets/sprites/common.png'))).toBe(true);
   // Ausstattung, Theke und Tische liegen in einem eigenen Atlas (eigene Palette).
   await expect.poll(() => urls.some((u) => u.endsWith('/assets/sprites/furniture.png'))).toBe(true);
+  // Stadtviertel: Straßen-Objekte und Fahrzeuge für alle Standorte, Fassaden im Themen-Atlas.
+  await expect.poll(() => urls.some((u) => u.endsWith('/assets/sprites/city.png'))).toBe(true);
   // Phaser startet im ersten Leerlauf (S9), der Themen-Atlas kommt also etwas später.
   await expect
     .poll(() => urls.some((u) => u.endsWith('/assets/sprites/theme-berlin.json')))

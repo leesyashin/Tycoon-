@@ -26,13 +26,13 @@ describe('Standort-Skins', () => {
     const { getLayout } = await import('../src/data/layouts');
     const { readFileSync } = await import('node:fs');
     // Lazy-Loading je Standort: jeder braucht seinen Themen-Atlas mit allen Frames, die CafeScene nutzt.
-    const needed = ['floor-a', 'floor-b', 'entrance', 'terrace', 'wall-u', 'wall-u-window'];
+    const needed = ['floor-a', 'floor-b', 'entrance', 'terrace', 'wall-u', 'wall-u-deco'];
     for (const l of LOCATIONS) {
       expect(getLayout(l.id).gridSize).toBeGreaterThan(0);
       const atlas = JSON.parse(
         readFileSync(`public/assets/sprites/theme-${l.id}.json`, 'utf8'),
       ) as { frames: Record<string, unknown> };
-      for (const f of [...needed, 'wall-v', 'wall-v-window', 'front-u', 'front-v']) {
+      for (const f of [...needed, 'wall-v', 'wall-v-deco', 'front-u', 'front-v']) {
         expect(atlas.frames[f], `${l.id}:${f}`).toBeDefined();
       }
     }

@@ -2,7 +2,7 @@
  * Ausstattung im Hotel-Empire-Look (UI_STYLE § 4): Theke, Geräte der Barista-Theke, Kasse, Ausgabe, Tische.
  * Jedes Gerät hat fünf Ausbaustufen (`STATION_LOOK_LEVELS`, an den Meilensteinen Level 1/10/25/50/100). Von
  * Stufe zu Stufe wird es edler: mehr Teile, bessere Geräte und eine durchgehende Material-Leiter
- * Kiefer → Eiche → Matcha-Lack → Nussbaum/Marmor/Messing → Nachtblau/Marmor/Gold. Selbst gezeichnet, CC0.
+ * Kobalt-Lack/Edelstahl → Edelstahl/Terrazzo → blaue Fliesen/Quarz → Nussbaum/Marmor/Messing → Nachtblau/Marmor/Gold. Selbst gezeichnet, CC0.
  *
  * Koordinaten („Theken-Koordinaten“): x quer, y Tiefe (0 = hinten/Wand bzw. Personalseite, 1 = Gastraum),
  * z Höhe in Pixeln. Variante „a“: Front zeigt nach +v, „b“: nach +u (gespiegelt).
@@ -248,30 +248,31 @@ interface TierStyle {
 }
 
 const TIER_STYLE: Record<Tier, TierStyle> = {
+  // Stufen 1–3 im Kiez-Look (knallblau, Edelstahl, Fliesen), 4–5 bleiben edel (Nussbaum/Marmor, Nachtblau/Gold).
   1: {
-    body: C.pine,
-    panel: shade(C.pine, 0.95),
-    top: C.cream,
-    edge: C.cream,
-    trim: C.steel,
-    plinth: shade(C.pine, 0.72),
+    body: C.cobalt,
+    panel: C.cobaltLight,
+    top: C.stainless,
+    edge: C.stainlessDark,
+    trim: C.stainless,
+    plinth: C.cobaltDeep,
   },
   2: {
-    body: C.oak,
-    panel: C.oakLight,
-    // Massivholzplatte, dunkler als der Korpus: hebt sich auch vom hellen Holzboden ab.
-    top: C.walnutLight,
-    edge: C.walnut,
+    body: C.stainless,
+    panel: C.stainlessLight,
+    // Terrazzo-Platte: hebt sich vom Edelstahl-Korpus ab, bleibt aber hell.
+    top: C.terrazzo,
+    edge: C.stainlessDark,
     trim: C.chrome,
-    plinth: C.woodDeep,
+    plinth: C.cobalt,
   },
   3: {
-    body: C.lacquerGreen,
-    panel: C.lacquerGreenLight,
+    body: C.cobaltTile,
+    panel: C.cobaltLight,
     top: C.quartz,
     edge: C.quartz,
     trim: C.chrome,
-    plinth: shade(C.lacquerGreen, 0.62),
+    plinth: C.stainlessDark,
   },
   4: {
     body: C.walnut,
@@ -346,16 +347,32 @@ function frontPanels(
     const pad = Math.min(0.05, w * 0.12);
     switch (tier) {
       case 1:
-        c.front(a + pad, y, z0 + 1.5, w - 2 * pad, z1 - z0 - 3, shade(s.body, 0.95));
+        // Lackfront mit Schattenfuge oben (Griffleiste)
+        c.front(a + pad, y, z0 + 1.5, w - 2 * pad, z1 - z0 - 3, shade(s.body, 0.94));
+        c.front(a + pad, y + 0.001, z1 - 3, w - 2 * pad, 0.8, s.panel);
         break;
-      case 2:
-        c.front(a + pad, y, z0 + 1.5, w - 2 * pad, z1 - z0 - 3, shade(s.body, 0.86));
-        c.front(a + pad * 1.8, y + 0.001, z0 + 3, w - 3.6 * pad, z1 - z0 - 6, s.panel);
-        break;
-      case 3: {
-        const n = Math.max(3, Math.round(w / 0.09));
+      case 2: {
+        // Gebürsteter Edelstahl: feine helle und dunkle Längsstriche
+        c.front(a + pad * 0.5, y, z0 + 1, w - pad, z1 - z0 - 2, shade(s.body, 0.97));
+        const n = Math.max(5, Math.round(w / 0.06));
         for (let k = 1; k < n; k++)
-          c.front(a + (k * w) / n - 0.006, y, z0 + 0.5, 0.012, z1 - z0 - 1, shade(s.body, 0.78));
+          c.front(
+            a + (k * w) / n - 0.004,
+            y + 0.001,
+            z0 + 1.5,
+            0.008,
+            z1 - z0 - 3,
+            k % 2 ? s.panel : shade(s.body, 0.9),
+          );
+        break;
+      }
+      case 3: {
+        // Glasierte Fliesen mit hellen Fugen (Raster 4 px hoch, versetzt)
+        const fuge = tint(s.body, 0.62);
+        for (let z = z0 + 4; z < z1; z += 4) c.front(a, y + 0.001, z, w, 0.5, fuge);
+        for (let row = 0, z = z0; z < z1; row++, z += 4)
+          for (let x = a + (row % 2 ? 0.05 : 0.11); x < a + w; x += 0.12)
+            c.front(x, y + 0.001, z, 0.01, Math.min(4, z1 - z), fuge);
         break;
       }
       case 4: {
@@ -713,9 +730,11 @@ function counterProps(c: FacingCanvas, tier: Tier, variant: number) {
   switch (variant) {
     case 1:
       if (tier === 1) {
+        // Gestapelte blaue To-go-Becher, das Erkennungszeichen des Kiez-Cafés
         c.fshadowDisc(0.32, 0.45, z, 0.05, 0.18);
-        for (let i = 0; i < 3; i++) c.ffrustum(0.32, 0.45, z + i * 3.4, 0.034, 0.044, 3.6, C.cup);
-        cup(c, 0.46, 0.56, z, C.cup, C.coffee);
+        for (let i = 0; i < 3; i++)
+          c.ffrustum(0.32, 0.45, z + i * 3.4, 0.034, 0.044, 3.6, C.cobalt, C.white);
+        cup(c, 0.46, 0.56, z, C.cobalt, C.matchaFoam);
       } else if (tier === 2) {
         c.fshadowDisc(0.34, 0.46, z, 0.08, 0.16);
         for (let i = 0; i < 3; i++) {
@@ -760,7 +779,7 @@ function counterProps(c: FacingCanvas, tier: Tier, variant: number) {
       }
       break;
     case 3:
-      if (tier === 1) plantPot(c, 0.38, 0.5, z, C.terracotta, C.matcha, 1.1);
+      if (tier === 1) plantPot(c, 0.38, 0.5, z, C.white, C.matcha, 1.1);
       else if (tier === 2) plantPot(c, 0.38, 0.5, z, C.cream, C.matchaDeep, 1.2);
       else if (tier === 3) plantPot(c, 0.38, 0.5, z, C.quartz, C.lacquerGreenLight, 1.25);
       else if (tier === 4) sakuraVase(c, 0.38, 0.5, z, C.brass);
@@ -2231,20 +2250,20 @@ const servingStation: Draw = (c, tier) => {
 // ---------------------------------------------------------------------------------------------
 // Tische (Ambiente `seats`): vier Stufen, Sitzplätze bei u = 0.5 ± 0.42 bleiben gleich
 // ---------------------------------------------------------------------------------------------
-type ChairStyle = 'wood' | 'cushion' | 'bentwood' | 'armchair';
+type ChairStyle = 'steel' | 'cushion' | 'bentwood' | 'armchair';
 
 function chair(c: IsoCanvas, u: number, v: number, back: 'left' | 'right', style: ChairStyle) {
   const frame =
-    style === 'wood'
-      ? C.oak
+    style === 'steel'
+      ? C.stainlessDark
       : style === 'cushion'
         ? C.oak
         : style === 'bentwood'
           ? C.coffee
           : C.brass;
   const seat =
-    style === 'wood'
-      ? C.oakLight
+    style === 'steel'
+      ? C.cobalt
       : style === 'cushion'
         ? C.sage
         : style === 'bentwood'
@@ -2290,14 +2309,15 @@ function chair(c: IsoCanvas, u: number, v: number, back: 'left' | 'right', style
 /** Runder Tisch auf Säulenfuß mit zwei Stühlen (links/rechts) je Stufe. */
 function table(c: IsoCanvas, tier: 1 | 2 | 3 | 4) {
   const style: ChairStyle =
-    (['wood', 'cushion', 'bentwood', 'armchair'] as const)[tier - 1] ?? 'wood';
+    (['steel', 'cushion', 'bentwood', 'armchair'] as const)[tier - 1] ?? 'steel';
   chair(c, 0.02, 0.42, 'left', style);
-  const base = tier === 4 ? C.brass : C.ink;
+  // Stufe 1: Bistrotisch aus Edelstahl mit blauen Hockern (Kiez-Look), danach edler.
+  const base = tier === 4 ? C.brass : tier === 1 ? C.stainlessDark : C.ink;
   c.shadowDisc(0.5, 0.5, 0, 0.18, 0.24);
   c.cylinder(0.5, 0.5, 0, 0.15, 1.5, base, tint(base, 0.2));
   c.cylinder(0.5, 0.5, 1.5, 0.045, 11.5, base);
   if (tier === 4) c.shine(0.5, 0.5, 1.5, 0.045, 11.5, base);
-  const top = tier === 1 ? C.pine : tier === 2 ? C.cream : C.marble;
+  const top = tier === 1 ? C.stainless : tier === 2 ? C.cream : C.marble;
   // Stufe 4: Marmorplatte mit Messingkante
   c.cylinder(0.5, 0.5, 13, 0.28, 2.5, tier === 4 ? C.brass : top, top);
   if (tier >= 3) {
@@ -2313,7 +2333,7 @@ function table(c: IsoCanvas, tier: 1 | 2 | 3 | 4) {
     );
   }
   if (tier === 2) c.disc(0.5, 0.5, 15.6, 0.18, C.matchaFoam);
-  c.cylinder(0.44, 0.54, 15.5, 0.045, 5, C.cup, C.matchaFoam);
+  c.cylinder(0.44, 0.54, 15.5, 0.045, 5, tier === 1 ? C.cobalt : C.cup, C.matchaFoam);
   if (tier === 2) {
     c.cylinder(0.6, 0.42, 15.5, 0.025, 6, C.glass, C.glass);
     c.dome(0.6, 0.42, 21.5, 0.03, 3, C.sakura);

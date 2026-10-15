@@ -23,3 +23,6 @@ export function toGrid(sx: number, sy: number): Point {
 export function depth(gx: number, gy: number): number {
   return gx + gy;
 }
+
+/** Zeichentiefe der Szene nach Kachel-Position (Kachel-Index, Mitte = ganze Zahl); Feinsortierung über `bias`. */
+export const isoDepth = (x: number, y: number, bias = 0): number => (x + y) * 10 + bias;
