@@ -941,20 +941,21 @@ const BIG_ITEMS: Record<string, (c: IsoCanvas) => void> = {
     c.flat(-1.39, 0.01, 0.01, 3.78, 0.98, C.cobalt);
     c.flat(-1.31, 0.09, 0.02, 3.62, 0.82, C.cobaltDeep);
     c.flat(-1.27, 0.13, 0.025, 3.54, 0.74, C.cobalt);
-    for (let k = 0; k < 14; k++) {
-      const u0 = -1.18 + k * 0.25;
-      for (const v of [0.18, 0.82])
-        c.poly(
-          [
-            [u0, v, 0.03],
-            [u0 + 0.06, v - 0.035, 0.03],
-            [u0 + 0.12, v, 0.03],
-            [u0 + 0.06, v + 0.035, 0.03],
-          ],
-          C.white,
-        );
+    // Innenkante als feine helle Linie, Rautenband in hellem Kobalt
+    for (const v of [0.16, 0.84])
+      c.flat(-1.23, v - 0.006, 0.028, 3.46, 0.012, tint(C.cobaltLight, 0.55));
+    for (let k = 0; k < 11; k++) {
+      const u0 = -1.0 + k * 0.3;
+      c.poly(
+        [
+          [u0, 0.5, 0.03],
+          [u0 + 0.1, 0.36, 0.03],
+          [u0 + 0.2, 0.5, 0.03],
+          [u0 + 0.1, 0.64, 0.03],
+        ],
+        k % 2 ? C.cobaltDeep : tint(C.cobaltLight, 0.2),
+      );
     }
-    for (const u of [-1.2, 2.1]) c.flat(u, 0.25, 0.03, 0.08, 0.5, tint(C.cobaltLight, 0.4));
   },
 };
 
