@@ -7,7 +7,9 @@
  * SHOT_STAGE (`grown` = Standard mit Panels; `start`, `mid`, `lux` = nur das Café in dieser Ausbaustufe, um die
  * Optik-Stufen der Ausstattung zu zeigen: Start / Café-Level 7 / alles über Level 100, Café-Level 16),
  * SHOT_HOUR (Café-Uhrzeit 0–23, z. B. 23 für Nacht), SHOT_ZOOM (Mausrad-Rasten, negativ = heranzoomen, positiv =
- * heraus, um das Stadtviertel zu zeigen), SHOT_PAN („dx,dy“: Kamera ziehen), SHOT_TAG (Zusatz im Dateinamen).
+ * heraus, um das Stadtviertel zu zeigen), SHOT_PAN („dx,dy“: Kamera ziehen), SHOT_TAG (Zusatz im Dateinamen),
+ * SHOT_MOTION=1 (Animationen an: Arbeits-Animationen, Dampf, Ringe; sonst „weniger Bewegung“ für ruhige Bilder),
+ * SHOT_BURST=n (n Bilder im Abstand von SHOT_BURST_MS, Standard 350 ms, um Abläufe zu prüfen).
  */
 import { mkdirSync } from 'node:fs';
 import { chromium } from '@playwright/test';
@@ -24,6 +26,9 @@ const zoomSteps = Number(process.env['SHOT_ZOOM'] ?? 0);
 const shotTag = process.env['SHOT_TAG'] ? `-${process.env['SHOT_TAG']}` : '';
 /** Kamera ziehen (Bildschirm-Pixel „dx,dy“), z. B. um die Ränder des Viertels zu prüfen. */
 const pan = (process.env['SHOT_PAN'] ?? '').split(',').map(Number);
+const motion = process.env['SHOT_MOTION'] === '1';
+const burst = Number(process.env['SHOT_BURST'] ?? 1);
+const burstMs = Number(process.env['SHOT_BURST_MS'] ?? 350);
 mkdirSync(out, { recursive: true });
 
 interface Seed {
@@ -115,7 +120,7 @@ async function shoot(lang: 'de' | 'en', width: number, height: number): Promise<
   const page = await browser.newPage({
     viewport: { width, height },
     deviceScaleFactor: scale,
-    reducedMotion: 'reduce',
+    reducedMotion: motion ? 'no-preference' : 'reduce',
   });
   const query = `?lang=${lang}&tutorial=0${spawn > 0 ? `&debugSpawn=${String(spawn)}` : ''}`;
   await page.goto(base + query);
@@ -172,6 +177,10 @@ async function shoot(lang: 'de' | 'en', width: number, height: number): Promise<
   }
   const tag = `${lang}-${String(width)}${shotTag}`;
   if (stage !== 'grown') {
+    for (let k = 1; k < burst; k++) {
+      await page.screenshot({ path: `${out}/${tag}-cafe-${stage}-${String(k)}.png` });
+      await page.waitForTimeout(burstMs);
+    }
     await page.screenshot({ path: `${out}/${tag}-cafe-${stage}.png` });
     await page.close();
     console.log(`${tag}: cafe (${stage})`);

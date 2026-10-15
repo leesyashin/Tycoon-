@@ -6,11 +6,12 @@
  *   PW_CHROMIUM=… pnpm tsx scripts/art/contact-sheet.ts figures out.png
  *   PW_CHROMIUM=… pnpm tsx scripts/art/contact-sheet.ts figures out.png 'waiter|sit-'   (nur passende Namen)
  *   PW_CHROMIUM=… pnpm tsx scripts/art/contact-sheet.ts city|facade|theme out.png      (Stadtviertel, Berlin)
+ *   PW_CHROMIUM=… pnpm tsx scripts/art/contact-sheet.ts register|fx out.png   (Kasse wie in der Szene, Effekte/Ringe)
  * Rendert die SVGs vergrößert in ein Raster mit Beschriftung. Nicht Teil von `pnpm art`.
  */
 import { writeFileSync } from 'node:fs';
 import { chromium } from '@playwright/test';
-import { ambienceSprites, themeSprites, type SpriteDef } from './sprites';
+import { ambienceSprites, fxSprites, themeSprites, type SpriteDef } from './sprites';
 import { citySprites, facadeSprites } from './city';
 import { decorSprites, tableOutSprites } from './decor';
 import { EQUIPMENT_IDS, TIERS, stationIconSvg, stationSprites, tableSprites } from './equipment';
@@ -22,6 +23,28 @@ const out = process.argv[3] ?? 'contact-sheet.png';
 const devices: SpriteDef[] = EQUIPMENT_IDS.flatMap((id) =>
   TIERS.map((tier) => ({ name: `${id}-${String(tier)}`, svg: stationIconSvg(id, tier) })),
 );
+/** Mehrere Sprites gleicher Größe übereinander (Gerät auf seinem Thekenmodul). */
+function stack(svgs: string[]): string {
+  const m = /width="(\d+)" height="(\d+)"/.exec(svgs[0] ?? '');
+  const w = m?.[1] ?? '128';
+  const h = m?.[2] ?? '208';
+  const layers = svgs
+    .map(
+      (x) =>
+        `<image width="${w}" height="${h}" href="data:image/svg+xml;charset=utf-8,${encodeURIComponent(x)}"/>`,
+    )
+    .join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">${layers}</svg>`;
+}
+const onCounter = (): SpriteDef[] => {
+  const all = new Map(stationSprites().map((x) => [x.name, x.svg]));
+  return [...all.keys()]
+    .filter((n) => /^station-register-\d-a/.test(n))
+    .map((n) => {
+      const tier = n.split('-')[2] ?? '1';
+      return { name: n, svg: stack([all.get(`counter-${tier}-0-a`) ?? '', all.get(n) ?? '']) };
+    });
+};
 const sets: Record<string, { list: () => SpriteDef[]; scale: number; cols: number }> = {
   stations: { list: () => devices, scale: 3, cols: 5 },
   counter: {
@@ -35,6 +58,8 @@ const sets: Record<string, { list: () => SpriteDef[]; scale: number; cols: numbe
   decor: { list: () => [...tableOutSprites(), ...decorSprites()], scale: 3, cols: 8 },
   facade: { list: () => facadeSprites('berlin'), scale: 2.5, cols: 12 },
   theme: { list: () => themeSprites('berlin'), scale: 3, cols: 5 },
+  register: { list: onCounter, scale: 3, cols: 5 },
+  fx: { list: fxSprites, scale: 6, cols: 12 },
 };
 const set = sets[which] ?? sets['stations'];
 if (!set) throw new Error(`Unknown set: ${which}`);
