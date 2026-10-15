@@ -16,6 +16,7 @@ import {
 import { FacingCanvas } from './equipment';
 import { IsoCanvas, SHADE, Z_PER_TILE, shade, tint, type Vec3 } from './iso';
 import { C } from './palette';
+import { cone, crown, ngon, prism, ringPts, strut } from './shapes';
 import type { SpriteDef } from './sprites';
 
 const FACES: readonly FacadeFace[] = ['a', 'b'];
@@ -535,43 +536,119 @@ export function facadeSprites(locationId: string): SpriteDef[] {
 type Box = { w: number; h: number; ox: number; oy: number };
 const canvasOf = (s: Box) => new IsoCanvas(s.w, s.h, s.ox, s.oy);
 
-/** Linde: Stamm, Baumscheibe, Krone aus gestaffelten Kuppeln in drei Grüntönen. */
+/** Laub in fünf Stufen (Schatten → Sonne) für facettierte Kronen. */
+const LEAVES = [C.leafDeep, C.leaf, C.leafMid, C.leafLight, C.leafSun] as const;
+
+/** Baumscheibe: Granit-Einfassung, gusseiserner Rost mit Schlitzen, Erde um den Stamm. */
+function treePit(c: IsoCanvas, r: number) {
+  c.bevel(-r - 0.04, -r - 0.04, 0, 2 * r + 0.08, 2 * r + 0.08, 1.4, C.stone, { b: 0.6 });
+  c.flat(-r, -r, 1.41, 2 * r, 2 * r, C.castIron);
+  // Schlitze im Rost als hellere Rahmen-Ringe
+  for (const k of [0.78, 0.52])
+    c.flat(-r * k, -r * k, 1.42, 2 * r * k, 2 * r * k, tint(C.castIron, 0.18));
+  for (const k of [0.7, 0.44]) c.flat(-r * k, -r * k, 1.43, 2 * r * k, 2 * r * k, C.castIron);
+  c.disc(0, 0, 1.44, r * 0.34, C.soil);
+}
+
+/** Stamm als Kegelstumpf mit Wurzelanlauf, Lichtkante links und zwei Ästen in die Krone. */
+function trunk(c: IsoCanvas, s: number, h: number, branches: readonly Vec3[]) {
+  c.frustum(0, 0, 1.4, 0.085 * s, 0.06 * s, 4 * s, C.bark, C.bark);
+  c.frustum(0, 0, 5, 0.06 * s, 0.045 * s, h - 5, C.bark, C.barkLight);
+  c.shine(0, 0, 5, 0.05 * s, h - 8, C.bark, 0.22);
+  for (const b of branches) {
+    strut(c, [0, 0, h * 0.72], b, shade(C.bark, 0.92), 2.6 * s);
+    strut(c, [0, 0, h * 0.72], b, C.barkLight, 1 * s, 0.6);
+  }
+}
+
+/**
+ * Linde: Baumscheibe, Stamm mit Ästen, breite Krone aus facettierten Laubballen (Sonne oben links, Schatten
+ * rechts unten), weicher Schatten der Krone auf dem Gehweg.
+ */
 function linden(small: boolean): string {
   const c = canvasOf(CITY_SPRITE.tree);
-  const s = small ? 0.72 : 1;
-  c.flat(-0.22, -0.22, 0, 0.44, 0.44, shade(C.woodDeep, 0.8));
-  c.shadowDisc(0, 0, 0, 0.55 * s, 0.22, 2.5);
-  const leaves = ['#4f8f45', '#5fa451', '#76b863', '#93cc78'];
-  // Breite, runde Krone: große flache Kuppeln außen, kleinere oben
-  const blobs: [number, number, number, number, number][] = [
-    [-0.22, 0.1, 40, 0.34, 0],
-    [0.24, 0.06, 42, 0.32, 0],
-    [0.02, -0.2, 44, 0.34, 0],
-    [0.04, 0.22, 44, 0.3, 1],
-    [-0.16, -0.06, 54, 0.32, 1],
-    [0.18, -0.08, 56, 0.3, 1],
-    [0.02, 0.08, 60, 0.32, 2],
-    [-0.06, -0.04, 70, 0.24, 2],
-    [0.08, 0.02, 76, 0.16, 3],
-  ];
-  c.cylinder(0, 0, 0, 0.06 * s, 46 * s, C.woodDeep, shade(C.woodDeep, 0.9));
-  for (const [u, v, z, r, k] of blobs)
-    c.dome(u * s, v * s, z * s, r * s, r * 64 * s, leaves[k] ?? C.matcha);
+  const s = small ? 0.74 : 1;
+  c.shadowDisc(0.04, 0.04, 0, 0.62 * s, 0.2, 3.2);
+  c.shadowDisc(0, 0, 0, 0.16 * s, 0.28, 1.2);
+  treePit(c, 0.24 * s);
+  const H = 44 * s;
+  trunk(c, s, H, [
+    [-0.18 * s, 0.06 * s, H + 6 * s],
+    [0.16 * s, -0.08 * s, H + 9 * s],
+  ]);
+  // Untere Ballen eine Stufe dunkler (verschattet von der Krone darüber), oben Sonne.
+  const balls: [number, number, number, number, number][] = small
+    ? [
+        [-0.2, 0.1, 44, 0.25, -1],
+        [0.2, -0.04, 46, 0.25, -1],
+        [0.02, 0.22, 42, 0.23, -1],
+        [0.0, -0.2, 49, 0.23, -1],
+        [-0.07, -0.02, 57, 0.28, 0],
+        [0.1, 0.08, 56, 0.25, 0],
+        [0.02, -0.02, 69, 0.2, 0],
+      ]
+    : [
+        [-0.3, 0.12, 55, 0.33, -1],
+        [0.3, -0.06, 57, 0.33, -1],
+        [0.04, 0.32, 52, 0.3, -1],
+        [0.0, -0.32, 61, 0.3, -1],
+        [-0.13, -0.1, 72, 0.37, 0],
+        [0.17, 0.14, 70, 0.34, 0],
+        [0.02, 0.0, 87, 0.28, 0],
+      ];
+  crown(c, balls, C.leaf, { tones: LEAVES, seed: small ? 3 : 1 });
   return c.svg();
 }
 
-/** Berliner Gaslaterne (Aufsatzleuchte): dunkelgrüner Mast, Laterne mit Glas und Haube. */
+/** Senkrechte Streben auf einem Kegelstumpf (Sprossen einer Laterne, Stäbe), nur die vordere Hälfte. */
+function mullions(
+  c: IsoCanvas,
+  z0: number,
+  z1: number,
+  r0: number,
+  r1: number,
+  color: string,
+  angles: readonly number[] = [-0.25, 0.25, 0.75],
+  w = 0.9,
+) {
+  for (const t of angles) {
+    const a = t * Math.PI;
+    strut(
+      c,
+      [Math.cos(a) * r0, Math.sin(a) * r0, z0],
+      [Math.cos(a) * r1, Math.sin(a) * r1, z1],
+      color,
+      w,
+    );
+  }
+}
+
+/**
+ * Berliner Gaslaterne (Aufsatzleuchte): achteckiger Gusssockel, Schaft mit Ringen und Leiterstange, Laterne
+ * mit Sprossen und warmem Glas, Dach mit Krempe und Knauf. Laternenmitte bei z ≈ 66 (Nacht-Schein der Szene).
+ */
 function lamp(): string {
   const c = canvasOf(CITY_SPRITE.prop);
-  const g = '#35524a';
-  c.shadowDisc(0, 0, 0, 0.12, 0.24);
-  c.cylinder(0, 0, 0, 0.07, 6, g, tint(g, 0.2));
-  c.cylinder(0, 0, 6, 0.03, 52, g);
-  c.shine(0, 0, 6, 0.03, 52, g, 0.3);
-  c.frustum(0, 0, 58, 0.05, 0.1, 3, g);
-  c.group(0.85, () => c.frustum(0, 0, 61, 0.1, 0.14, 9, C.lamp, tint(C.lamp, 0.4)));
-  c.frustum(0, 0, 70, 0.16, 0.05, 4, g);
-  c.dome(0, 0, 74, 0.05, 4, g);
+  const g = C.lampGreen;
+  c.shadowDisc(0, 0, 0, 0.13, 0.26);
+  prism(c, ngon(0, 0, 0.1, 8, Math.PI / 8), 0, 3, g, tint(g, 0.12));
+  prism(c, ngon(0, 0, 0.075, 8, Math.PI / 8), 3, 9, g, tint(g, 0.12));
+  c.frustum(0, 0, 9, 0.06, 0.04, 4, g, tint(g, 0.15));
+  c.cylinder(0, 0, 13, 0.03, 42, g);
+  c.shine(0, 0, 13, 0.03, 42, g, 0.28);
+  for (const z of [20, 46]) c.cylinder(0, 0, z, 0.042, 1.8, tint(g, 0.08), tint(g, 0.25));
+  // Leiterstange quer zur Straße, mit Kugelenden
+  c.box(-0.13, -0.01, 49, 0.26, 0.02, 1.4, C.castIron);
+  for (const u of [-0.13, 0.13]) c.dome(u, 0, 49.5, 0.018, 2.2, C.castIron);
+  c.frustum(0, 0, 55, 0.035, 0.085, 3, g, tint(g, 0.2));
+  // Laterne: warmes Glas, Sprossen, Lichtkern
+  c.group(0.9, () => c.frustum(0, 0, 58, 0.08, 0.115, 12, C.lamp, tint(C.lamp, 0.5)));
+  c.frustum(0, 0, 60, 0.03, 0.03, 6, tint(C.lamp, 0.6), C.led);
+  mullions(c, 58, 70, 0.08, 0.115, g);
+  c.cylinder(0, 0, 69.5, 0.125, 1.6, g, tint(g, 0.2));
+  cone(c, 0, 0, 71, 0.14, 7, g);
+  c.cylinder(0, 0, 77, 0.018, 1.6, g);
+  c.dome(0, 0, 78.4, 0.03, 3.2, C.brass);
   return c.svg();
 }
 
@@ -705,76 +782,209 @@ function cafeSign(): string {
   return c.svg();
 }
 
-/** Fußgängerampel mit Ampelmännchen (rot steht, grün geht). */
+/**
+ * Zeichenhilfe für Signalgeber, die zu einer Achse zeigen: a = entlang der Lichtfläche, n = Abstand nach vorn
+ * (zur Kamera, +u bei Achse u, +v bei Achse v), z = Höhe.
+ */
+function facing(c: IsoCanvas, axis: 'u' | 'v') {
+  const P = (a: number, n: number, z: number): Vec3 => (axis === 'u' ? [n, a, z] : [a, n, z]);
+  return {
+    P,
+    box: (a: number, n: number, z: number, da: number, dn: number, h: number, color: string) =>
+      axis === 'u' ? c.box(n, a, z, dn, da, h, color) : c.box(a, n, z, da, dn, h, color),
+    /** Fläche in der Ebene n (zeigt nach vorn); Farbe ohne Schattierung. */
+    face: (a: number, n: number, z: number, da: number, h: number, color: string, opacity = 1) =>
+      c.poly([P(a, n, z), P(a + da, n, z), P(a + da, n, z + h), P(a, n, z + h)], color, opacity),
+    disc: (a: number, n: number, z: number, r: number, color: string, opacity = 1) =>
+      c.poly(axis === 'u' ? ringPts('u', n, a, z, r) : ringPts('v', a, n, z, r), color, opacity),
+    poly: (n: number, pts: readonly (readonly [number, number])[], color: string, opacity = 1) =>
+      c.poly(
+        pts.map(([a, z]) => P(a, n, z)),
+        color,
+        opacity,
+      ),
+    /** Helligkeit der Vorderseite (Achse u zeigt nach rechts: 70 %, Achse v nach links: 85 %). */
+    s: axis === 'u' ? SHADE.right : SHADE.left,
+  };
+}
+
+/** Mast aus verzinktem Stahl mit Fuß, Glanzkante und Kappe. */
+function signalMast(c: IsoCanvas, h: number) {
+  c.shadowDisc(0, 0, 0, 0.1, 0.26);
+  c.cylinder(0, 0, 0, 0.055, 2.5, C.castIron, tint(C.castIron, 0.2));
+  c.cylinder(0, 0, 2.5, 0.028, h - 2.5, C.galvanized);
+  c.shine(0, 0, 2.5, 0.028, h - 2.5, C.galvanized, 0.45);
+  c.cylinder(0, 0, 9, 0.031, 3, C.castIron, tint(C.castIron, 0.2));
+  c.dome(0, 0, h, 0.03, 2.4, C.galvanized);
+}
+
+type LensState = { on: boolean; color: string };
+
+/**
+ * Signalgeber: Kontrastblende mit weißem Rand, Gehäuse mit Fase, Linsen mit Schute; leuchtende Linse mit Hof,
+ * heißem Kern und Glanzpunkt, dunkle Linse mit Reflex.
+ */
+function signalHead(
+  f: ReturnType<typeof facing>,
+  z0: number,
+  w: number,
+  lenses: readonly LensState[],
+  pitch: number,
+  r: number,
+  plate: boolean,
+) {
+  const h = pitch * lenses.length + 2;
+  const n0 = 0.034;
+  const dn = 0.06;
+  if (plate) {
+    f.box(-w / 2 - 0.045, n0 - 0.008, z0 - 3.5, w + 0.09, 0.008, h + 7, C.white);
+    f.face(-w / 2 - 0.035, n0, z0 - 2.4, w + 0.07, h + 4.8, shade(C.ink, f.s));
+  }
+  f.box(-w / 2, n0, z0, w, dn, h, C.ink);
+  f.box(-w / 2, n0, z0 + h, w, dn, 0.8, tint(C.ink, 0.15));
+  const n1 = n0 + dn + 0.001;
+  lenses.forEach((l, i) => {
+    const z = z0 + h - 1 - pitch * (i + 0.5);
+    if (l.on) {
+      f.disc(0, n1 + 0.004, z, r * 1.9, l.color, 0.16);
+      f.disc(0, n1 + 0.004, z, r * 1.4, l.color, 0.3);
+    }
+    f.disc(0, n1, z, r * 1.12, shade(C.ink, 0.6));
+    f.disc(0, n1 + 0.001, z, r, l.on ? l.color : shade(l.color, 0.3));
+    if (l.on) f.disc(-r * 0.15, n1 + 0.002, z + 0.3, r * 0.55, tint(l.color, 0.55));
+    f.disc(-r * 0.4, n1 + 0.003, z + r * Z_PER_TILE * 0.45, r * 0.25, C.white, l.on ? 0.8 : 0.3);
+    // Schute: Dach und Wangen ragen über die Linse nach vorn
+    f.box(-r * 1.25, n1, z + r * Z_PER_TILE * 1.05, r * 2.5, 0.035, 0.9, shade(C.ink, 1.25));
+    for (const a of [-r * 1.25, r * 1.17])
+      f.box(
+        a,
+        n1,
+        z - r * Z_PER_TILE * 0.2,
+        r * 0.08,
+        0.035,
+        r * Z_PER_TILE * 1.25,
+        shade(C.ink, 1.1),
+      );
+  });
+}
+
+/** Fußgängerampel mit Ampelmännchen (rot steht, grün geht, beide mit Hut) und gelbem Anforderungstaster. */
 function pedLight(go: boolean): string {
   const c = canvasOf(CITY_SPRITE.prop);
-  c.shadowDisc(0, 0, 0, 0.08, 0.22);
-  c.cylinder(0, 0, 0, 0.03, 44, IRON);
-  c.box(-0.08, -0.06, 36, 0.12, 0.12, 22, C.ink);
-  const face = (z: number, on: boolean, col: string) => {
-    c.wallV(-0.07, 0.061, z, 0.1, 9, on ? col : shade(col, 0.35));
-    if (!on) return;
-    // Männchen als kleine Silhouette
-    const m = shade(col, 0.55);
-    c.wallV(-0.03, 0.062, z + 6, 0.025, 2, m);
-    c.wallV(-0.035, 0.062, z + 2.5, 0.035, 3.5, m);
-    c.wallV(go ? -0.05 : -0.03, 0.062, z + 0.5, 0.02, 2.2, m);
-    c.wallV(go ? -0.01 : -0.01, 0.062, z + 0.5, 0.02, 2.2, m);
+  signalMast(c, 50);
+  const f = facing(c, 'v');
+  // Taster am Mast (zur Seite +u), gelb mit Tastenfeld
+  const t = facing(c, 'u');
+  t.box(-0.045, 0.026, 15, 0.09, 0.05, 9, C.postYellow);
+  t.face(-0.025, 0.077, 19, 0.05, 3, shade(C.ink, t.s));
+  t.disc(0, 0.078, 17, 0.015, C.white);
+  const w = 0.17;
+  const z0 = 31;
+  f.box(-w / 2, 0.034, z0, w, 0.06, 23, C.ink);
+  f.box(-w / 2, 0.034, z0 + 23, w, 0.06, 0.8, tint(C.ink, 0.15));
+  const n = 0.095;
+  const man = (zc: number, walking: boolean, col: string) => {
+    const S = (pts: readonly (readonly [number, number])[]) =>
+      f.poly(
+        n + 0.002,
+        pts.map(([a, z]) => [a * 0.06, zc + z * 0.85] as const),
+        col,
+      );
+    // Hut (Krempe und Kopf), Kopf, Rumpf
+    S([
+      [-0.55, 4.6],
+      [0.55, 4.6],
+      [0.55, 5.2],
+      [-0.55, 5.2],
+    ]);
+    S([
+      [-0.3, 5.2],
+      [0.3, 5.2],
+      [0.25, 6.4],
+      [-0.25, 6.4],
+    ]);
+    S([
+      [-0.28, 3],
+      [0.28, 3],
+      [0.28, 4.6],
+      [-0.28, 4.6],
+    ]);
+    S([
+      [-0.4, -0.6],
+      [0.4, -0.6],
+      [0.35, 3],
+      [-0.35, 3],
+    ]);
+    if (walking) {
+      S([
+        [-0.3, -0.4],
+        [0.05, -0.4],
+        [-0.55, -4.6],
+        [-0.95, -4.6],
+      ]);
+      S([
+        [-0.05, -0.4],
+        [0.3, -0.4],
+        [0.95, -4.6],
+        [0.55, -4.6],
+      ]);
+      S([
+        [0.3, 2.6],
+        [0.4, 2],
+        [1.1, 0.4],
+        [0.9, 0.1],
+      ]);
+    } else {
+      S([
+        [-0.35, -0.6],
+        [0.35, -0.6],
+        [0.3, -4.6],
+        [-0.3, -4.6],
+      ]);
+      S([
+        [-0.38, 2.8],
+        [-0.38, 2],
+        [-1.15, 0.6],
+        [-1.15, 1.4],
+      ]);
+      S([
+        [0.38, 2.8],
+        [0.38, 2],
+        [1.15, 0.6],
+        [1.15, 1.4],
+      ]);
+    }
   };
-  face(47, !go, C.red);
-  face(37.5, go, '#5ee07a');
-  if (!go) c.glowFlat(-0.12, 0.06, 50, 0.2, 0.06, C.red, 0.35, 2);
-  else c.glowFlat(-0.12, 0.06, 41, 0.2, 0.06, '#5ee07a', 0.35, 2);
+  for (const [zc, on, col, walking] of [
+    [z0 + 17, !go, C.signalRed, false],
+    [z0 + 6, go, C.signalGreen, true],
+  ] as const) {
+    f.face(-w / 2 + 0.015, n + 0.001, zc - 5.2, w - 0.03, 10.4, shade(C.ink, 0.55));
+    if (on) f.face(-w / 2 + 0.02, n + 0.0015, zc - 4.8, w - 0.04, 9.6, col, 0.22);
+    man(zc, walking, on ? col : shade(col, 0.32));
+    f.box(-w / 2, n, zc + 5.4, w, 0.03, 0.8, shade(C.ink, 1.25));
+  }
   return c.svg();
 }
 
 /**
- * Autoampel am Mast: schwarzes Gehäuse mit weiß umrandeter Kontrastblende, drei Lichter mit Schute. Die Lichter
- * zeigen zur Kamera: Achse `u` nach +x (Fahrbahn entlang x), `v` nach +y. `state` = was leuchtet.
+ * Autoampel am Mast: Hauptsignal mit weiß umrandeter Kontrastblende und Schuten, darunter ein kleiner Wiederholer
+ * in Augenhöhe. Die Lichter zeigen zur Kamera: Achse `u` nach +x (Fahrbahn entlang x), `v` nach +y.
+ * `state` = was leuchtet.
  */
 function trafficLight(axis: 'u' | 'v', state: 'red' | 'redYellow' | 'green' | 'yellow'): string {
   const c = canvasOf(CITY_SPRITE.prop);
-  const head = C.ink;
-  c.shadowDisc(0, 0, 0, 0.09, 0.22);
-  c.cylinder(0, 0, 0, 0.05, 3, IRON, tint(IRON, 0.2));
-  c.cylinder(0, 0, 3, 0.026, 60, IRON, tint(IRON, 0.2));
-  c.shine(0, 0, 3, 0.026, 60, IRON, 0.25);
-  const z0 = 34;
-  const h = 26;
-  // Lichtebene: Fläche u = face (Achse u) bzw. v = face (Achse v); a = Lage entlang der Fläche.
-  const face = 0.075;
-  const disc = (a: number, z: number, r: number, color: string, opacity = 1) => {
-    const pts: Vec3[] = [];
-    for (let i = 0; i < 18; i++) {
-      const t = (i / 18) * Math.PI * 2;
-      const da = Math.cos(t) * r;
-      const dz = Math.sin(t) * r * Z_PER_TILE;
-      pts.push(axis === 'u' ? [face + 0.002, a + da, z + dz] : [a + da, face + 0.002, z + dz]);
-    }
-    c.poly(pts, color, opacity);
-  };
-  const plate = (a0: number, w: number, zz: number, hh: number, color: string, off: number) =>
-    axis === 'u'
-      ? c.wallU(face - off, a0, zz, w, hh, shade(color, 0.7))
-      : c.wallV(a0, face - off, zz, w, hh, shade(color, 0.85));
-  // Kontrastblende (weißer Rand, schwarz), dahinter das Gehäuse
-  plate(-0.1, 0.2, z0 - 3, h + 6, C.white, 0.03);
-  plate(-0.09, 0.18, z0 - 2, h + 4, head, 0.029);
-  if (axis === 'u') c.box(-0.02, -0.06, z0, 0.095, 0.12, h, head);
-  else c.box(-0.06, -0.02, z0, 0.12, 0.095, h, head);
-  const lamps: { z: number; on: boolean; color: string }[] = [
-    { z: z0 + h - 5, on: state === 'red' || state === 'redYellow', color: '#ff4b3e' },
-    { z: z0 + h / 2, on: state === 'yellow' || state === 'redYellow', color: '#ffc42e' },
-    { z: z0 + 5, on: state === 'green', color: '#3ee07a' },
+  signalMast(c, 68);
+  const f = facing(c, axis);
+  const lenses: LensState[] = [
+    { on: state === 'red' || state === 'redYellow', color: C.signalRed },
+    { on: state === 'yellow' || state === 'redYellow', color: C.signalYellow },
+    { on: state === 'green', color: C.signalGreen },
   ];
-  for (const l of lamps) {
-    if (l.on) disc(0, l.z, 0.075, l.color, 0.3);
-    disc(0, l.z, 0.048, l.on ? l.color : shade(l.color, 0.32));
-    if (l.on) disc(-0.012, l.z + 1.2, 0.016, tint(l.color, 0.7));
-    // Schute über dem Licht
-    if (axis === 'u') c.box(face, -0.05, l.z + 3.2, 0.03, 0.1, 1, shade(head, 1.2));
-    else c.box(-0.05, face, l.z + 3.2, 0.1, 0.03, 1, shade(head, 1.2));
-  }
+  // Halterungen (kurze Ausleger) zwischen Mast und Gehäusen
+  for (const z of [42, 62, 18, 28]) f.box(-0.012, 0.01, z, 0.024, 0.03, 1.6, C.galvanized);
+  signalHead(f, 38, 0.2, lenses, 9, 0.072, true);
+  signalHead(f, 14, 0.13, lenses, 5.4, 0.042, false);
   return c.svg();
 }
 
@@ -947,41 +1157,6 @@ function pigeon(pose: 'stand' | 'peck' | 'fly0' | 'fly1'): string {
       `<path d="M${n(wx + 1)},${n(wy)} Q${n(wx + 4)},${n(wy + (up ? -5 : 3))} ${n(wx + 8)},${n(wy + (up ? -6 : 4))} L${n(wx)},${n(wy + 1)} Z" fill="${tint(grey, 0.15)}"/>`,
   );
   return c.svg();
-}
-
-/**
- * Senkrechtes Prisma über einem konvexen Grundriss (Normale (dv, −du) jeder Kante zeigt nach außen): zeichnet nur die zur
- * Kamera zeigenden Seiten (Normale mit +u/+v-Anteil), links 85 %, rechts 70 %, Deckel 100 %.
- */
-function prism(
-  c: IsoCanvas,
-  pts: readonly [number, number][],
-  z0: number,
-  z1: number,
-  color: string,
-) {
-  for (let i = 0; i < pts.length; i++) {
-    const a = pts[i];
-    const b = pts[(i + 1) % pts.length];
-    if (!a || !b) continue;
-    const nx = b[1] - a[1];
-    const ny = -(b[0] - a[0]);
-    if (nx + ny <= 0) continue;
-    const f = ny >= nx ? SHADE.left : SHADE.right;
-    c.poly(
-      [
-        [a[0], a[1], z0],
-        [b[0], b[1], z0],
-        [b[0], b[1], z1],
-        [a[0], a[1], z1],
-      ],
-      shade(color, f),
-    );
-  }
-  c.poly(
-    pts.map(([u, v]) => [u, v, z1] as Vec3),
-    color,
-  );
 }
 
 /** Ausflugsdampfer: weißer Rumpf mit blauem Band, verglastes Oberdeck, entlang u. */
