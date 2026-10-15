@@ -350,3 +350,33 @@ export function cylPatch(
     );
   }
 }
+
+/**
+ * Volant einer Markise: senkrechter Stoffstreifen unter der Kante a → b, unten in `n` Bögen ausgeschnitten,
+ * Bahnen abwechselnd in `colors`; `f` = Helligkeit der Fläche (Seite links 0,85, rechts 0,7).
+ */
+export function valance(
+  c: IsoCanvas,
+  a: Vec3,
+  b: Vec3,
+  h: number,
+  colors: readonly string[],
+  n: number,
+  f: number,
+): void {
+  for (let i = 0; i < n; i++) {
+    const t0 = i / n;
+    const t1 = (i + 1) / n;
+    const P = (t: number, dz: number): Vec3 => [
+      a[0] + (b[0] - a[0]) * t,
+      a[1] + (b[1] - a[1]) * t,
+      a[2] + (b[2] - a[2]) * t + dz,
+    ];
+    const pts: Vec3[] = [P(t0, 0), P(t1, 0)];
+    for (let k = 0; k <= 6; k++) {
+      const t = t1 - ((t1 - t0) * k) / 6;
+      pts.push(P(t, -h - Math.sin((k / 6) * Math.PI) * h * 0.55));
+    }
+    c.poly(pts, lit(colors[i % colors.length] ?? '#ffffff', f));
+  }
+}

@@ -869,7 +869,7 @@ export function propCanvas(kind: PropKind): { w: number; h: number; ox: number; 
 }
 
 /** Zusätzliche Lacke je Autotyp für parkende Autos (`car-<typ>-p<k>-f`), der Verkehr fährt die Grundlacke. */
-export const PARKED_CAR_PAINTS = 2;
+export const PARKED_CAR_PAINTS = 1;
 
 /** Parkendes Auto: Typ aus `variant`, Lack aus der Position (Grundlack oder eine der Zusatzfarben). */
 export function parkedCarFrame(p: PropDef): string {

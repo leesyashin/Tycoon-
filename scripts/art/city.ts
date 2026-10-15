@@ -30,6 +30,7 @@ import {
   prism,
   ringPts,
   strut,
+  valance,
 } from './shapes';
 import type { SpriteDef } from './sprites';
 
@@ -1152,22 +1153,10 @@ const CARS: CarStyle[] = [
 
 /** Weitere Lacke je Typ für parkende Autos (`car-<typ>-p<k>-f`, `parkedCarFrame` in `data/city.ts`). */
 const CAR_PAINTS: readonly (readonly CarStyle[])[] = [
-  [
-    { kind: 'sedan', paint: C.carNavy },
-    { kind: 'sedan', paint: C.carSilver },
-  ],
-  [
-    { kind: 'wagon', paint: C.carGreen, rails: true },
-    { kind: 'wagon', paint: C.carBlack, rails: true },
-  ],
-  [
-    { kind: 'van', paint: C.carYellow, stripe: C.ink },
-    { kind: 'van', paint: C.carSilver },
-  ],
-  [
-    { kind: 'compact', paint: C.carYellow, roof: C.white },
-    { kind: 'compact', paint: C.carOrange, roof: C.carSilver },
-  ],
+  [{ kind: 'sedan', paint: C.carNavy }],
+  [{ kind: 'wagon', paint: C.carGreen, rails: true }],
+  [{ kind: 'van', paint: C.carSilver }],
+  [{ kind: 'compact', paint: C.carYellow, roof: C.white }],
 ];
 
 type P2u = readonly [number, number];
@@ -1584,8 +1573,8 @@ function bicycle(c: IsoCanvas, cu: number, v: number, s: number, b: BicycleLook)
     polyline(c, [...ring, ring[0] ?? ring[1] ?? [0, 0, 0]], C.rubber, 1.3);
     const rim = ringPts('v', U(u), v + 0.001, wz, r * 0.82, 16);
     polyline(c, [...rim, rim[0] ?? [0, 0, 0]], C.galvanized, 0.45);
-    for (let k = 0; k < 4; k++) {
-      const a = (k / 4) * Math.PI + 0.3;
+    for (let k = 0; k < 2; k++) {
+      const a = (k / 2) * Math.PI + 0.5;
       strut(
         c,
         P(u + Math.cos(a) * r * 0.8, wz + Math.sin(a) * wz * 0.8, 0.002),
@@ -1900,7 +1889,10 @@ function boat(heading: 'f' | 'b'): string {
 const wide = () => canvasOf(CITY_SPRITE.wide);
 const small = () => canvasOf(CITY_SPRITE.prop);
 
-/** Gestreiftes Schrägdach (Marktstand, Kiosk): Streifen entlang u, Neigung nach +v. */
+/**
+ * Gestreiftes Schrägdach (Marktstand, Kiosk): Bahnen entlang u, Neigung nach +v, vorn und an der +u-Seite ein
+ * Volant mit Bögen; Unterseite der Bahnen als dunkler Saum.
+ */
 function stripedRoof(
   c: IsoCanvas,
   u0: number,
@@ -1925,183 +1917,625 @@ function stripedRoof(
       ],
       k % 2 ? b : a,
     );
-    c.wallV(x0, v0 + d, zFront - 3, x1 - x0, 3, shade(k % 2 ? b : a, SHADE.left));
   }
+  valance(
+    c,
+    [u0 + w, v0, zBack],
+    [u0 + w, v0 + d, zFront],
+    2.6,
+    [a, b],
+    Math.max(2, Math.round(n * (d / w))),
+    SHADE.right,
+  );
+  valance(c, [u0, v0 + d, zFront], [u0 + w, v0 + d, zFront], 2.6, [a, b], n, SHADE.left);
 }
 
-/** Zeitungs- und Getränkekiosk im Park: grüner Pavillon mit Fensterklappe und Markise. */
+/** Obst/Gemüse als kleine Kugeln in einer Kiste (Reihen × Spalten), leicht gehäuft. */
+function produce(
+  c: IsoCanvas,
+  u: number,
+  v: number,
+  z: number,
+  w: number,
+  d: number,
+  colors: readonly string[],
+  r = 0.042,
+) {
+  const cols = Math.max(2, Math.round(w / (r * 2.2)));
+  const rows = Math.max(2, Math.round(d / (r * 2.2)));
+  for (let j = 0; j < rows; j++)
+    for (let i = 0; i < cols; i++) {
+      const cu = u + ((i + 0.5) * w) / cols;
+      const cv = v + ((j + 0.5) * d) / rows;
+      const col = colors[(i * 3 + j * 5) % colors.length] ?? C.red;
+      c.dome(cu, cv, z + (j % 2) * 0.4, r, r * 46, col);
+    }
+}
+
+/** Holzkiste mit Lattenfugen, schräg zur Kundschaft; `fill` zeichnet den Inhalt. */
+function crate(c: IsoCanvas, u: number, v: number, z: number, w: number, d: number, h: number) {
+  c.bevel(u, v, z, w, d, h, C.oakLight, { b: 0.5, edge: 0.25 });
+  c.wallV(u + 0.01, v + d + 0.001, z + h * 0.45, w - 0.02, 0.5, shade(C.oakLight, 0.7));
+}
+
+/**
+ * Zeitungs- und Getränkekiosk im Park: grüner Pavillon mit Kassettenwänden, offene Verkaufsklappe mit Auslage
+ * (Zeitschriften, Gläser mit Süßem, Getränke), Tür mit Plakaten, Walmdach mit Knauf, Markise mit Volant,
+ * Zeitungsständer davor.
+ */
 function kiosk(): string {
   const c = wide();
-  const g = '#2f5a4a';
-  c.shadow(-0.6, -0.5, 0, 1.2, 1.1, 0.26, 1.6);
-  c.bevel(-0.55, -0.45, 0, 1.1, 0.9, 30, g, { b: 1.2 });
-  c.wallV(-0.45, 0.451, 12, 0.9, 12, '#eadfc8');
-  for (let k = 0; k < 5; k++)
-    c.wallV(
-      -0.42 + k * 0.17,
-      0.452,
-      14,
-      0.12,
-      8,
-      [C.red, C.gold, C.cobalt, C.sakura, C.white][k] ?? C.red,
-    );
-  c.box(-0.5, 0.42, 10, 1, 0.12, 2, C.oakLight);
-  c.wallU(0.551, -0.35, 4, 0.5, 20, shade(C.cream, SHADE.right));
-  stripedRoof(c, -0.62, -0.5, 1.24, 1.15, 34, 29, C.matchaDeep, C.white, 7);
-  c.dome(0, 0, 34, 0.2, 8, g);
-  c.cylinder(0, 0, 41, 0.02, 6, C.gold);
+  const g = C.pillarGreen;
+  c.shadow(-0.66, -0.54, 0, 1.32, 1.18, 0.28, 1.8);
+  c.bevel(-0.57, -0.47, 0, 1.14, 0.94, 2.2, C.stone, { b: 0.6 });
+  c.bevel(-0.55, -0.45, 2.2, 1.1, 0.9, 27.8, g, { b: 1 });
+  // Kassetten an der rechten Seite und Tür
+  for (const [v0, w] of [
+    [-0.4, 0.22],
+    [0.18, 0.22],
+  ] as const) {
+    c.wallU(0.551, v0, 5, w, 9, shade(tint(g, 0.12), SHADE.right));
+    c.wallU(0.552, v0 + 0.02, 6, w - 0.04, 7, shade(g, SHADE.right * 0.92));
+  }
+  c.wallU(0.551, -0.14, 2.2, 0.28, 22, shade(C.doorWood, SHADE.right));
+  c.wallU(0.552, -0.11, 12, 0.22, 10, shade(C.pane, SHADE.right));
+  c.wallU(0.553, -0.1, 3.6, 0.2, 7, shade(C.sakura, SHADE.right));
+  c.wallU(0.554, -0.06, 5, 0.12, 3, shade(C.white, SHADE.right));
+  c.wallU(0.551, 0.2, 16, 0.18, 9, shade(C.gold, SHADE.right));
+  c.wallU(0.552, 0.23, 18, 0.1, 4, shade(C.red, SHADE.right));
+  // Verkaufsfenster vorn: dunkles Inneres, Regale mit Ware, Klappe darüber
+  c.wallV(-0.47, 0.451, 11, 0.94, 15, shade(C.paneDark, 0.9));
+  for (const z of [14, 19.5]) {
+    c.wallV(-0.45, 0.452, z - 0.6, 0.9, 0.6, C.oak);
+    for (let k = 0; k < 9; k++)
+      c.wallV(
+        -0.43 + k * 0.1,
+        0.453,
+        z,
+        0.07,
+        3.6 + (k % 3),
+        [C.red, C.gold, C.cobalt, C.sakura, C.white, C.matcha][(k + z) % 6] ?? C.red,
+      );
+  }
+  c.wallV(-0.47, 0.452, 24.4, 0.94, 1.6, tint(g, 0.2));
+  c.bevel(-0.52, 0.42, 10, 1.04, 0.13, 1.4, C.oakLight, { b: 0.5, edge: 0.3 });
+  for (const [u, col] of [
+    [-0.38, C.sakura],
+    [-0.28, C.gold],
+    [-0.18, C.matchaFoam],
+  ] as const) {
+    c.group(0.75, () => c.cylinder(u, 0.49, 11.4, 0.035, 4.2, C.glass, tint(C.glass, 0.4)));
+    c.cylinder(u, 0.49, 11.4, 0.028, 2.4, col, col);
+    c.cylinder(u, 0.49, 15.6, 0.03, 0.8, C.red, tint(C.red, 0.3));
+  }
+  c.box(0.1, 0.44, 11.4, 0.22, 0.1, 1.6, C.paper);
+  c.box(0.12, 0.45, 13, 0.18, 0.08, 1.2, tint(C.cobaltLight, 0.4));
+  // Walmdach mit Überstand, Knauf
+  const eave = 30;
+  const top = 41;
+  const [U0, U1, V0, V1] = [-0.64, 0.64, -0.54, 0.54];
+  c.poly(
+    [
+      [U0, V1, eave],
+      [U1, V1, eave],
+      [0.12, 0.08, top],
+      [-0.12, 0.08, top],
+    ],
+    shade(C.lampGreen, 0.95),
+  );
+  c.poly(
+    [
+      [U1, V0, eave],
+      [U1, V1, eave],
+      [0.12, 0.08, top],
+      [0.12, -0.08, top],
+    ],
+    shade(C.lampGreen, 0.78),
+  );
+  c.poly(
+    [
+      [-0.12, -0.08, top],
+      [0.12, -0.08, top],
+      [0.12, 0.08, top],
+      [-0.12, 0.08, top],
+    ],
+    tint(C.lampGreen, 0.2),
+  );
+  c.wallV(U0, V1, eave - 1.2, U1 - U0, 1.2, shade(C.lampGreen, 0.7));
+  c.wallU(U1, V0, eave - 1.2, V1 - V0, 1.2, shade(C.lampGreen, 0.6));
+  c.cylinder(0, 0, top, 0.02, 3, C.brass);
+  facetBall(c, 0, 0, top + 4.5, 0.045, C.brass, { seg: 8, rings: 4 });
+  stripedRoof(c, -0.6, 0.45, 1.2, 0.16, 28.5, 26.5, C.matchaDeep, C.white, 8);
+  // Zeitungsständer links vor dem Kiosk
+  c.shadow(-0.86, 0.5, 0, 0.18, 0.12, 0.22);
+  c.box(-0.85, 0.52, 0, 0.16, 0.08, 9, shade(C.castIron, 1.2));
+  for (let k = 0; k < 3; k++)
+    c.wallV(-0.84, 0.601, 2 + k * 2.6, 0.14, 2, [C.paper, C.white, C.cream][k] ?? C.paper);
   return c.svg();
 }
 
-/** Marktstand: Tisch mit Ware, Stangen und gestreiftes Dach (vier Farben/Waren). */
+const STALLS: readonly {
+  roof: [string, string];
+  cloth: string;
+  /** Inhalt der drei Kisten (je eine Farbfolge) bzw. Blumen-Eimer. */
+  wares: readonly (readonly string[])[];
+  kind: 'produce' | 'flowers' | 'bakery';
+}[] = [
+  {
+    roof: [C.canvasRed, C.white],
+    cloth: C.canvasRed,
+    wares: [
+      [C.red, shade(C.red, 0.8)],
+      [C.orange, C.gold],
+      [C.leafLight, C.leafMid],
+      [C.carYellow, C.gold],
+    ],
+    kind: 'produce',
+  },
+  {
+    roof: [C.cobalt, C.white],
+    cloth: C.cobalt,
+    wares: [
+      [C.sakura, C.white],
+      [C.carYellow, C.orange],
+      [C.red, C.sakura],
+      [C.plum, C.cobaltLight],
+    ],
+    kind: 'flowers',
+  },
+  {
+    roof: [C.matchaDeep, C.linen],
+    cloth: C.matchaDeep,
+    wares: [
+      [C.leafMid, C.leaf],
+      [C.matchaFoam, C.leafLight],
+      [C.carRed, C.red],
+      [C.cream, C.sage],
+    ],
+    kind: 'produce',
+  },
+  {
+    roof: [C.orange, C.linen],
+    cloth: C.orange,
+    wares: [[C.oakLight, C.woodDark], [C.cream, C.oakLight], [C.sakura, C.cream], [C.coffee]],
+    kind: 'bakery',
+  },
+];
+
+/**
+ * Marktstand: Tisch mit Stoffbehang, schräge Kisten mit Ware (Obst/Gemüse, Blumen-Eimer oder Brote unter
+ * Glasglocke), Waage und Tafel, Kisten dahinter, Stangen und gestreiftes Dach mit Volant.
+ */
 function stall(variant: number): string {
   const c = wide();
-  const [a, b] = (
-    [
-      [C.red, C.white],
-      [C.cobalt, C.white],
-      [C.matchaDeep, C.cream],
-      [C.orange, C.cream],
-    ] as const
-  )[variant] ?? [C.red, C.white];
-  const wares = [
-    [C.red, C.orange, C.matcha, C.gold],
-    [C.sakura, C.white, C.cobaltLight, C.cream],
-    [C.matcha, C.matchaDeep, C.sage, C.gold],
-    [C.coffee, C.oakLight, C.cream, C.sakura],
-  ][variant] ?? [C.red];
-  c.shadow(-0.65, -0.35, 0, 1.3, 0.75, 0.24);
+  const st = STALLS[variant % STALLS.length] ?? STALLS[0];
+  if (!st) return c.svg();
+  const [a, b] = st.roof;
+  c.shadow(-0.68, -0.38, 0, 1.36, 0.82, 0.26, 1.8);
+  // Kisten hinten (Vorrat)
+  crate(c, -0.5, -0.32, 0, 0.26, 0.18, 6);
+  crate(c, -0.46, -0.3, 6, 0.22, 0.15, 5);
+  crate(c, 0.26, -0.32, 0, 0.26, 0.18, 6);
   for (const [u, v] of [
-    [-0.6, -0.3],
-    [0.58, -0.3],
-    [-0.6, 0.36],
-    [0.58, 0.36],
+    [-0.6, -0.36],
+    [0.58, -0.36],
+    [-0.6, 0.14],
+    [0.58, 0.14],
   ] as const)
-    c.box(u, v, 0, 0.03, 0.03, 30, C.stainlessDark);
-  c.box(-0.55, -0.2, 0, 1.1, 0.5, 12, C.oak);
-  c.wallV(-0.55, 0.301, 2, 1.1, 8, shade(a, 0.95));
-  for (let k = 0; k < 6; k++) {
-    const col = wares[k % wares.length] ?? C.red;
-    c.box(-0.5 + k * 0.17, -0.15, 12, 0.14, 0.4, 2.5, shade(C.woodDark, 1.1));
-    for (let m = 0; m < 3; m++) c.dome(-0.43 + k * 0.17, -0.08 + m * 0.13, 14.5, 0.045, 2.6, col);
-  }
-  stripedRoof(c, -0.66, -0.36, 1.32, 0.82, 32, 27, a, b, 6);
+    if (v < 0) c.box(u, v, 0, 0.03, 0.03, 33, C.stainlessDark);
+  c.bevel(-0.56, -0.18, 0, 1.12, 0.5, 11, st.cloth, { b: 0.8 });
+  // Behang mit hellem Saum, Tischplatte
+  c.wallV(-0.56, 0.321, 1, 1.12, 1.2, tint(st.cloth, 0.5));
+  c.bevel(-0.58, -0.2, 11, 1.16, 0.54, 1, C.oak, { b: 0.4, edge: 0.3 });
+  const wares = st.wares;
+  wares.forEach((w, k) => {
+    const u = -0.53 + k * 0.27;
+    if (st.kind === 'flowers') {
+      c.cylinder(u + 0.12, 0.06, 12, 0.08, 6, C.galvanized, shade(C.galvanized, 0.7));
+      for (let m = 0; m < 5; m++) {
+        const du = Math.cos(m * 1.3) * 0.05;
+        const dv = Math.sin(m * 1.3) * 0.05;
+        strut(c, [u + 0.12, 0.06, 17], [u + 0.12 + du, 0.06 + dv, 22], C.leaf, 0.8);
+        c.dome(u + 0.12 + du, 0.06 + dv, 22, 0.035, 2.6, w[m % w.length] ?? C.sakura);
+      }
+    } else if (st.kind === 'bakery') {
+      c.bevel(u, -0.12, 12, 0.24, 0.36, 1.2, C.woodDark, { b: 0.4 });
+      for (let m = 0; m < 3; m++)
+        c.dome(
+          u + 0.06 + m * 0.07,
+          -0.02 + (m % 2) * 0.14,
+          13.2,
+          0.05,
+          3.2,
+          w[m % w.length] ?? C.oakLight,
+        );
+    } else {
+      crate(c, u, -0.12, 12, 0.24, 0.36, 2.6);
+      produce(c, u + 0.02, -0.1, 14.6, 0.2, 0.32, w);
+    }
+  });
+  if (st.kind === 'bakery') c.group(0.45, () => c.dome(0.42, 0.1, 13, 0.1, 7, C.glass));
+  // Waage und Tafel (ohne Schrift) vorn rechts
+  c.bevel(0.42, 0.18, 12, 0.1, 0.08, 1.6, C.stainless, { b: 0.4 });
+  c.disc(0.47, 0.22, 13.7, 0.05, C.stainlessLight);
+  c.wallV(0.18, 0.321, 6, 0.16, 5, C.ink);
+  c.wallV(0.2, 0.322, 9, 0.12, 0.6, C.white);
+  c.wallV(0.2, 0.322, 7.4, 0.08, 0.6, C.white);
+  for (const u of [-0.6, 0.58]) c.box(u, 0.14, 0, 0.03, 0.03, 30.5, C.stainlessDark);
+  stripedRoof(c, -0.68, -0.4, 1.36, 0.58, 34, 30, a, b, 7);
   return c.svg();
 }
 
-/** Imbisswagen: Kastenwagen mit Verkaufsklappe, Markise und Theke (zwei Lackfarben). */
+/**
+ * Imbisswagen (zwei Lacke): Kastenwagen mit rundem Fahrerhaus, Verkaufsklappe mit Markise und Volant, Theke mit
+ * Servietten und Bechern, Menütafel aus Farbfeldern, Dachaufsteller mit Becher-Emblem, Gasflaschen hinten.
+ */
 function foodtruck(variant: number): string {
   const c = wide();
-  const body = variant ? C.cobalt : C.gold;
-  c.shadow(-0.95, -0.38, 0, 1.9, 0.76, 0.3, 1.6);
-  for (const u of [-0.55, 0.55]) wheel(c, u, 0.34);
-  c.bevel(-0.95, -0.34, 3, 1.9, 0.68, 24, body, { b: 2, edge: 0.3 });
-  c.bevel(0.55, -0.3, 27, 0.4, 0.6, 3, shade(body, 0.9), { b: 1 });
-  c.wallV(-0.6, 0.341, 10, 1, 11, '#2b2f3f');
-  c.wallV(-0.55, 0.342, 12, 0.9, 7, '#eadfc8');
-  for (let k = 0; k < 4; k++)
-    c.wallV(-0.5 + k * 0.22, 0.343, 13, 0.12, 4, [C.red, C.matcha, C.white, C.orange][k] ?? C.red);
-  c.box(-0.62, 0.34, 10, 1.04, 0.12, 1.4, C.stainless);
-  c.poly(
-    [
-      [-0.65, 0.34, 22],
-      [0.45, 0.34, 22],
-      [0.45, 0.62, 18],
-      [-0.65, 0.62, 18],
-    ],
-    variant ? C.white : C.red,
-  );
-  c.wallU(0.951, -0.25, 12, 0.5, 9, shade(C.glass, 0.85));
-  return c.svg();
-}
-
-/** Spielplatz: Schaukel und Rutsche auf Sand. */
-function playground(): string {
-  const c = wide();
-  c.shadow(-0.9, -0.5, 0, 1.8, 1, 0.18, 2);
-  // Schaukel: Gestell entlang u, zwei Sitze
-  for (const u of [-0.85, -0.05]) {
-    c.box(u, -0.25, 0, 0.04, 0.04, 30, C.red);
-    c.box(u, 0.25, 0, 0.04, 0.04, 30, C.red);
+  const body = variant ? C.cobalt : C.carYellow;
+  const trim = variant ? C.white : C.canvasRed;
+  const W = 0.34;
+  c.shadow(-0.98, -0.4, 0, 1.96, 0.8, 0.32, 1.8);
+  for (const u of [-0.55, 0.58]) wheel(c, u, -W + 0.02, 0.12);
+  for (const v of [-0.12, 0.08]) {
+    c.cylinder(-1.04, v, 3, 0.05, 9, C.galvanized, tint(C.galvanized, 0.3));
+    c.dome(-1.04, v, 12, 0.05, 2.2, C.galvanized);
   }
-  c.box(-0.85, -0.25, 30, 0.84, 0.04, 2, C.red);
-  for (const u of [-0.65, -0.3]) {
-    c.box(u, -0.24, 10, 0.006, 0.006, 20, C.ink);
-    c.box(u + 0.1, -0.24, 10, 0.006, 0.006, 20, C.ink);
-    c.box(u - 0.01, -0.27, 9, 0.13, 0.08, 1.5, C.gold);
-  }
-  // Rutsche: Turm mit Dach, Rutschbahn nach +v
-  c.box(0.3, -0.3, 0, 0.4, 0.4, 18, C.oak);
-  c.box(0.28, -0.32, 18, 0.44, 0.44, 2, C.oakLight);
-  c.poly(
+  extrudeU(
+    c,
     [
-      [0.32, -0.32, 34],
-      [0.72, -0.32, 34],
-      [0.72, 0.12, 26],
-      [0.32, 0.12, 26],
+      [-0.96, 3],
+      [0.95, 3],
+      [0.96, 9],
+      [0.92, 12],
+      [0.84, 13],
+      [0.72, 24],
+      [0.64, 26],
+      [-0.94, 26],
+      [-0.97, 24],
     ],
-    C.cobalt,
+    -W,
+    W,
+    body,
+    { seg: (i) => (i === 4 ? tint(C.pane, 0.18) : undefined) },
   );
-  c.poly(
-    [
-      [0.4, 0.1, 18],
-      [0.62, 0.1, 18],
-      [0.62, 0.6, 2],
-      [0.4, 0.6, 2],
-    ],
-    C.gold,
-  );
-  c.box(0.4, 0.1, 18, 0.02, 0.5, 2, shade(C.gold, 0.8));
-  return c.svg();
-}
-
-/** Brunnen: runde Steinschale mit Wasser und Fontäne. */
-function fountain(): string {
-  const c = wide();
-  c.shadowDisc(0, 0, 0, 0.75, 0.2, 2);
-  c.cylinder(0, 0, 0, 0.7, 5, C.stone, tint(C.stone, 0.3));
-  c.disc(0, 0, 5, 0.62, '#5fa8d8');
-  c.disc(-0.15, -0.1, 5.1, 0.3, '#8cc6ea');
-  c.cylinder(0, 0, 5, 0.12, 10, C.stone, tint(C.stone, 0.3));
-  c.disc(0, 0, 15, 0.1, '#8cc6ea');
-  c.group(0.7, () => c.frustum(0, 0, 15, 0.04, 0.16, 14, C.ice, C.white));
-  return c.svg();
-}
-
-/** Eiswagen mit Schirm. */
-function icecart(): string {
-  const c = small();
-  c.shadow(-0.3, -0.18, 0, 0.6, 0.36, 0.24);
-  wheel(c, -0.2, 0.16);
-  c.bevel(-0.3, -0.16, 3, 0.6, 0.32, 13, C.white, { b: 1.4 });
-  c.wallV(-0.28, 0.161, 6, 0.56, 4, C.sakura);
-  for (let k = 0; k < 3; k++)
-    c.disc(-0.15 + k * 0.15, 0, 16.2, 0.05, [C.sakura, C.matchaFoam, C.cream][k] ?? C.cream);
-  c.cylinder(0.22, 0, 16, 0.012, 22, C.white);
-  const [cx, cy] = c.p([0.22, 0, 38]);
-  c.raw(
-    `<path d="M${(cx - 20).toFixed(1)},${(cy + 3).toFixed(1)} Q${cx.toFixed(1)},${(cy - 12).toFixed(1)} ${(cx + 20).toFixed(1)},${(cy + 3).toFixed(1)} Z" fill="${C.sakura}"/><path d="M${(cx - 20).toFixed(1)},${(cy + 3).toFixed(1)} Q${cx.toFixed(1)},${(cy - 4).toFixed(1)} ${(cx + 20).toFixed(1)},${(cy + 3).toFixed(1)} Z" fill="${shade(C.sakura, 0.85)}"/>`,
-  );
-  return c.svg();
-}
-
-/** Fußballtor (Rahmen und Netz), entlang u. */
-function goal(): string {
-  const c = wide();
-  c.shadow(-0.8, -0.1, 0, 1.6, 0.4, 0.15);
-  for (const u of [-0.8, 0.77]) c.box(u, 0, 0, 0.03, 0.03, 24, C.white);
-  c.box(-0.8, 0, 24, 1.6, 0.03, 2, C.white);
-  c.group(0.35, () => {
+  const F = (u0: number, z0: number, w: number, h: number, col: string, op = 1) =>
     c.poly(
       [
-        [-0.78, 0.02, 24],
-        [0.78, 0.02, 24],
-        [0.78, -0.35, 0],
-        [-0.78, -0.35, 0],
+        [u0, W + 0.001, z0],
+        [u0 + w, W + 0.001, z0],
+        [u0 + w, W + 0.001, z0 + h],
+        [u0, W + 0.001, z0 + h],
+      ],
+      col,
+      op,
+    );
+  F(-0.96, 3, 1.9, 1.4, shade(body, 0.5));
+  F(-0.96, 7.2, 1.62, 1.2, trim);
+  // Fahrerhaus: Tür mit Scheibe
+  F(0.44, 4.4, 0.02, 20, shade(body, 0.6));
+  F(0.48, 13.4, 0.26, 9, shade(C.pane, 0.8));
+  F(0.5, 14, 0.06, 8, C.white, 0.25);
+  // Verkaufsklappe: Rahmen, Inneres, Menütafel, Theke
+  F(-0.72, 10, 1.06, 13, shade(C.ink, 1.05));
+  F(-0.7, 11, 1.02, 11.4, shade(C.paneDark, 0.95));
+  F(-0.66, 15, 0.3, 6, C.ink);
+  for (let k = 0; k < 3; k++)
+    F(-0.64, 16 + k * 1.7, 0.18, 0.7, [C.white, C.gold, C.white][k] ?? C.white);
+  F(-0.3, 12, 0.28, 8, C.stainless);
+  F(0.04, 15, 0.24, 6, C.paper);
+  F(0.07, 16, 0.08, 4, C.red);
+  F(0.17, 16, 0.08, 4, C.matcha);
+  c.bevel(-0.74, W - 0.02, 10, 1.1, 0.14, 1.4, C.stainless, { b: 0.5, edge: 0.35 });
+  c.cylinder(-0.5, W + 0.06, 11.4, 0.03, 3.4, C.cup, C.matchaFoam);
+  c.cylinder(-0.42, W + 0.06, 11.4, 0.03, 3.4, C.cup, C.coffee);
+  c.bevel(0.15, W + 0.02, 11.4, 0.08, 0.06, 2.6, C.white, { b: 0.4 });
+  // Markise über der Klappe
+  c.poly(
+    [
+      [-0.76, W, 24],
+      [0.38, W, 24],
+      [0.38, W + 0.3, 20.5],
+      [-0.76, W + 0.3, 20.5],
+    ],
+    trim,
+  );
+  for (let k = 1; k < 8; k += 2) {
+    const u0 = -0.76 + (k * 1.14) / 8;
+    c.poly(
+      [
+        [u0, W, 24],
+        [u0 + 1.14 / 8, W, 24],
+        [u0 + 1.14 / 8, W + 0.3, 20.5],
+        [u0, W + 0.3, 20.5],
       ],
       C.white,
     );
+  }
+  valance(c, [-0.76, W + 0.3, 20.5], [0.38, W + 0.3, 20.5], 2.2, [trim, C.white], 8, SHADE.left);
+  // Dachaufsteller mit Becher-Emblem, Gasflaschen am Heck
+  c.box(-0.42, -0.02, 26, 0.04, 0.04, 3, C.ink);
+  c.box(-0.06, -0.02, 26, 0.04, 0.04, 3, C.ink);
+  c.bevel(-0.5, -0.04, 29, 0.52, 0.08, 9, C.white, { b: 0.6 });
+  c.wallV(-0.46, 0.041, 30, 0.44, 7, trim);
+  c.poly(
+    [
+      [-0.29, 0.042, 31.2],
+      [-0.19, 0.042, 31.2],
+      [-0.165, 0.042, 35.4],
+      [-0.315, 0.042, 35.4],
+    ],
+    C.white,
+  );
+  c.wallV(-0.33, 0.043, 35.4, 0.18, 0.9, C.white);
+  c.wallV(-0.3, 0.043, 32.8, 0.12, 0.9, trim);
+  // Front: Scheinwerfer, Stoßstange
+  const eU = 0.962;
+  c.poly(
+    [
+      [eU, -W + 0.02, 3],
+      [eU, W - 0.02, 3],
+      [eU, W - 0.02, 4.6],
+      [eU, -W + 0.02, 4.6],
+    ],
+    shade(C.rubber, 1.6),
+  );
+  for (const v of [-W + 0.05, W - 0.13])
+    c.poly(
+      [
+        [eU, v, 6.4],
+        [eU, v + 0.08, 6.4],
+        [eU, v + 0.08, 8],
+        [eU, v, 8],
+      ],
+      C.led,
+    );
+  for (const u of [-0.55, 0.58]) wheel(c, u, W + 0.012, 0.12);
+  return c.svg();
+}
+
+/**
+ * Spielplatz: Sandfläche mit Einfassung, Doppelschaukel mit Ketten, Kletterturm mit Dach, Leiter und Rutsche,
+ * Federwippe.
+ */
+function playground(): string {
+  const c = wide();
+  c.flat(-0.88, -0.48, 0.2, 1.76, 0.96, C.oakLight);
+  c.flat(-0.84, -0.44, 0.3, 1.68, 0.88, tint(C.carTaxi, 0.2));
+  // Schaukel: zwei A-Gestelle, Querbalken, Sitze an Ketten
+  const post = C.carRed;
+  for (const u of [-0.82, -0.08]) {
+    strut(c, [u, -0.34, 0], [u, -0.06, 28], shade(post, 0.85), 2);
+    strut(c, [u, 0.22, 0], [u, -0.06, 28], post, 2);
+  }
+  c.bevel(-0.84, -0.08, 27.4, 0.78, 0.04, 2, post, { b: 0.5 });
+  for (const u of [-0.68, -0.36]) {
+    for (const du of [0, 0.12])
+      strut(c, [u + du, -0.06, 27.4], [u + du, -0.06, 8.6], C.castIron, 0.5);
+    c.bevel(u - 0.02, -0.1, 7.6, 0.16, 0.08, 1.2, C.rubber, { b: 0.4 });
+  }
+  // Kletterturm mit Dach, Leiter vorn, Rutsche zur +v-Seite
+  const wood = C.oak;
+  for (const [u, v] of [
+    [0.28, -0.4],
+    [0.7, -0.4],
+    [0.28, -0.02],
+    [0.7, -0.02],
+  ] as const)
+    c.box(u, v, 0, 0.05, 0.05, 30, wood);
+  c.bevel(0.26, -0.42, 14, 0.5, 0.44, 1.6, C.oakLight, { b: 0.5 });
+  c.box(0.28, 0.025, 15.6, 0.47, 0.012, 5, shade(wood, 0.9));
+  c.wallU(0.751, -0.38, 16, 0.36, 5, C.carGreen);
+  c.poly(
+    [
+      [0.22, -0.46, 30],
+      [0.8, -0.46, 30],
+      [0.51, -0.21, 37],
+    ],
+    shade(C.cobalt, 0.85),
+  );
+  c.poly(
+    [
+      [0.8, -0.46, 30],
+      [0.8, 0.04, 30],
+      [0.51, -0.21, 37],
+    ],
+    shade(C.cobalt, 0.7),
+  );
+  c.poly(
+    [
+      [0.22, 0.04, 30],
+      [0.8, 0.04, 30],
+      [0.51, -0.21, 37],
+    ],
+    C.cobalt,
+  );
+  for (let k = 0; k < 4; k++) c.box(0.78, -0.3 + k * 0.0, 2 + k * 3.4, 0.14, 0.04, 0.9, C.oakLight);
+  strut(c, [0.86, -0.32, 0], [0.86, -0.32, 15], wood, 1.3);
+  strut(c, [0.86, -0.22, 0], [0.86, -0.22, 15], wood, 1.3);
+  c.poly(
+    [
+      [0.36, 0.02, 15.6],
+      [0.6, 0.02, 15.6],
+      [0.6, 0.56, 1.5],
+      [0.36, 0.56, 1.5],
+    ],
+    C.carYellow,
+  );
+  c.poly(
+    [
+      [0.6, 0.02, 15.6],
+      [0.62, 0.02, 17.4],
+      [0.62, 0.56, 3.3],
+      [0.6, 0.56, 1.5],
+    ],
+    shade(C.carYellow, 0.75),
+  );
+  c.poly(
+    [
+      [0.34, 0.02, 17.4],
+      [0.36, 0.02, 15.6],
+      [0.36, 0.56, 1.5],
+      [0.34, 0.56, 3.3],
+    ],
+    shade(C.carYellow, 0.9),
+  );
+  // Federwippe (Tier aus Flächen)
+  c.shadowDisc(-0.3, 0.32, 0.3, 0.1, 0.25);
+  polyline(
+    c,
+    [
+      [-0.3, 0.32, 0.3],
+      [-0.31, 0.32, 2.4],
+      [-0.29, 0.32, 4.4],
+      [-0.31, 0.32, 6.4],
+    ],
+    C.galvanized,
+    1.4,
+  );
+  c.bevel(-0.42, 0.28, 6.4, 0.24, 0.09, 3.6, C.carMint, { b: 0.8 });
+  c.bevel(-0.2, 0.29, 9, 0.08, 0.07, 3.4, C.carMint, { b: 0.8 });
+  c.box(-0.36, 0.27, 10, 0.03, 0.11, 2, C.carYellow);
+  return c.svg();
+}
+
+/**
+ * Brunnen: runde Steinschale mit profiliertem Rand, Wasser mit Ringen und Glanz, Säule mit Schale, aus der
+ * Wasser in Schleiern fällt; Düse oben bei z ≈ 32 (Tropfen der Szene).
+ */
+function fountain(): string {
+  const c = wide();
+  c.shadowDisc(0, 0, 0, 0.8, 0.22, 2.2);
+  c.cylinder(0, 0, 0, 0.74, 2, shade(C.stone, 0.9), shade(C.stone, 0.9));
+  c.cylinder(0, 0, 2, 0.7, 4, C.stone, tint(C.stone, 0.3));
+  c.disc(0, 0, 6, 0.6, shade(C.stone, 0.85));
+  c.disc(0, 0, 5.2, 0.58, C.water);
+  for (const [r, op] of [
+    [0.45, 0.35],
+    [0.3, 0.45],
+  ] as const) {
+    c.raw(
+      (() => {
+        const [cx, cy] = c.p([0, 0, 5.3]);
+        const rx = r * c.k * Math.SQRT2;
+        return `<ellipse cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" rx="${rx.toFixed(2)}" ry="${(rx / 2).toFixed(2)}" fill="none" stroke="${C.waterLight}" stroke-width="0.8" stroke-opacity="${String(op)}"/>`;
+      })(),
+    );
+  }
+  c.disc(-0.24, -0.16, 5.3, 0.14, tint(C.water, 0.45));
+  // Säule mit Schaftring, obere Schale, fallendes Wasser, Düse
+  c.cylinder(0, 0, 5, 0.12, 3, C.stone, tint(C.stone, 0.2));
+  c.cylinder(0, 0, 8, 0.07, 12, C.stone);
+  c.shine(0, 0, 8, 0.07, 12, C.stone, 0.3);
+  c.frustum(0, 0, 20, 0.08, 0.3, 4.6, C.stone, tint(C.stone, 0.3));
+  c.disc(0, 0, 24.6, 0.26, C.water);
+  for (let k = 0; k < 7; k++) {
+    const a = (-0.2 + k * 0.15) * Math.PI;
+    strut(
+      c,
+      [Math.cos(a) * 0.29, Math.sin(a) * 0.29, 24.4],
+      [Math.cos(a) * 0.37, Math.sin(a) * 0.37, 5.6],
+      C.waterLight,
+      1.3,
+      0.55,
+    );
+  }
+  c.disc(-0.08, -0.06, 24.7, 0.08, tint(C.water, 0.5));
+  c.cylinder(0, 0, 24.6, 0.05, 4, C.stone, tint(C.stone, 0.3));
+  facetBall(c, 0, 0, 30, 0.055, C.stone, { seg: 8, rings: 4 });
+  c.group(0.7, () => c.frustum(0, 0, 30, 0.02, 0.07, 4, C.ice, C.white));
+  return c.svg();
+}
+
+/** Eiswagen: Kühlbox auf Rädern mit Glasaufsatz und Eiswannen, Waffeltüten, Schirm mit Volant, Schiebebügel. */
+function icecart(): string {
+  const c = small();
+  c.shadow(-0.32, -0.2, 0, 0.64, 0.4, 0.26);
+  wheel(c, -0.2, -0.17, 0.09);
+  c.bevel(-0.3, -0.17, 3, 0.6, 0.34, 12, C.white, { b: 1.2 });
+  c.wallV(-0.28, 0.171, 6, 0.56, 4, C.sakura);
+  c.wallV(-0.28, 0.172, 7.5, 0.56, 1, C.white);
+  c.wallU(0.301, -0.12, 5, 0.24, 8, shade(C.sakura, SHADE.right));
+  // Glasaufsatz mit drei Eiswannen
+  c.bevel(-0.27, -0.14, 15, 0.54, 0.28, 0.8, C.stainless, { b: 0.3 });
+  for (let k = 0; k < 3; k++) {
+    const u = -0.17 + k * 0.17;
+    c.disc(u, 0, 15.9, 0.065, C.stainlessDark);
+    c.dome(u, 0, 15.8, 0.055, 2.6, [C.sakura, C.matchaFoam, C.cream][k] ?? C.cream);
+  }
+  c.group(0.4, () => {
+    c.box(-0.27, -0.14, 15.8, 0.54, 0.28, 4, C.glass);
   });
+  // Tütenhalter, Schiebebügel
+  for (let k = 0; k < 3; k++)
+    c.frustum(-0.33, -0.08 + k * 0.08, 11, 0.008, 0.025, 4, C.oakLight, C.oakLight);
+  strut(c, [-0.3, -0.12, 14], [-0.42, -0.12, 18], C.stainlessDark, 1);
+  strut(c, [-0.3, 0.12, 14], [-0.42, 0.12, 18], C.stainlessDark, 1);
+  strut(c, [-0.42, -0.12, 18], [-0.42, 0.12, 18], C.rubber, 1.4);
+  wheel(c, -0.2, 0.18, 0.09);
+  wheel(c, 0.2, 0.18, 0.09);
+  // Schirm: Mast, acht Bahnen, Volant
+  c.cylinder(0.22, 0, 16, 0.012, 22, C.white);
+  const [cx, cy] = c.p([0.22, 0, 38]);
+  const R = 20;
+  for (let i = 0; i < 8; i++) {
+    const a0 = (i / 8) * Math.PI * 2;
+    const a1 = ((i + 1) / 8) * Math.PI * 2;
+    const col = i % 2 ? C.white : C.sakura;
+    const litSide = Math.sin((a0 + a1) / 2) > 0;
+    const f = (n: number) => n.toFixed(2);
+    c.raw(
+      `<polygon points="${f(cx)},${f(cy - 7)} ${f(cx + Math.cos(a0) * R)},${f(cy + Math.sin(a0) * R * 0.5)} ${f(cx + Math.cos(a1) * R)},${f(cy + Math.sin(a1) * R * 0.5)}" fill="${litSide ? col : shade(col, 0.86)}"/>`,
+    );
+    if (litSide) {
+      const pts: string[] = [];
+      for (let k = 0; k <= 4; k++) {
+        const a = a0 + ((a1 - a0) * k) / 4;
+        pts.push(
+          `${f(cx + Math.cos(a) * R)},${f(cy + Math.sin(a) * R * 0.5 + 2.2 + Math.sin((k / 4) * Math.PI) * 1.2)}`,
+        );
+      }
+      c.raw(
+        `<polygon points="${f(cx + Math.cos(a0) * R)},${f(cy + Math.sin(a0) * R * 0.5)} ${f(cx + Math.cos(a1) * R)},${f(cy + Math.sin(a1) * R * 0.5)} ${pts.reverse().join(' ')}" fill="${shade(col, 0.8)}"/>`,
+      );
+    }
+  }
+  c.raw(`<circle cx="${cx.toFixed(2)}" cy="${(cy - 7.4).toFixed(2)}" r="1.2" fill="${C.white}"/>`);
+  return c.svg();
+}
+
+/** Fußballtor (Pfosten, Latte, Bodenrahmen, Netz als feines Gitter), entlang u, Netz nach −v. */
+function goal(): string {
+  const c = wide();
+  c.shadow(-0.82, -0.42, 0, 1.64, 0.5, 0.16);
+  const net = (a: Vec3, b: Vec3) => strut(c, a, b, C.white, 0.35, 0.65);
+  // Netz: Rückwand und Dach als Gitter
+  for (let k = 0; k <= 10; k++) {
+    const u = -0.78 + k * (1.56 / 10);
+    net([u, 0, 24], [u, -0.36, 8]);
+    net([u, -0.36, 8], [u, -0.38, 0]);
+  }
+  for (let k = 0; k <= 3; k++) {
+    const t = k / 3;
+    net([-0.78, -0.36 * t, 24 - 16 * t], [0.78, -0.36 * t, 24 - 16 * t]);
+  }
+  for (let k = 0; k <= 2; k++) net([-0.78, -0.37, k * 4], [0.78, -0.37, k * 4]);
+  polyline(
+    c,
+    [
+      [-0.8, 0, 0.3],
+      [-0.8, -0.4, 0.3],
+      [0.8, -0.4, 0.3],
+      [0.8, 0, 0.3],
+    ],
+    C.galvanized,
+    0.9,
+  );
+  for (const u of [-0.8, 0.77]) {
+    c.box(u, -0.015, 0, 0.03, 0.03, 24, C.white);
+    strut(c, [u + 0.015, 0, 24], [u + 0.015, -0.38, 8], C.galvanized, 0.8);
+  }
+  c.box(-0.8, -0.015, 24, 1.6, 0.03, 1.8, C.white);
   return c.svg();
 }
 
