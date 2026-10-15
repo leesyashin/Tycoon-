@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { Store } from '@core/store';
-import { UI_THEME } from '@data/ui';
+import { UI_CONFIG, UI_THEME } from '@data/ui';
 import type { SfxId } from '@data/audio';
 import { BootScene } from '@scenes/BootScene';
 import { CafeScene } from '@scenes/CafeScene';
@@ -18,6 +18,29 @@ export interface GameOptions {
   onOpenStation(id: string): void;
   /** Die Café-Szene steht (Atlas geladen). */
   onReady(): void;
+}
+
+/**
+ * Rendert der Browser ohne GPU (Software-Rasterizer wie SwiftShader/llvmpipe, gesperrter Treiber)? Dann liest
+ * der Compositor die WebGL-Leinwand jeden Frame auf die CPU zurück (~10 ms Haupt-Thread pro Frame).
+ */
+function isSoftwareRenderer(game: Phaser.Game): boolean {
+  const renderer = game.renderer as Partial<Phaser.Renderer.WebGL.WebGLRenderer>;
+  const gl = renderer.gl;
+  if (!gl) return false;
+  const info = gl.getExtension('WEBGL_debug_renderer_info');
+  const name = info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : '';
+  return /swiftshader|llvmpipe|software|basic render/i.test(name);
+}
+
+/** Bildrate nachträglich deckeln (Phaser liest `fps.limit` sonst nur beim Start). */
+function limitFps(game: Phaser.Game, fps: number): void {
+  const loop = game.loop as Phaser.Core.TimeStep & { _limitRate: number };
+  loop.fpsLimit = fps;
+  loop.hasFpsLimit = true;
+  loop._limitRate = 1000 / fps;
+  loop.sleep();
+  loop.wake(true);
 }
 
 /**
@@ -45,6 +68,9 @@ export function startGame(o: GameOptions): GameHandle {
   // Nur kosmetisch: `?debugSpawn=100` zeigt so viele Kunden/s, um die Agenten-Grenze zu prüfen.
   game.registry.set(REGISTRY.debugSpawn, o.debugSpawn);
   game.events.once(Phaser.Core.Events.READY, () => {
+    // Ohne GPU schafft kein Gerät 60 fps; 30 fps halbieren den Readback pro Sekunde und lassen dem
+    // Haupt-Thread Luft für HUD und Eingaben.
+    if (isSoftwareRenderer(game)) limitFps(game, UI_CONFIG.softwareFpsLimit);
     game.scene.getScene('CafeScene').events.once(Phaser.Scenes.Events.CREATE, o.onReady);
   });
   game.events.on(UI_EVENTS.sfx, (id: SfxId) => o.onSfx(id));

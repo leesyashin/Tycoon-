@@ -1,5 +1,7 @@
 /** Zeit- und Anzeige-Konstanten der DOM-UI (keine Spielbalance, aber ebenfalls nicht im Code verstreut). */
 export const UI_CONFIG = {
+  /** Bildrate der Szene, wenn der Browser ohne GPU rendert (siehe `isSoftwareRenderer` in game.ts). */
+  softwareFpsLimit: 30,
   autosaveMs: 10_000,
   /** Autosave wartet auf Leerlauf, aber höchstens so lange. */
   autosaveIdleTimeoutMs: 2_000,

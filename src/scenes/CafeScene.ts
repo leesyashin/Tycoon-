@@ -60,7 +60,9 @@ const OVERLAY_SIZE = 20_000;
 /** Tiefe nach Grid-Position; Feinsortierung innerhalb einer Diagonale über `bias`. */
 const isoDepth = (x: number, y: number, bias = 0): number => (x + y) * 10 + bias;
 
-const reducedMotion = (): boolean => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+// Einmal abfragen, `matches` folgt Änderungen live (vorher lief `matchMedia` in jedem Frame).
+const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+const reducedMotion = (): boolean => motionQuery.matches;
 
 /** Blickrichtung einer Figur aus einem Bewegungs-/Blickvektor im Grid. */
 function facing(dx: number, dy: number): { dir: 'front' | 'back'; flip: boolean } {
@@ -212,12 +214,17 @@ export class CafeScene extends Phaser.Scene {
     this.input.on('pointerup', (p: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) =>
       this.onPointerUp(p, over),
     );
-    if (import.meta.env.DEV) this.input.keyboard?.on('keydown-B', () => this.debugBuy());
+    // Debug-Taste über das DOM: der schlanke Phaser-Build (src/phaserCustom.js) hat kein Keyboard-Plugin.
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'b' || e.key === 'B') this.debugBuy();
+    };
+    if (import.meta.env.DEV) window.addEventListener('keydown', onKey);
     const onLang = (): void => this.relabel();
     this.game.events.on(UI_EVENTS.langChanged, onLang);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.game.events.off(UI_EVENTS.langChanged, onLang);
       this.scale.off('resize', onResize);
+      window.removeEventListener('keydown', onKey);
     });
     this.refreshStations(state, false);
   }
