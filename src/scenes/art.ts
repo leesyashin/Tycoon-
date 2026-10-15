@@ -1,8 +1,9 @@
-import { stationLookTier } from '@data/art';
+import { CHAR_SPRITE, stationLookTier } from '@data/art';
 
 /**
  * Atlas-Schlüssel und Frame-Namen der Szene (S8). Die Bilder erzeugt `pnpm art` aus
- * `scripts/art/sprites.ts` (PNG 2×, Lizenz: docs/ASSETS.md); Phaser zeigt sie mit `ART_SCALE`.
+ * `scripts/art/sprites.ts` und `scripts/art/figures.ts` (PNG 2×, Lizenz: docs/ASSETS.md); Phaser zeigt sie
+ * mit `ART_SCALE`.
  */
 export const ATLAS = {
   common: 'common',
@@ -12,8 +13,11 @@ export const ATLAS = {
 /** Sprites liegen in doppelter Auflösung vor. */
 export const ART_SCALE = 0.5;
 
-/** Figuren: Füße liegen 4 px (logisch) über der Unterkante des 24×44-Sprites. */
-export const CHAR_FOOT_ORIGIN_Y = 40 / 44;
+/** Figuren: Ursprung zwischen den Füßen (`CHAR_SPRITE.footY`). */
+export const CHAR_FOOT_ORIGIN_Y = CHAR_SPRITE.footY / CHAR_SPRITE.h;
+
+/** Abstand Füße → Unterkante der Overlays über dem Kopf (Smiley, Ring, Emote), in Weltpixeln. */
+export const CHAR_OVERLAY_Y = CHAR_SPRITE.headTop + 2;
 
 export const FRAME = {
   ghost: 'station-ghost',
@@ -29,11 +33,14 @@ export const FRAME = {
   station: (id: string, level: number, facesX: boolean) =>
     `station-${id}-${String(stationLookTier(level))}-${facesX ? 'b' : 'a'}`,
   ambience: (id: string) => `ambience-${id}`,
-  /** `front`: Blick nach +x/+y (zur Kamera), `back`: weg von der Kamera. */
-  customer: (type: string, dir: 'front' | 'back', frame: number) =>
-    `customer-${type}-${dir}-${String(frame)}`,
-  staff: (role: string, dir: 'front' | 'back' = 'front', frame = 0) =>
-    `staff-${role}-${dir}-${String(frame)}`,
+  /**
+   * `look`: Variante aus `CUSTOMER_LOOKS`/`STAFF_LOOKS`; `front`: Blick nach +x/+y (zur Kamera), `back`: weg
+   * von der Kamera; Frame 0 = Stehen, 1/2 = Laufen.
+   */
+  customer: (type: string, look: string, dir: 'front' | 'back', frame: number) =>
+    `customer-${type}-${look}-${dir}-${String(frame)}`,
+  staff: (role: string, look: string, dir: 'front' | 'back' = 'front', frame = 0) =>
+    `staff-${role}-${look}-${dir}-${String(frame)}`,
   mood: (id: string) => `mood-${id}`,
   emote: (id: 'heart' | 'note' | 'star') => `emote-${id}`,
 } as const;

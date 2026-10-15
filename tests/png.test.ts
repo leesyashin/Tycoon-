@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { crc32, inflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { encodePalettePng, quantize } from '../scripts/art/png';
@@ -71,5 +72,13 @@ describe('Palette-PNG (pnpm art)', () => {
     }
     expect(err / (w * h * 3)).toBeLessThan(4);
     expect(encodePalettePng(rgba, w, h).equals(encodePalettePng(rgba, w, h))).toBe(true);
+  });
+
+  it('die eingecheckten Atlanten sind Palette-PNGs', () => {
+    for (const f of ['common', 'theme-berlin']) {
+      const png = readFileSync(`public/assets/sprites/${f}.png`);
+      const ihdr = chunks(png).get('IHDR') ?? Buffer.alloc(13);
+      expect(ihdr[9]).toBe(3);
+    }
   });
 });

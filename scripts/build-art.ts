@@ -1,10 +1,10 @@
 /**
- * Rendert die Sprites aus `scripts/art/sprites.ts` (SVG) mit Chromium in 2× und packt sie in
- * Texture-Atlanten (Phaser JSON-Hash). Eigener Shelf-Packer statt TexturePacker/free-tex-packer,
+ * Rendert die Sprites aus `scripts/art/sprites.ts` und `scripts/art/figures.ts` (SVG) mit Chromium in 2× und
+ * packt sie in Texture-Atlanten (Phaser JSON-Hash). Eigener Shelf-Packer statt TexturePacker/free-tex-packer,
  * damit keine neue Abhängigkeit nötig ist; die Atlanten werden als 8-Bit-Palette-PNG geschrieben
  * (`art/png.ts`). Ausgabe wird eingecheckt; nur nach Änderungen an den Sprites neu ausführen: `pnpm art`.
  *
- *   public/assets/sprites/common.png|json      Stationen, Ambiente, Figuren, Effekte
+ *   public/assets/sprites/common.png|json      Stationen, Ambiente, Figuren (`art/figures.ts`), Effekte
  *   public/assets/sprites/theme-<ort>.png|json Boden/Wände je Standort (Lazy-Loading)
  *   public/assets/sprites/icons/*.png          beschnittene Einzelbilder für das DOM
  *   public/assets/ui/icon-192.png, icon-512.png PWA-Icons
@@ -14,12 +14,12 @@ import { chromium } from '@playwright/test';
 import {
   ambienceSprites,
   appIcon,
-  characterSprites,
   fxSprites,
   stationSprites,
   themeSprites,
   type SpriteDef,
 } from './art/sprites';
+import { characterSprites, staffPortrait } from './art/figures';
 import { encodePalettePng } from './art/png';
 
 const OUT = 'public/assets/sprites';
@@ -185,8 +185,7 @@ for (const s of stations.filter((x) => x.name.endsWith('-a'))) {
   writePng(`${OUT}/icons/${s.name.replace(/-a$/, '')}.png`, await trimmed(s.svg));
 }
 for (const s of ambience) writePng(`${OUT}/icons/${s.name}.png`, await trimmed(s.svg));
-const manager = characters.find((c) => c.name === 'staff-manager-front-0');
-if (manager) writePng(`${OUT}/icons/staff-manager.png`, await trimmed(manager.svg));
+writePng(`${OUT}/icons/staff-manager.png`, await trimmed(staffPortrait('manager')));
 writeFileSync('public/assets/ui/icon.svg', `${appIcon()}\n`);
 writePng('public/assets/ui/icon-192.png', await trimmed(appIcon(), 192));
 writePng('public/assets/ui/icon-512.png', await trimmed(appIcon(), 512));

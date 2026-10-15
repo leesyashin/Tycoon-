@@ -1,10 +1,19 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { stationLookTier } from '@data/art';
+import {
+  CHAR_FRAMES,
+  CHAR_WALK,
+  CUSTOMER_LOOKS,
+  STAFF_LOOKS,
+  STAFF_WALKERS,
+  staffLookFor,
+  stationLookTier,
+} from '@data/art';
 import { STATIONS } from '@data/stations';
 import { AMBIENCE } from '@data/ambience';
 import { CUSTOMER_TYPES } from '@data/customerTypes';
 import { STAFF_ROLES } from '@data/staff';
+import { characterSprites } from '../scripts/art/figures';
 
 const common = JSON.parse(readFileSync('public/assets/sprites/common.json', 'utf8')) as {
   frames: Record<string, unknown>;
@@ -27,12 +36,61 @@ describe('Atlas (pnpm art)', () => {
         for (const f of ['a', 'b'])
           expect(common.frames[`station-${s.id}-${String(tier)}-${f}`]).toBeDefined();
   });
-  it('enthält Ambiente, Kunden-Typen und Personal mit 2 Richtungen × 2 Frames', () => {
+  it('enthält Ambiente', () => {
     for (const a of AMBIENCE) expect(common.frames[`ambience-${a.id}`]).toBeDefined();
-    const walk = ['front-0', 'front-1', 'back-0', 'back-1'];
-    for (const c of CUSTOMER_TYPES)
-      for (const w of walk) expect(common.frames[`customer-${c.id}-${w}`]).toBeDefined();
-    for (const r of STAFF_ROLES)
-      for (const w of walk) expect(common.frames[`staff-${r.id}-${w}`]).toBeDefined();
+  });
+  it('enthält jede Kunden-Variante mit 2 Richtungen × (Stehen + 2 Lauf-Frames)', () => {
+    const frames = [CHAR_FRAMES.stand, ...CHAR_FRAMES.walk];
+    for (const c of CUSTOMER_TYPES) {
+      const looks = CUSTOMER_LOOKS[c.id];
+      expect(looks.length).toBeGreaterThanOrEqual(2);
+      for (const look of looks)
+        for (const dir of ['front', 'back'])
+          for (const f of frames)
+            expect(common.frames[`customer-${c.id}-${look}-${dir}-${String(f)}`]).toBeDefined();
+    }
+  });
+  it('enthält jeden Personal-Look; Lauf-Frames nur für Rollen, die laufen', () => {
+    for (const r of STAFF_ROLES) {
+      const walks = STAFF_WALKERS.includes(r.id);
+      for (const look of STAFF_LOOKS[r.id])
+        for (const dir of ['front', 'back']) {
+          const name = (f: number) => `staff-${r.id}-${look}-${dir}-${String(f)}`;
+          expect(common.frames[name(CHAR_FRAMES.stand)]).toBeDefined();
+          for (const f of CHAR_FRAMES.walk)
+            expect(common.frames[name(f)] !== undefined).toBe(walks);
+        }
+    }
+  });
+  it('Lauf-Zyklus nutzt nur gerenderte Frames', () => {
+    for (const f of CHAR_WALK.cycle) expect([CHAR_FRAMES.stand, ...CHAR_FRAMES.walk]).toContain(f);
+  });
+});
+
+describe('Personal-Looks', () => {
+  it('verteilen sich zyklisch auf Stationen derselben Rolle', () => {
+    const baristas = STAFF_LOOKS.barista;
+    expect(new Set(baristas).size).toBe(baristas.length);
+    expect(staffLookFor('barista', 0)).toBe(baristas[0]);
+    expect(staffLookFor('barista', 1)).toBe(baristas[1]);
+    expect(staffLookFor('barista', baristas.length)).toBe(baristas[0]);
+    expect(staffLookFor('cleaner', 4)).toBe(STAFF_LOOKS.cleaner[0]);
+  });
+});
+
+describe('Figuren (scripts/art/figures.ts)', () => {
+  const sprites = characterSprites();
+  const svg = new Map(sprites.map((s) => [s.name, s.svg]));
+  it('zeichnen ohne ungültige Koordinaten, Namen eindeutig', () => {
+    expect(svg.size).toBe(sprites.length);
+    for (const s of sprites) expect(s.svg).not.toMatch(/NaN|undefined|Infinity/);
+  });
+  it('Lauf-Frames unterscheiden sich vom Stehen', () => {
+    for (const s of sprites.filter((x) => /-(front|back)-[12]$/.test(x.name)))
+      expect(s.svg).not.toBe(svg.get(s.name.replace(/-[12]$/, '-0')));
+  });
+  it('Atlas ist aktuell (nach Änderungen an Figuren `pnpm art`)', () => {
+    const inAtlas = Object.keys(common.frames).filter((k) => /^(customer|staff)-/.test(k));
+    expect(inAtlas.sort()).toEqual([...svg.keys()].sort());
   });
 });

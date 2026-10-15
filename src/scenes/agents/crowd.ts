@@ -1,5 +1,6 @@
 import { CROWD, type CafeLayout, type GridPos, type StationPlacement } from '@data/layouts';
 import type { CustomerTypeId } from '@data/customerTypes';
+import { CUSTOMER_LOOKS } from '@data/art';
 import { customerTypeShares, pickCustomerType } from '@core/customers/types';
 
 /**
@@ -12,6 +13,8 @@ export interface Agent {
   readonly id: number;
   active: boolean;
   type: CustomerTypeId;
+  /** Figuren-Variante des Typs (`CUSTOMER_LOOKS`), rein optisch. */
+  look: string;
   stationId: string;
   phase: AgentPhase;
   x: number;
@@ -52,6 +55,7 @@ export class CustomerCrowd {
         id: i,
         active: false,
         type: 'student',
+        look: CUSTOMER_LOOKS.student[0] ?? '',
         stationId: '',
         phase: 'walkIn',
         x: 0,
@@ -133,6 +137,7 @@ export class CustomerCrowd {
 
     free.active = true;
     free.type = pickCustomerType(this.shares, this.rng());
+    free.look = pickLook(free.type, this.rng());
     free.stationId = stationId;
     free.phase = 'walkIn';
     free.x = this.layout.entrance.x;
@@ -222,6 +227,13 @@ export class CustomerCrowd {
     a.active = false;
     a.path = [];
   }
+}
+
+/** Variante eines Kundentyps aus einer Zufallszahl 0..1 (gleich verteilt). */
+export function pickLook(type: CustomerTypeId, roll: number): string {
+  const looks = CUSTOMER_LOOKS[type];
+  const i = Math.min(looks.length - 1, Math.max(0, Math.floor(roll * looks.length)));
+  return looks[i] ?? looks[0] ?? '';
 }
 
 export function serveDuration(stationRate: number): number {
