@@ -4,13 +4,13 @@ current: -
 branch: session/s10-service
 started: -
 next: S12
-## Letzte Session: Geldscheine, Bezahlen an der Kasse, Barhocker (2026-10-15, Branch `feat/geld-bezahlen-barhocker`)
+## Letzte Session: Geldscheine, Bezahlen an der Kasse, Barhocker (2026-10-15, Branch `feat/geld-bezahlen-barhocker`, PR #21)
 Vorgabe Vincent (2026-10-15): „Okay bitte die Währung zu normalen Geldscheinen machen. Und das Geld erst rein kommt,
 wenn der Kunde gezahlt hat, und dass sich Personen auf die Sitzhocker setzen können.“ Ad-hoc-Session außerhalb des
 Session-Plans (wie PR #14–#20); S12 bleibt die nächste Plan-Session. Basis ist `main` mit PR #18–#20.
 
 ## Fertig
-### Geldscheine, Bezahlen an der Kasse, Barhocker (diese Session)
+### Geldscheine, Bezahlen an der Kasse, Barhocker (diese Session, PR #21)
 - **Geld kommt erst beim Bezahlen** (`core/economy/till.ts`, `LocationState.till`, GAME_DESIGN § 7.2): Das Rate-Modell legt den Umsatz auf offene Bons (`till.open`), der Fortschritt des nächsten Gasts wächst mit `served × dt`; sobald ein ganzer Gast fertig ist, kommt sein Anteil ins Geld (`coins`, `earnedThisRun`, `lifetimeEarned`), `till.paid` zählt die Zahlungen. Bei gleichen Raten zahlt jeder Gast genau den Durchschnittsbon, über die Zeit kommt dasselbe herein (Test: Geld + offene Bons = Einkommen × Zeit). Offline, Zeitsprung, Tap-Bonus und Belohnungen bleiben direkte Gutschriften. Franchise-Reset leert die Kasse.
 - **Save-Schema v10** (`mce.save.v10`) + Migration v9→v10 (leere Kasse je Standort), `reviveTill` hält kaputte Werte im Rahmen (keine negativen Bons, Fortschritt 0..1). Tests in `tests/core/till.test.ts`.
 - **Szene zahlt synchron** (`scenes/agents/crowd.ts`, `CrowdInput.till`): Die Szene liest je Frame die neuen Zahlungen (`till.paid`-Differenz) und den Fortschritt. Der Gast an der Kasse bezahlt genau in dem Frame, in dem `core` bucht (Ring läuft bis dahin), neue Gäste kommen so früh vom Gehweg, dass sie vor ihrer Zahlung an der Kasse stehen (`walkInSec` + `CROWD.payLeadSec`), beim Szenenstart steht der Erste schon an. Hereinlaufende planen ihren Schlangenplatz unterwegs neu und wer schon da ist, stellt sich vor die, die noch kommen (vorher liefen sie ans damalige Ende und zurück). Über `CROWD.maxVisiblePayPerSec` (1,2/s, Grenze des Figuren-Pools) zahlen die übrigen Gäste ohne Figur an der Kasse. Mit `?debugSpawn` bleibt der alte Takt (mehr Figuren, als `core` bucht). Test: bei 0,12 / 0,5 / 1,2 Gästen/s steht bei ≥ 95 % der Zahlungen jemand an der Kasse, niemand ist vor seiner Zahlung fertig; bei 100/s bleibt die Theke bei ≤ 6 Wartenden.
