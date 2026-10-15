@@ -154,6 +154,11 @@ const OVERLAY_SIZE = 20_000;
 const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
 const reducedMotion = (): boolean => motionQuery.matches;
 
+/** Lager-Stufe 1..3 aus einer Mindest-Stufe des Grundrisses. */
+function storageTierAt(tier: number): StorageTier {
+  return Math.min(3, Math.max(1, Math.trunc(tier))) as StorageTier;
+}
+
 /** Blickrichtung einer Figur aus einem Bewegungs-/Blickvektor im Grid. */
 function facing(dx: number, dy: number): { dir: 'front' | 'back'; flip: boolean } {
   if (Math.abs(dx) > Math.abs(dy)) return { dir: dx > 0 ? 'front' : 'back', flip: true };
@@ -683,7 +688,8 @@ export class CafeScene extends Phaser.Scene {
       const sprite = this.sprite(
         w.x,
         w.y + TILE_H,
-        FRAME.storage(p.piece, 1, p.facesX),
+        // Erstes Bild aus der Stufe, ab der das Teil gezeichnet ist (Seitenregal erst ab Stufe 2).
+        FRAME.storage(p.piece, storageTierAt(p.minTier), p.facesX),
         ATLAS.furniture,
       )
         .setOrigin(0.5, 1)
@@ -707,7 +713,9 @@ export class CafeScene extends Phaser.Scene {
     for (const v of this.storage) {
       const show = tier >= v.minTier;
       const appears = show && !v.sprite.visible;
-      v.sprite.setFrame(FRAME.storage(v.piece, tier, v.facesX)).setVisible(show);
+      // Nicht sichtbare Teile behalten ihr Bild (das Seitenregal gibt es erst ab Stufe 2).
+      if (show) v.sprite.setFrame(FRAME.storage(v.piece, tier, v.facesX));
+      v.sprite.setVisible(show);
       if (upgrade && show) this.plop(v.sprite, appears ? SCENE_FX.counterWaveMs * 4 : 0);
     }
   }

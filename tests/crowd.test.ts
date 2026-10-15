@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   CROWD,
@@ -21,7 +22,8 @@ import { computeLocationRates, customerTypeShares, pickCustomerType } from '@cor
 import { createStore } from '@core/store';
 import { serialize } from '@core/save';
 import { CustomerCrowd, pickLook, serveDuration, type CrowdInput } from '@scenes/agents/crowd';
-import { CUSTOMER_LOOKS, storageLookTier } from '@data/art';
+import { CUSTOMER_LOOKS, SUPPLY_ITEMS, storageLookTier, type StorageTier } from '@data/art';
+import { FRAME } from '@scenes/art';
 
 /** Deterministischer Zufall für reproduzierbare Tests. */
 function lcg(seed = 1): () => number {
@@ -291,6 +293,17 @@ describe('Wege im kompakten Grundriss', () => {
     const tiers = layout.storage.pieces.map((p) => p.minTier);
     expect(Math.min(...tiers)).toBe(1);
     expect(Math.max(...tiers)).toBe(3);
+    // Jedes Bild, das die Szene je Stufe anfordern kann, liegt im Möbel-Atlas (sonst warnt Phaser).
+    const furniture = JSON.parse(readFileSync('public/assets/sprites/furniture.json', 'utf8')) as {
+      frames: Record<string, unknown>;
+    };
+    for (const p of layout.storage.pieces)
+      for (let tier = Math.max(1, p.minTier); tier <= 3; tier++) {
+        const frame = FRAME.storage(p.piece, tier as StorageTier, p.facesX);
+        expect(furniture.frames[frame], frame).toBeDefined();
+      }
+    for (const id of Object.values(SUPPLY_ITEMS))
+      expect(furniture.frames[FRAME.supply(id)], id).toBeDefined();
     expect(storageLookTier(1)).toBe(1);
     expect(storageLookTier(3)).toBe(2);
     expect(storageLookTier(7)).toBe(3);
