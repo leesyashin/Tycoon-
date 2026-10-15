@@ -13,7 +13,7 @@ Design vom Laden, dass das am Ende ein richtig mega fancy designter, detailreich
 des Session-Plans (wie PR #14–#16); S12 bleibt die nächste Plan-Session. Basis ist `main` mit PR #16.
 
 ## Fertig
-### Café-Grundriss: kompakter, schneller bestellen, Lager (parallel, PR #PRNUM)
+### Café-Grundriss: kompakter, schneller bestellen, Lager (parallel, PR #20)
 > Vorgabe Vincent (2026-10-15): „Café etwas kleiner machen, die Anordnung im Store anpassen (schnelleres Bestellen
 > nach Betreten des Stores, Theke nicht nur eine Linie), Lager mit Vorräten wie Matcha, Kaffeebohnen usw.“
 > Ad-hoc-Session außerhalb des Session-Plans (wie PR #14–#17), Branch `art/cafe-grundriss`, parallel zu
