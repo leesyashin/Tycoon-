@@ -1,8 +1,8 @@
 ## Loop
-state: idle
-current: -
+state: running
+current: S9
 branch: session/s9-release
-started: -
+started: 2026-10-15T00:31:49Z
 next: S9
 ## Letzte Session: S8 – Grafik und Audio (2026-10-14, PR #11)
 ## Fertig
