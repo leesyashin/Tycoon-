@@ -47,6 +47,8 @@ export const UI_THEME = {
   successDeep: 0x27d436,
   gold: 0xffb929,
   danger: 0xf33838,
+  /** Tieferes Rot für weiße Schrift (`--c-danger-ink`, 5,7:1). */
+  dangerInk: 0xc42727,
   cash: 0x3fb950,
   gem: 0xffd23f,
   surface: 0xffffff,

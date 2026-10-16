@@ -52,14 +52,7 @@ export type IconName =
   | 'package'
   | 'ice-cream'
   | 'tick'
-  | 'video-camera'
-  | 'truck'
-  | 'user-minus'
-  | 'car'
-  | 'heart'
-  | 'eye'
-  | 'trend-up'
-  | 'door';
+  | 'video-camera';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 

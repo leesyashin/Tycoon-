@@ -46,7 +46,7 @@ export class CafeStreet {
     this.door = toScreen(doorGrid.x, doorGrid.y);
     this.signBg = scene.add.graphics().setDepth(depth);
     // Klein wie ein Schild an der Tür; der farbige Grund trägt die Schrift, ohne Kontur wie die anderen Labels.
-    this.signText = makeText(SCENE_FX.doorSignPx, UI_THEME.textCss)
+    this.signText = makeText(SCENE_FX.doorSignPx, UI_THEME.inkCss)
       .setStroke(UI_THEME.inkCss, 0)
       .setDepth(depth + 1);
     const [ox, oy] = [
@@ -72,7 +72,11 @@ export class CafeStreet {
     this.shownSign = key;
     const x = this.door.x;
     const y = this.door.y - SCENE_FX.doorSignLift;
-    this.signText.setText(text).setPosition(x, y);
+    // Farben wie das Badge im HUD: dunkle Schrift auf Grün, weiße auf tiefem Rot (beides ≥ 4,5:1).
+    this.signText
+      .setText(text)
+      .setColor(open ? UI_THEME.inkCss : UI_THEME.textCss)
+      .setPosition(x, y);
     // Der Grund wächst mit der Schrift, die beim Herauszoomen lesbar groß bleibt (vorher nur ein Strich darunter).
     const f = this.signText.scaleX;
     const w = this.signText.displayWidth + 10 * f;
@@ -80,7 +84,7 @@ export class CafeStreet {
     const top = y - this.signText.displayHeight - f;
     this.signBg
       .clear()
-      .fillStyle(open ? UI_THEME.success : UI_THEME.danger, 1)
+      .fillStyle(open ? UI_THEME.success : UI_THEME.dangerInk, 1)
       .fillRoundedRect(x - w / 2, top, w, h, h / 2)
       .lineStyle(1.5 * f, UI_THEME.surface, 0.9)
       .strokeRoundedRect(x - w / 2, top, w, h, h / 2);
