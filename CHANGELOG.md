@@ -4,6 +4,16 @@ Alle nennenswerten Änderungen an Matcha Café Empire. Format angelehnt an [Keep
 
 ## [Unreleased]
 
+### Natürliche Laufwege (2026-10-16)
+
+Vorgabe Vincent: Die Laufwege der Figuren sollen natürlicher werden – die Putzkraft soll von Tisch zu Tisch gehen
+statt immer erst zurück zu ihrem Startpunkt, Gäste sollen direkt zur Kasse gehen, und niemand soll nur eckig laufen.
+
+- Alle Figuren gehen jetzt direkt zu ihrem Ziel, in geraden oder schrägen Linien mit runden Kurven, und weichen Tischen, Stühlen, Deko und Wartenden aus. Ändert sich das Ziel unterwegs, geht es von dort aus direkt weiter.
+- Putzkräfte gehen von einem dreckigen Tisch gleich zum nächsten. Bedienungen gehen nach dem Servieren direkt zurück zur Ausgabe und stellen sich beim Servieren neben den Gast.
+- Gäste kommen in einem Bogen durch die Tür und gehen schräg direkt zur Kasse, um die Thekenecke zur Ausgabe und von der freien Seite an ihren Stuhl (vorher liefen sie zum linken Stuhl quer durch den Tisch). Jeder Gast hat sein eigenes Tempo; auf dem Gehweg blenden Gäste beim Kommen ein und beim Gehen aus.
+- Auf schrägen Wegen flackern die Figuren nicht mehr zwischen zwei Ansichten.
+
 ### Geldscheine, Bezahlen an der Kasse, Barhocker (2026-10-15)
 
 Vorgabe Vincent: Die Währung soll aus normalen Geldscheinen bestehen, das Geld erst reinkommen, wenn der Kunde
