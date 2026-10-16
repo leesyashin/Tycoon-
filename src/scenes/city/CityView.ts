@@ -28,6 +28,7 @@ import { CHAR_FRAMES, CHAR_WALK, CUSTOMER_LOOKS } from '@data/art';
 import { CUSTOMER_TYPES } from '@data/customerTypes';
 import { ART_SCALE, ATLAS, CHAR_FOOT_ORIGIN_Y, FRAME } from '../art';
 import { TILE_H, isoDepth, toScreen } from '../iso/iso';
+import { CulledGraphics, type ViewRect } from './culledGraphics';
 import { StreetLife } from './streetLife';
 
 /**
@@ -50,6 +51,19 @@ const ROOF_SHADE = { back: 1.06, end: 1.0, left: 0.9, right: 0.76 } as const;
 const RAY_PER_TILE = TILE_H;
 /** Nur in diesem Grid-Fenster lohnen Fugen, Wellen und Markierungen (weiter weg liegt alles hinter Häusern). */
 const DETAIL: GridRect = { x0: -70, y0: -70, x1: 70, y1: 70 };
+/** Reserve (Weltpixel) um den Kamera-Bereich, ab der Flächen gar nicht erst gezeichnet werden. */
+const VIEW_MARGIN = 4;
+/** Reserve (Weltpixel) um den Kamera-Ausschnitt, in der feste Sprites noch gezeichnet werden. */
+const CULL_MARGIN = 32;
+
+/** Festes Stadt-Sprite mit seinen Weltgrenzen (einmal beim Aufbau berechnet). */
+interface Static {
+  img: Phaser.GameObjects.Image;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
 
 const hex = (h: string): number => parseInt(h.slice(1), 16);
 function shadeNum(n: number, f: number): number {
@@ -77,8 +91,8 @@ function originOf(s: { w: number; h: number; ox: number; oy: number }): [number,
 type Depthy = Phaser.GameObjects.GameObject & { setDepth: (d: number) => unknown };
 
 /**
- * Stadtviertel um das Café (`data/city.ts`): Boden, Dächer und ferne Häuser als flache Flächen (Phaser Graphics,
- * einmal gezeichnet), nahe Altbauten aus Fassaden-Modulen des Themen-Atlas, Straßen-Objekte und bewegte
+ * Stadtviertel um das Café (`data/city.ts`): Boden, Dächer und ferne Häuser als flache Flächen (`CulledGraphics`,
+ * einmal gesammelt, gezeichnet nur um den Ausschnitt), nahe Altbauten aus Fassaden-Modulen des Themen-Atlas, Straßen-Objekte und bewegte
  * Autos/Passanten/Dampfer aus dem `city`-Atlas. Rein kosmetisch.
  */
 export class CityView {
@@ -96,6 +110,11 @@ export class CityView {
   private readonly fountains: Phaser.GameObjects.Particles.ParticleEmitter[] = [];
   private shownLit = false;
   private clock = 0;
+  private readonly statics: Static[] = [];
+  /** Boden, Brückendecks, ferne Häuser und Dächer: nur um den Ausschnitt aufgenommen. */
+  private readonly flats: CulledGraphics[] = [];
+  /** Ausschnitt, für den `cull` zuletzt gerechnet hat. */
+  private culledFor = '';
   /** Höhe (px) belegter Kacheln: Häuser und die Café-Box; daraus der Verdeckungstest der Fassaden-Module. */
   private readonly occupied = new Map<string, number>();
 
@@ -123,14 +142,14 @@ export class CityView {
     this.drawGround();
     this.drawDecks();
     const visible = CITY.buildings.filter((b) => this.inView(b));
-    const lod = scene.add.graphics();
-    this.addToLayer(lod, LAYER.lod);
+    const lod = this.flat(scene.add.graphics());
+    this.addToLayer(lod.g, LAYER.lod);
     for (const b of visible) if (b.lod) this.drawLodFacade(lod, b);
     visible.forEach((b, i) => {
       if (!b.lod) this.drawCells(b, i);
     });
-    const roofs = scene.add.graphics();
-    this.addToLayer(roofs, LAYER.roofs);
+    const roofs = this.flat(scene.add.graphics());
+    this.addToLayer(roofs.g, LAYER.roofs);
     // Dächer von hinten nach vorn (nach Mittelpunkt), alle nach den Fassaden.
     const sum = (b: BuildingDef) => b.rect.x0 + b.rect.x1 + b.rect.y0 + b.rect.y1;
     for (const b of [...visible].sort((a, b) => sum(a) - sum(b))) this.drawRoof(roofs, b);
@@ -138,6 +157,49 @@ export class CityView {
     for (const p of CITY.props) this.placeProp(p, false);
     this.life = new StreetLife(CITY);
     this.createMovers();
+    // Nach allen Updates des Frames (auch Kamera-Sprüngen aus der Szene), direkt vor dem Zeichnen.
+    scene.events.on(Phaser.Scenes.Events.PRE_RENDER, this.cull, this);
+    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () =>
+      scene.events.off(Phaser.Scenes.Events.PRE_RENDER, this.cull, this),
+    );
+  }
+
+  private flat(g: Phaser.GameObjects.Graphics): CulledGraphics {
+    const c = new CulledGraphics(g);
+    this.flats.push(c);
+    return c;
+  }
+
+  /** Merkt sich ein Sprite, das sich nie bewegt, mit seinen Grenzen fürs Culling. */
+  private still<T extends Phaser.GameObjects.Image>(img: T): T {
+    const b = img.getBounds();
+    this.statics.push({ img, x0: b.left, y0: b.top, x1: b.right, y1: b.bottom });
+    return img;
+  }
+
+  /**
+   * Phaser zeichnet jedes Sprite, auch außerhalb des Bilds. Von den gut 2000 festen Stadt-Sprites ist in der
+   * Startansicht am Handy nur etwa ein Viertel zu sehen; die übrigen schließt die Kamera aus (`cameraFilter`,
+   * unabhängig von `visible`, das Nacht und Ampeln steuern). Die Flächen nehmen nur auf, was um den Ausschnitt
+   * liegt (`CulledGraphics`). Neu gerechnet nur, wenn sich der Ausschnitt ändert.
+   */
+  private cull(): void {
+    const cam = this.scene.cameras.main;
+    const w = cam.width / cam.zoom;
+    const h = cam.height / cam.zoom;
+    const x0 = cam.scrollX + (cam.width - w) / 2 - CULL_MARGIN;
+    const y0 = cam.scrollY + (cam.height - h) / 2 - CULL_MARGIN;
+    const x1 = x0 + w + CULL_MARGIN * 2;
+    const y1 = y0 + h + CULL_MARGIN * 2;
+    const key = `${String(x0)},${String(y0)},${String(x1)},${String(y1)}`;
+    if (key === this.culledFor) return;
+    this.culledFor = key;
+    for (const s of this.statics) {
+      const out = s.x1 < x0 || s.x0 > x1 || s.y1 < y0 || s.y0 > y1;
+      s.img.cameraFilter = out ? s.img.cameraFilter | cam.id : s.img.cameraFilter & ~cam.id;
+    }
+    const view: ViewRect = { x0, y0, x1, y1 };
+    for (const f of this.flats) f.show(view);
   }
 
   /** Welt-Rechteck, in dem die Kamera mit ihrem ganzen Ausschnitt bleibt (kein Rand sichtbar). */
@@ -165,23 +227,40 @@ export class CityView {
   // ---------------------------------------------------------------------------------------------
   // Flächen
   // ---------------------------------------------------------------------------------------------
+  /**
+   * Liegen alle Punkte jenseits einer Kante des Kamera-Bereichs (`CITY.view`)? Dann ist die Fläche nie zu sehen.
+   * Phaser rechnet eine Graphics jedes Frame komplett neu durch (kein Culling je Befehl): ohne diesen Test lagen
+   * rund drei Viertel der Boden-Dreiecke (Gras, Wellen, Markierungen bis ±70 Kacheln) außerhalb und kosteten am
+   * Handy pro Frame mehr Zeit als alle Figuren zusammen.
+   */
+  private offView(pts: readonly { x: number; y: number }[]): boolean {
+    const v = CITY.view;
+    const m = VIEW_MARGIN;
+    return (
+      pts.every((p) => p.x < v.left - m) ||
+      pts.every((p) => p.x > v.right + m) ||
+      pts.every((p) => p.y < v.top - m) ||
+      pts.every((p) => p.y > v.bottom + m)
+    );
+  }
+
   /** Viereck als zwei Dreiecke (ohne Triangulierung je Frame). */
-  private quad(g: Phaser.GameObjects.Graphics, pts: readonly V3[], color: number): void {
+  private quad(g: CulledGraphics, pts: readonly V3[], color: number): void {
     const [a, b, c, d] = pts.map(([x, y, z]) => P(x, y, z));
-    if (!a || !b || !c || !d) return;
+    if (!a || !b || !c || !d || this.offView([a, b, c, d])) return;
     g.fillStyle(color, 1);
     g.fillTriangle(a.x, a.y, b.x, b.y, c.x, c.y);
     g.fillTriangle(a.x, a.y, c.x, c.y, d.x, d.y);
   }
 
-  private tri(g: Phaser.GameObjects.Graphics, pts: readonly V3[], color: number): void {
+  private tri(g: CulledGraphics, pts: readonly V3[], color: number): void {
     const [a, b, c] = pts.map(([x, y, z]) => P(x, y, z));
-    if (!a || !b || !c) return;
+    if (!a || !b || !c || this.offView([a, b, c])) return;
     g.fillStyle(color, 1);
     g.fillTriangle(a.x, a.y, b.x, b.y, c.x, c.y);
   }
 
-  private fillRect(g: Phaser.GameObjects.Graphics, r: GridRect, color: number, z = 0): void {
+  private fillRect(g: CulledGraphics, r: GridRect, color: number, z = 0): void {
     this.quad(
       g,
       [
@@ -214,7 +293,7 @@ export class CityView {
   }
 
   private drawGround(): void {
-    const g = this.scene.add.graphics().setDepth(GROUND_DEPTH);
+    const g = this.flat(this.scene.add.graphics().setDepth(GROUND_DEPTH));
     for (const a of CITY.ground) {
       this.fillRect(g, a.rect, this.groundColor(a.kind));
       const r = {
@@ -234,18 +313,18 @@ export class CityView {
   }
 
   /** Gehwegplatten an den Hauptstraßen: Fugen je Kachel (Granitplatten), nur auf dem Gehweg. */
-  private sidewalkJoints(g: Phaser.GameObjects.Graphics): void {
+  private sidewalkJoints(g: CulledGraphics): void {
     g.lineStyle(1, hex(this.palette.sidewalkJoint), 0.85);
     for (const [x0, y0, x1, y1] of sidewalkJointLines()) {
       const a = P(x0, y0);
       const b = P(x1, y1);
-      g.lineBetween(a.x, a.y, b.x, b.y);
+      if (!this.offView([a, b])) g.lineBetween(a.x, a.y, b.x, b.y);
     }
   }
 
   /** Brückendecks noch einmal über den Dampfern (`DECK_DEPTH`): so fahren sie unter den Brücken durch. */
   private drawDecks(): void {
-    const g = this.scene.add.graphics().setDepth(DECK_DEPTH);
+    const g = this.flat(this.scene.add.graphics().setDepth(DECK_DEPTH));
     for (const b of CITY.bridges) {
       this.fillRect(g, b.rect, this.groundColor('bridge'));
       const [from, to] = b.axis === 'u' ? [b.rect.x0, b.rect.x1] : [b.rect.y0, b.rect.y1];
@@ -260,7 +339,7 @@ export class CityView {
 
   /** Bordsteine und Mittellinie einer Fahrbahn auf den Kacheln [from, to) (nur Fahrbahn/Brücke, keine Kreuzung). */
   private drawRoadMarks(
-    g: Phaser.GameObjects.Graphics,
+    g: CulledGraphics,
     r: { axis: 'u' | 'v'; at: number },
     from: number,
     to: number,
@@ -286,7 +365,7 @@ export class CityView {
   }
 
   /** Bordsteine, Mittellinien, Haltelinien, Zebrastreifen. */
-  private roadMarks(g: Phaser.GameObjects.Graphics): void {
+  private roadMarks(g: CulledGraphics): void {
     const mark = hex(this.palette.roadMark);
     for (const r of CITY.roads) this.drawRoadMarks(g, r, DETAIL.x0, DETAIL.x1);
     for (const lane of CITY.lanes) {
@@ -307,7 +386,7 @@ export class CityView {
     }
   }
 
-  private grassTufts(g: Phaser.GameObjects.Graphics, r: GridRect, kind: GroundKind): void {
+  private grassTufts(g: CulledGraphics, r: GridRect, kind: GroundKind): void {
     const dark =
       kind === 'yard' ? shadeNum(hex(this.palette.yard), 0.9) : hex(this.palette.grassDark);
     for (let x = Math.ceil(r.x0); x < r.x1; x += 2)
@@ -320,7 +399,7 @@ export class CityView {
       }
   }
 
-  private waves(g: Phaser.GameObjects.Graphics, r: GridRect): void {
+  private waves(g: CulledGraphics, r: GridRect): void {
     const light = hex(this.palette.waterLight);
     const long = r.x1 - r.x0 > r.y1 - r.y0;
     for (let a = Math.ceil(long ? r.y0 : r.x0); a < (long ? r.y1 : r.x1); a += 1.5)
@@ -332,7 +411,7 @@ export class CityView {
       }
   }
 
-  private pitchLines(g: Phaser.GameObjects.Graphics, r: GridRect): void {
+  private pitchLines(g: CulledGraphics, r: GridRect): void {
     const line = hex(this.palette.roadMark);
     const w = 0.08;
     const midY = (r.y0 + r.y1) / 2;
@@ -350,7 +429,7 @@ export class CityView {
     this.fillRect(g, { x0: r.x0 + 0.3, x1: r.x1 - 0.3, y0: midY - w / 2, y1: midY + w / 2 }, line);
   }
 
-  private plazaPattern(g: Phaser.GameObjects.Graphics, r: GridRect): void {
+  private plazaPattern(g: CulledGraphics, r: GridRect): void {
     const dark = shadeNum(hex(this.palette.plaza), 0.93);
     for (let x = Math.ceil(r.x0); x < r.x1; x++)
       for (let y = Math.ceil(r.y0); y < r.y1; y++)
@@ -382,7 +461,7 @@ export class CityView {
   }
 
   /** Ferne Häuser: Wandflächen, Fensterbänder, Erdgeschoss und Gesims, in den Dunst gemischt. */
-  private drawLodFacade(g: Phaser.GameObjects.Graphics, b: BuildingDef): void {
+  private drawLodFacade(g: CulledGraphics, b: BuildingDef): void {
     const haze = hex(this.palette.haze);
     const m = CITY_STYLE.hazeMix;
     const H = buildingHeight(b);
@@ -453,10 +532,9 @@ export class CityView {
     const place = (frame: string, hc: number, z: number): Phaser.GameObjects.Image => {
       const s = P(ax, ay, z);
       const [ox, oy] = originOf(CITY_SPRITE.cell(hc));
-      const img = this.scene.add
-        .image(s.x, s.y, theme, frame)
-        .setScale(ART_SCALE)
-        .setOrigin(ox, oy);
+      const img = this.still(
+        this.scene.add.image(s.x, s.y, theme, frame).setScale(ART_SCALE).setOrigin(ox, oy),
+      );
       this.addToLayer(img, base + row++ * 0.01);
       return img;
     };
@@ -483,7 +561,7 @@ export class CityView {
    * Dach: Satteldach (First entlang der Straße), über Eck Walmdach; Gauben auf der Straßenseite, Schornsteine auf
    * dem First, Giebel an den offenen Enden. Ferne Häuser im Dunst.
    */
-  private drawRoof(g: Phaser.GameObjects.Graphics, b: BuildingDef): void {
+  private drawRoof(g: CulledGraphics, b: BuildingDef): void {
     const { x0, y0, x1, y1 } = b.rect;
     const H = buildingHeight(b);
     const hr = roofHeight(b);
@@ -577,7 +655,7 @@ export class CityView {
 
   /** Gauben auf der Straßenseite eines Satteldachs: kleine Giebelhäuschen mit Fenster. */
   private dormers(
-    g: Phaser.GameObjects.Graphics,
+    g: CulledGraphics,
     b: BuildingDef,
     axis: 'u' | 'v',
     roof: number,
@@ -633,7 +711,7 @@ export class CityView {
 
   /** Quader mit Deckel und den beiden sichtbaren Seiten (Schornstein). */
   private box(
-    g: Phaser.GameObjects.Graphics,
+    g: CulledGraphics,
     x: number,
     y: number,
     z: number,
@@ -690,6 +768,7 @@ export class CityView {
     else img.setDepth(depth);
     // Quer gestellt: entlang v ist gespiegelt entlang u (Fahrzeuge, Fahrräder, Tore …)
     if (p.axis === 'v' && FLIP_ON_V.includes(p.kind)) img.setFlipX(true);
+    this.still(img);
     if (p.kind === 'pedLight') this.pedLights.push({ sprite: img, road: p.axis ?? 'u' });
     if (p.kind === 'trafficLight') this.trafficLights.push({ sprite: img, axis: p.axis ?? 'u' });
     if (p.kind === 'fountain')
@@ -709,12 +788,14 @@ export class CityView {
       );
     if (p.kind === 'lamp')
       this.lampGlows.push(
-        this.scene.add
-          .image(s.x, s.y - 66, ATLAS.common, FRAME.glow)
-          .setScale(ART_SCALE * 1.4)
-          .setBlendMode(Phaser.BlendModes.ADD)
-          .setDepth(this.lightDepth)
-          .setAlpha(0),
+        this.still(
+          this.scene.add
+            .image(s.x, s.y - 66, ATLAS.common, FRAME.glow)
+            .setScale(ART_SCALE * 1.4)
+            .setBlendMode(Phaser.BlendModes.ADD)
+            .setDepth(this.lightDepth)
+            .setAlpha(0),
+        ),
       );
   }
 
