@@ -111,6 +111,8 @@ body {
   height: 100%;
   background: var(--c-navy);
   overflow: hidden;
+  /* Kein Gummiband-Scrollen und kein Zurück-Wischen der Seite: die Leinwand bleibt, wo sie ist. */
+  overscroll-behavior: none;
   font-family: var(--font-ui);
   font-size: var(--fs-body);
   color: var(--c-text);
@@ -120,9 +122,18 @@ body {
   width: 100%;
   height: 100%;
 }
+/*
+ * Wischen und Zoomen auf der Szene gehören dem Spiel, nie dem Browser: `touch-action: none` entscheidet das ohne
+ * JavaScript. Sonst übernimmt der Browser die Geste, sobald der Haupt-Thread kurz hängt (viele Figuren), schiebt die
+ * Seite und lässt sie zurückfedern.
+ */
 #game {
   position: absolute;
   inset: 0;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 /* Das Overlay lässt Taps zum Canvas durch; nur echte Bedienelemente fangen sie ab. */
 #ui {

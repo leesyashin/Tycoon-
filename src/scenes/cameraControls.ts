@@ -10,6 +10,8 @@ export class CameraControls {
   private dragged = false;
   private pinchDist = 0;
   private pinchZoom = 1;
+  /** Hat der Spieler die Kamera seit der letzten Startansicht selbst bewegt? Dann bleibt sein Ausschnitt. */
+  private moved = false;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -27,8 +29,32 @@ export class CameraControls {
       this.pinchDist = 0;
     });
     scene.input.on('wheel', (p: Phaser.Input.Pointer, _objs: unknown, _dx: number, dy: number) => {
+      this.moved = true;
       this.zoomAt(cam.zoom * (1 - dy * CAMERA.wheelStep), p.x, p.y);
     });
+  }
+
+  /** Der Spieler hat die Kamera seit `fitted()` verschoben oder gezoomt. */
+  userMoved(): boolean {
+    return this.moved;
+  }
+
+  /** Die Szene hat die Startansicht gesetzt: spätere Größenänderungen dürfen sie wieder anpassen. */
+  fitted(): void {
+    this.moved = false;
+  }
+
+  /**
+   * Die Spielfläche hat eine neue Größe (Adressleiste, Drehen, Fenster): Phaser ändert dabei nur Breite und Höhe der
+   * Kamera, der Weltpunkt in der Bildmitte würde also wandern. Hier bleibt er stehen, der Zoom ebenso (höchstens
+   * auf das neue Minimum angehoben).
+   */
+  keepCenter(prevWidth: number, prevHeight: number): void {
+    const cam = this.scene.cameras.main;
+    cam.scrollX += (prevWidth - cam.width) / 2;
+    cam.scrollY += (prevHeight - cam.height) / 2;
+    this.setZoom(cam.zoom);
+    this.clamp();
   }
 
   /**
@@ -77,6 +103,7 @@ export class CameraControls {
     const [a, b] = down;
     if (a && b) {
       this.dragged = true;
+      this.moved = true;
       const dist = Phaser.Math.Distance.Between(a.x, a.y, b.x, b.y);
       if (this.pinchDist === 0) {
         this.pinchDist = dist;
@@ -90,6 +117,7 @@ export class CameraControls {
       this.dragged = true;
     }
     if (this.dragged) {
+      this.moved = true;
       cam.scrollX -= (p.x - p.prevPosition.x) / cam.zoom;
       cam.scrollY -= (p.y - p.prevPosition.y) / cam.zoom;
       this.clamp();

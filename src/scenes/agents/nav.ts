@@ -110,6 +110,15 @@ export class CafeNav {
   private readonly seen: Uint32Array;
   private readonly closed: Uint32Array;
   private readonly dyn: Uint32Array;
+  /**
+   * Zellen, in denen ein Punkt im Wohlfühlabstand einer stehenden Figur liegen kann (Radius plus halbe
+   * Zelldiagonale): Vorfilter für `nearOther`, das sonst für jeden Prüfpunkt beim Abkürzen alle Figuren durchging.
+   */
+  private readonly dynReach: Uint32Array;
+  /** Zellen nahe Start oder Ziel der laufenden Anfrage (`NAV.endRadius`): dort kostet jeder Schritt 1. */
+  private readonly ends: Uint32Array;
+  /** Anfrage, für die `dyn` und `dynReach` gerade markiert sind. */
+  private marked: Query | null = null;
   private gen = 0;
   private readonly heap: number[] = [];
   private readonly heapF: number[] = [];
@@ -123,6 +132,8 @@ export class CafeNav {
     this.seen = new Uint32Array(n);
     this.closed = new Uint32Array(n);
     this.dyn = new Uint32Array(n);
+    this.dynReach = new Uint32Array(n);
+    this.ends = new Uint32Array(n);
     this.setVisible(layout.tables.map(() => true));
   }
 
@@ -365,6 +376,8 @@ export class CafeNav {
   /** Im Wohlfühlabstand einer stehenden Figur (nicht nahe Start oder Ziel)? */
   private nearOther(x: number, y: number, q: Query): boolean {
     if (q.others.length === 0) return false;
+    if (q === this.marked && this.inGrid(x, y) && this.dynReach[this.cellAt(x, y)] !== this.gen)
+      return false;
     if (
       Math.hypot(x - q.from.x, y - q.from.y) < NAV.endRadius ||
       Math.hypot(x - q.to.x, y - q.to.y) < NAV.endRadius
@@ -382,6 +395,11 @@ export class CafeNav {
       x: this.x0 + (i % this.cols) * this.cell,
       y: this.y0 + Math.floor(i / this.cols) * this.cell,
     };
+  }
+
+  private inGrid(x: number, y: number): boolean {
+    const b = NAV.bounds;
+    return x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1;
   }
 
   private cellAt(x: number, y: number): number {
@@ -418,36 +436,50 @@ export class CafeNav {
   /** A* über die Zellen (acht Nachbarn, keine Ecken schneiden); weiche Zellen kosten `NAV.softCost`. */
   private search(grid: Grid, q: Query): number[] | null {
     const gen = ++this.gen;
+    this.marked = q;
     // Stehende Figuren als weiche Zellen dieser Anfrage.
     const rad = NAV.personR + NAV.clearance;
+    const reach = rad + this.cell * Math.SQRT1_2 + 1e-9;
     for (const o of q.others) {
-      const c0 = Math.max(0, Math.floor((o.x - rad - this.x0) / this.cell));
-      const c1 = Math.min(this.cols - 1, Math.ceil((o.x + rad - this.x0) / this.cell));
-      const r0 = Math.max(0, Math.floor((o.y - rad - this.y0) / this.cell));
-      const r1 = Math.min(this.rows - 1, Math.ceil((o.y + rad - this.y0) / this.cell));
+      const c0 = Math.max(0, Math.floor((o.x - reach - this.x0) / this.cell));
+      const c1 = Math.min(this.cols - 1, Math.ceil((o.x + reach - this.x0) / this.cell));
+      const r0 = Math.max(0, Math.floor((o.y - reach - this.y0) / this.cell));
+      const r1 = Math.min(this.rows - 1, Math.ceil((o.y + reach - this.y0) / this.cell));
       for (let r = r0; r <= r1; r++)
         for (let c = c0; c <= c1; c++) {
           const i = r * this.cols + c;
-          const p = this.center(i);
-          if (Math.hypot(p.x - o.x, p.y - o.y) < rad) this.dyn[i] = gen;
+          const d = Math.hypot(this.x0 + c * this.cell - o.x, this.y0 + r * this.cell - o.y);
+          if (d < rad) this.dyn[i] = gen;
+          if (d < reach) this.dynReach[i] = gen;
         }
     }
     const start = this.nearestOpen(grid, this.cellAt(q.from.x, q.from.y));
     const goal = this.nearestOpen(grid, this.cellAt(q.to.x, q.to.y));
     const gp = this.center(goal);
+    const cols = this.cols;
+    // Zellmitten ohne Objekte (A* ruft beides je Nachbar auf; `center` legte jedes Mal ein Objekt an).
+    const cx = (i: number): number => this.x0 + (i % cols) * this.cell;
+    const cy = (i: number): number => this.y0 + Math.floor(i / cols) * this.cell;
     const h = (i: number): number => {
-      const p = this.center(i);
-      const dx = Math.abs(p.x - gp.x);
-      const dy = Math.abs(p.y - gp.y);
+      const dx = Math.abs(cx(i) - gp.x);
+      const dy = Math.abs(cy(i) - gp.y);
       return Math.max(dx, dy) + (Math.SQRT2 - 1) * Math.min(dx, dy);
     };
+    // Zellen nahe Start und Ziel vorab markieren, statt je Nachbar zwei Abstände zu rechnen.
+    for (const e of [q.from, q.to]) {
+      const er = NAV.endRadius;
+      const c0 = Math.max(0, Math.floor((e.x - er - this.x0) / this.cell));
+      const c1 = Math.min(cols - 1, Math.ceil((e.x + er - this.x0) / this.cell));
+      const r0 = Math.max(0, Math.floor((e.y - er - this.y0) / this.cell));
+      const r1 = Math.min(this.rows - 1, Math.ceil((e.y + er - this.y0) / this.cell));
+      for (let r = r0; r <= r1; r++)
+        for (let c = c0; c <= c1; c++) {
+          const i = r * cols + c;
+          if (Math.hypot(cx(i) - e.x, cy(i) - e.y) < er) this.ends[i] = gen;
+        }
+    }
     const cost = (i: number): number => {
-      const p = this.center(i);
-      if (
-        Math.hypot(p.x - q.from.x, p.y - q.from.y) < NAV.endRadius ||
-        Math.hypot(p.x - q.to.x, p.y - q.to.y) < NAV.endRadius
-      )
-        return 1;
+      if (this.ends[i] === gen) return 1;
       return grid.state[i] === SOFT || this.dyn[i] === gen ? NAV.softCost : 1;
     };
     const heap = this.heap;
@@ -494,7 +526,6 @@ export class CafeNav {
     this.seen[start] = gen;
     this.parent[start] = -1;
     push(start, h(start));
-    const cols = this.cols;
     while (heap.length > 0) {
       const cur = pop();
       if (this.closed[cur] === gen) continue;
@@ -502,6 +533,7 @@ export class CafeNav {
       if (cur === goal) break;
       const c = cur % cols;
       const r = Math.floor(cur / cols);
+      const curCost = cost(cur);
       for (const [dx, dy] of DIRS) {
         const nc = c + dx;
         const nr = r + dy;
@@ -516,7 +548,7 @@ export class CafeNav {
         )
           continue;
         const step = (dx !== 0 && dy !== 0 ? Math.SQRT2 : 1) * this.cell;
-        const ng = (this.g[cur] ?? 0) + step * (cost(cur) + cost(ni)) * 0.5;
+        const ng = (this.g[cur] ?? 0) + step * (curCost + cost(ni)) * 0.5;
         if (this.seen[ni] === gen && ng >= (this.g[ni] ?? 0)) continue;
         this.seen[ni] = gen;
         this.g[ni] = ng;
@@ -554,8 +586,17 @@ export class CafeNav {
     return false;
   }
 
-  /** Weiche Strecke (Kacheln) auf der Linie a → b und ob sie versperrt ist. */
-  private probe(grid: Grid, q: Query, a: GridPos, b: GridPos): { blocked: boolean; soft: number } {
+  /**
+   * Weiche Strecke (Kacheln) auf der Linie a → b und ob sie versperrt ist. Über `maxSoft` hinaus zählt sie nicht
+   * weiter (der Aufrufer verwirft die Linie dann ohnehin).
+   */
+  private probe(
+    grid: Grid,
+    q: Query,
+    a: GridPos,
+    b: GridPos,
+    maxSoft = Infinity,
+  ): { blocked: boolean; soft: number } {
     if (this.crossesWall(a, b)) return { blocked: true, soft: 0 };
     const len = Math.hypot(b.x - a.x, b.y - a.y);
     const n = Math.max(1, Math.ceil(len / NAV.sampleStep));
@@ -565,7 +606,10 @@ export class CafeNav {
       const y = a.y + ((b.y - a.y) * k) / n;
       const s = this.stateAt(grid, x, y, q, true);
       if (s === BLOCKED) return { blocked: true, soft };
-      if (s === SOFT) soft += len / n;
+      if (s === SOFT) {
+        soft += len / n;
+        if (soft > maxSoft) return { blocked: false, soft };
+      }
     }
     return { blocked: false, soft };
   }
@@ -594,8 +638,9 @@ export class CafeNav {
       for (let k = i + 2; k < pts.length; k++) {
         const b = pts[k];
         if (!b) break;
-        const pr = this.probe(grid, q, a, b);
-        if (pr.blocked || pr.soft > (acc[k] ?? 0) - (acc[i] ?? 0) + 0.15) break;
+        const maxSoft = (acc[k] ?? 0) - (acc[i] ?? 0) + 0.15;
+        const pr = this.probe(grid, q, a, b, maxSoft);
+        if (pr.blocked || pr.soft > maxSoft) break;
         j = k;
       }
       const p = pts[j];

@@ -201,6 +201,12 @@ export const CROWD = {
   paceSpread: 0.08,
   /** Auf so vielen Kacheln blenden Gäste auf dem Gehweg ein bzw. am Ende ihres Wegs aus. */
   fadeTiles: 1.2,
+  /**
+   * Rückt die Schlange auf, bekommen bis zu drei Hereinkommende einen neuen Platz. So viele planen ihren Weg je Frame
+   * neu, die übrigen gehen ein, zwei Frames auf dem alten weiter: Wege kosten am Handy einige Millisekunden, und
+   * mit allem anderen, was im selben Frame plant (Personal, neue Gäste), wurde daraus ein Hänger.
+   */
+  replansPerFrame: 1,
   /** Sichtbare Bestellzeit = 1 / Bestell-Kapazität, begrenzt auf diesen Bereich. */
   minServeSec: 0.4,
   maxServeSec: 3,

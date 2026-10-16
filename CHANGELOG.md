@@ -4,6 +4,15 @@ Alle nennenswerten Änderungen an Matcha Café Empire. Format angelehnt an [Keep
 
 ## [Unreleased]
 
+### Kamera, Ruckeln, Geldscheine (2026-10-16)
+
+Vorgabe Vincent: Das Spiel ruckelt zwischendurch, beim Herauszoomen oder Schieben springt die Kamera zurück und
+bleibt hängen – vor allem, wenn viele Gäste im Café sind. Die Geldscheine sind nicht zu sehen.
+
+- Die Kamera bleibt, wo man sie hinschiebt oder -zoomt. Vorher sprang sie zurück zum Café, sobald sich die Spielfläche auch nur um einen Pixel bewegte – am Handy zum Beispiel, wenn der Browser bei einem kurzen Hänger die Geste übernahm und die Seite verschob. Wischen und Zoomen auf der Szene steuern jetzt immer das Spiel, nie die Seite.
+- Der Geldschein beim Bezahlen ist gut zu sehen: Er hat in jedem Zoom dieselbe Größe (vorher am Handy nur ein grüner Punkt unter dem Betrag), startet neben dem Betrag und fliegt ins Geld-Feld, auch wenn man währenddessen schiebt.
+- Deutlich weniger Ruckeln, vor allem mit vielen Gästen: Die Stadt um das Café zeichnet nur noch, was im Bild ist, und die Laufwege der Figuren werden schneller berechnet und nicht mehr alle im selben Moment. Am Desktop gemessen braucht ein Bild im vollen Café etwa halb so viel Rechenzeit wie vorher.
+
 ### Natürliche Laufwege (2026-10-16)
 
 Vorgabe Vincent: Die Laufwege der Figuren sollen natürlicher werden – die Putzkraft soll von Tisch zu Tisch gehen
