@@ -546,10 +546,15 @@ export function startApp(o: AppOptions): App {
       if (elapsedSec < UI_CONFIG.offlineDialogMinSec) return;
       if (result.guests < 1 && result.earned.abs().lt(0.01)) return;
       const s = store.getState();
+      // Ohne Plural-Regeln in `t()`: „1 Spieltag“ und „3 Spieltage“ als eigene Texte, ohne Tageswechsel gar keiner.
+      const days =
+        result.days === 1
+          ? t('dialog.offline.day')
+          : t('dialog.offline.days', { count: result.days });
       const body = [
-        t('dialog.offline.body', {
+        t(result.days > 0 ? 'dialog.offline.body' : 'dialog.offline.bodyToday', {
           time: fmtTime(elapsedSec),
-          days: result.days,
+          days,
           guests: fmt(s, Math.round(result.guests)),
           revenue: fmtMoney(result.revenue),
         }),
