@@ -55,6 +55,13 @@ async function axe(page: Page): Promise<void> {
 const leavesInHud = async (page: Page): Promise<string> =>
   (await page.getByTestId('hud-leaves').innerText()).replace(/\D+/g, '');
 
+/** Erste ganze Zahl im Text: „8 🍃“ → 8, „Belohnung, wenn behoben: 5 🍃“ → 5. */
+function intIn(text: string): number {
+  const m = /\d+/.exec(text);
+  if (!m) throw new Error(`keine Zahl in „${text}“`);
+  return Number(m[0]);
+}
+
 test('Blätter-Shop: Zeitsprung, Boost, Skin – über das „+“ am Blätter-Stand', async ({ page }) => {
   await page.goto('?lang=de&tutorial=0');
   await expect(page.getByTestId('hud')).toBeVisible();
@@ -66,15 +73,24 @@ test('Blätter-Shop: Zeitsprung, Boost, Skin – über das „+“ am Blätter-S
   await axe(page);
 
   // Boost zuerst: danach bringt der Zeitsprung Geld, und Geld-Erfolge zahlen eigene Blätter aus.
-  await page.getByTestId('leaf-boost').click();
-  await expect(page.getByTestId('leafshop-balance')).toContainText('32');
+  const boost = page.getByTestId('leaf-boost');
+  const left = 40 - intIn(await boost.innerText());
+  await boost.click();
+  await expect(page.getByTestId('leafshop-balance')).toContainText(` ${String(left)} `);
   await expect(page.getByTestId('hud-boost-leaf')).toBeVisible();
   await expect(page.getByTestId('hud-boost-leaf')).toContainText('×2');
 
+  // Zeitsprung bringt den Gewinn der Zeit als Euro sofort – die Spieluhr läuft dabei nicht mit.
+  await expect(page.getByTestId('leaf-skip8h').locator('xpath=ancestor::li')).toContainText(
+    /Sofort \+[\d.]+(,\d\d)?\s€/,
+  );
+  const clockBefore = await page.getByTestId('hud-clock').innerText();
   const coinsBefore = await page.getByTestId('hud-coins').innerText();
   await page.getByTestId('leaf-skip8h').click();
   await expect(page.getByTestId('hud-coins')).not.toHaveText(coinsBefore);
-  await expect.poll(async () => Number(await leavesInHud(page))).toBeLessThan(32);
+  await expect.poll(async () => Number(await leavesInHud(page))).toBeLessThan(left);
+  expect(clockBefore).toMatch(/^Tag 1 · /);
+  await expect(page.getByTestId('hud-clock')).toHaveText(/^Tag 1 · /);
 });
 
 test('Skin kaufen, ablegen, anlegen', async ({ page }) => {
@@ -83,14 +99,15 @@ test('Skin kaufen, ablegen, anlegen', async ({ page }) => {
   await reloadWithSave(page, { leaves: '30' });
   await page.getByTestId('hud-leaf-shop').click();
   const skin = page.getByTestId('leaf-skin-sakuraBar');
+  const left = 30 - intIn(await skin.innerText());
   await skin.click();
   await expect(skin).toHaveText('Ablegen');
-  await expect(page.getByTestId('leafshop-balance')).toContainText(' 0 ');
+  await expect(page.getByTestId('leafshop-balance')).toContainText(` ${String(left)} `);
   await skin.click();
   await expect(skin).toHaveText('Anlegen');
 });
 
-test('Event: Karte, Detail, Lieferengpass beheben (+5 🍃), axe', async ({ page }) => {
+test('Event: Karte, Detail, Lieferengpass beheben bringt Blätter, axe', async ({ page }) => {
   // Die Karte wippt sonst endlos und ist für Playwright nie „stabil“ klickbar.
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('?lang=de&tutorial=0');
@@ -103,15 +120,33 @@ test('Event: Karte, Detail, Lieferengpass beheben (+5 🍃), axe', async ({ page
   const card = page.getByTestId('event-card');
   await expect(card).toBeVisible();
   await expect(card).toContainText('Lieferengpass');
-  await card.click();
+  // Die Karte muss antippbar sein: Liegt ein anderes Element über ihrer Mitte (z. B. die rechte Button-Spalte),
+  // landet der Tap dort. Weich geprüft, der Ablauf dahinter wird trotzdem getestet.
+  const coveredBy = await card.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    if (!hit || el.contains(hit)) return null;
+    return hit.closest('[data-testid]')?.getAttribute('data-testid') ?? hit.tagName;
+  });
+  expect.soft(coveredBy, 'Event-Karte ist verdeckt').toBeNull();
+  // Per Tastatur öffnen (unabhängig davon, was über der Karte liegt).
+  await card.focus();
+  await page.keyboard.press('Enter');
   await expect(page.getByTestId('panel-events')).toBeVisible();
-  await expect(page.getByTestId('event-list')).toContainText('Qualität');
+  const list = page.getByTestId('event-list');
+  await expect(list).toContainText('Lieferengpass');
+  await expect(list).toContainText(/Belohnung, wenn behoben: \d+ 🍃/);
+  const reward = intIn(/Belohnung, wenn behoben: (\d+)/.exec(await list.innerText())?.[1] ?? '');
+  // Ersatz besorgen kostet Geld: Phase 3 zeigt Beträge in Euro.
+  const resolve = page.getByTestId('event-resolve-0');
+  await expect(resolve).toBeEnabled();
+  await expect.soft(resolve, 'Kosten fürs Beheben ohne €').toContainText('€');
   await axe(page);
-  await page.getByTestId('event-resolve-0').click();
+  await resolve.click();
   await expect(page.getByTestId('toasts')).toContainText('Event geschafft: Lieferengpass');
   await expect(card).toBeHidden();
-  // 5 🍃 für das Event + 5 🍃 für den Erfolg „erstes Event“.
-  await expect.poll(() => leavesInHud(page)).toBe('10');
+  // Die Event-Belohnung (plus der Erfolg „erstes Event“).
+  await expect.poll(async () => Number(await leavesInHud(page))).toBeGreaterThan(reward);
 });
 
 test('Event endet während der Abwesenheit und wird beim Laden abgeschlossen', async ({ page }) => {
@@ -124,8 +159,11 @@ test('Event endet während der Abwesenheit und wird beim Laden abgeschlossen', a
   });
   await expect(page.getByTestId('hud')).toBeVisible();
   await expect(page.getByTestId('event-card')).toBeHidden();
-  // 5 🍃 für die Hitzewelle + 5 🍃 für den Erfolg „erstes Event“.
-  await expect.poll(() => leavesInHud(page)).toBe('10');
+  // Belohnung der Hitzewelle (und der Erfolg „erstes Event“) sind gutgeschrieben.
+  await expect.poll(async () => Number(await leavesInHud(page))).toBeGreaterThan(0);
+  await page.getByTestId('dialog-confirm').click();
+  await page.getByTestId('nav-achievements').click();
+  await expect(page.getByTestId('achievement-events1')).toContainText('Freigeschaltet');
 });
 
 test('Gratis-Boost über den No-op-Provider; kein Netzwerk-Call außer der eigenen Seite', async ({
@@ -150,5 +188,12 @@ test('Gratis-Boost über den No-op-Provider; kein Netzwerk-Call außer der eigen
   await expect(free).toBeHidden();
   await expect(page.getByTestId('toasts')).toContainText('Gratis-Boost');
   await axe(page);
+  // Social Media und Einkauf laufen komplett im Spiel: kein echtes Netzwerk, kein SDK.
+  await page.getByTestId('nav-social').click();
+  await page.getByTestId('social-post-latteArt').click();
+  await expect(page.getByTestId('social-recent').locator('li')).toHaveCount(1);
+  await page.getByTestId('manage-tab-supply').click();
+  await page.getByTestId('supply-order-0').click();
+  await expect(page.getByTestId('supply-orders').locator('li')).toHaveCount(1);
   expect(foreign).toEqual([]);
 });

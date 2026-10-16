@@ -18,6 +18,13 @@ async function seedCoins(page: Page, coins: string): Promise<void> {
   await page.reload();
 }
 
+/** Erste ganze Zahl im Text: „Neues Design ab Lv 5“ → 5, „Lv 1/10“ → 1. */
+function intIn(text: string): number {
+  const m = /\d+/.exec(text);
+  if (!m) throw new Error(`keine Zahl in „${text}“`);
+  return Number(m[0]);
+}
+
 test('Assets laden lokal: Atlanten, Schriften, Icon-Sprite – keine fehlenden Frames', async ({
   page,
 }) => {
@@ -52,35 +59,56 @@ test('Assets laden lokal: Atlanten, Schriften, Icon-Sprite – keine fehlenden F
   expect(fontOk).toBe(true);
 });
 
-test('Touch-Ziele ≥ 44 px im Hochformat (HUD, Leiste, Stations-Panel)', async ({ page }) => {
+test('Touch-Ziele ≥ 44 px im Hochformat (HUD, Leiste, Stations-Panel, Verwaltung)', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('?lang=de&tutorial=0');
   await expect(page.getByTestId('hud')).toBeVisible();
-  const check = async (): Promise<void> => {
-    const small = await page.evaluate(() =>
-      [...document.querySelectorAll<HTMLInputElement>('#ui button, #ui select, #ui input')]
-        .filter((el) => el.offsetParent !== null && el.type !== 'file')
-        .map((el) => ({
-          id: el.dataset['testid'] ?? el.className,
-          // Checkboxen zählen mit ihrer klickbaren Zeile (Label toggelt mit).
-          r: (el.type === 'checkbox'
-            ? (el.closest('.field-check') ?? el)
-            : el
-          ).getBoundingClientRect(),
-        }))
-        .filter(({ r }) => r.width < 44 || r.height < 44)
-        .map(({ id, r }) => `${id} ${String(Math.round(r.width))}×${String(Math.round(r.height))}`),
+  /** Alle sichtbaren Bedienelemente unter `scope`; weich, damit jeder Screen seine Verstöße meldet. */
+  const check = async (where: string, scope = '#ui'): Promise<void> => {
+    const small = await page.evaluate(
+      (sel) =>
+        [
+          ...document.querySelectorAll<HTMLInputElement>(
+            `${sel} button, ${sel} select, ${sel} input`,
+          ),
+        ]
+          .filter((el) => el.offsetParent !== null && el.type !== 'file')
+          .map((el) => ({
+            id: el.dataset['testid'] ?? el.className,
+            // Checkboxen zählen mit ihrer klickbaren Zeile (Label toggelt mit).
+            r: (el.type === 'checkbox'
+              ? (el.closest('.field-check') ?? el)
+              : el
+            ).getBoundingClientRect(),
+          }))
+          .filter(({ r }) => r.width < 44 || r.height < 44)
+          .map(
+            ({ id, r }) => `${id} ${String(Math.round(r.width))}×${String(Math.round(r.height))}`,
+          ),
+      scope,
     );
-    expect(small).toEqual([]);
+    expect.soft(small, where).toEqual([]);
   };
-  await check();
+  await check('HUD und Leiste');
   await page.getByTestId('nav-shop').click();
   await page.getByTestId('shop-station-matchaStation').click();
-  await check();
+  await check('Stations-Panel', '#ui .panel');
   // Das Bottom-Sheet deckt Zahnrad und Leiste ab (wie im Vorbild); erst schließen.
   await page.getByTestId('panel-close').click();
   await page.getByTestId('nav-settings').click();
-  await check();
+  await check('Einstellungen', '#ui .panel');
+  await page.getByTestId('panel-close').click();
+  // Verwaltung (Vollbild): Einkauf mit Bestellknöpfen, Personal mit Entlassen, Social Media, Öffnungszeiten.
+  await page.getByTestId('nav-supply').click();
+  await expect(page.getByTestId('panel-supply')).toBeVisible();
+  await check('Einkauf', '#ui .panel');
+  for (const tab of ['staff', 'social', 'stats'] as const) {
+    await page.getByTestId(`manage-tab-${tab}`).click();
+    await expect(page.getByTestId(`panel-${tab}`)).toBeVisible();
+    await check(`Verwaltung: ${tab}`, '#ui .panel');
+  }
 });
 
 test('Stations-Panel: Icon-Grid und Pfeile wechseln das Objekt, Ambiente kaufbar', async ({
@@ -94,11 +122,17 @@ test('Stations-Panel: Icon-Grid und Pfeile wechseln das Objekt, Ambiente kaufbar
   await expect(page.getByTestId('tile-matchaStation')).toHaveAttribute('aria-current', 'true');
   await page.getByTestId('station-next').click();
   await expect(page.getByTestId('tile-coffeeMachine')).toHaveAttribute('aria-current', 'true');
-  await page.getByTestId('tile-ambience-seats').click();
-  await expect(page.getByTestId('ambience-level')).toHaveText('Lv 0/50');
-  await page.getByTestId('ambience-buy-seats').click();
-  await expect(page.getByTestId('ambience-level')).toHaveText('Lv 1/50');
-  await expect(page.getByTestId('tile-ambience-seats')).toContainText('1');
+  // Deko gibt es von Anfang an, aber noch ohne Stufe.
+  await page.getByTestId('tile-ambience-decor').click();
+  await expect(page.getByTestId('ambience-level')).toHaveText(/^Lv 0\/\d+$/);
+  await page.getByTestId('ambience-buy-decor').click();
+  await expect(page.getByTestId('ambience-level')).toHaveText(/^Lv 1\/\d+$/);
+  await expect(page.getByTestId('tile-ambience-decor')).toContainText('1');
+  // Der Parkplatz neben dem Café ist am Anfang noch gesperrt.
+  await page.getByTestId('tile-ambience-parking').click();
+  await expect(page.getByTestId('ambience-level')).toHaveText(/^Lv 0\/\d+$/);
+  await expect(page.getByTestId('ambience-buy-parking')).toBeDisabled();
+  await expect(page.locator('.station-card .locked-hint')).toHaveText(/^from café lv \d+$/);
 });
 
 test('Ausstattung wird mit dem Level edler: Panel zeigt die nächste Optik, Bild wechselt', async ({
@@ -106,42 +140,72 @@ test('Ausstattung wird mit dem Level edler: Panel zeigt die nächste Optik, Bild
 }) => {
   await page.goto('?lang=de&tutorial=0');
   await expect(page.getByTestId('hud')).toBeVisible();
-  await seedCoins(page, '100000');
+  await seedCoins(page, '1000000');
   await page.getByTestId('nav-shop').click();
   await page.getByTestId('shop-station-matchaStation').click();
+  const level = page.getByTestId('station-level');
   const look = page.getByTestId('station-look');
   const icon = page.locator('.station-card-icon');
-  await expect(look).toHaveText('Neues Design ab Lv 10');
+  await expect(level).toHaveText(/^Level 1\/\d+$/);
+  await expect(look).toHaveText(/^Neues Design ab Lv \d+$/);
   await expect(icon).toHaveAttribute('src', /station-matchaStation-1\.png$/);
-  await page.getByTestId('buy-10').click();
-  await expect(page.getByTestId('station-level')).toHaveText('Level 11');
-  await expect(look).toHaveText('Neues Design ab Lv 25');
+  // Bis zur angekündigten Stufe ausbauen: Das Gerät bekommt die nächste Optik.
+  const next = intIn(await look.innerText());
+  for (let lvl = 2; lvl <= next; lvl++) {
+    await page.getByTestId('buy-1').click();
+    await expect(level).toHaveText(new RegExp(`^Level ${String(lvl)}/\\d+$`));
+  }
   await expect(icon).toHaveAttribute('src', /station-matchaStation-2\.png$/);
+  await expect(look).toHaveText(/^(Neues Design ab Lv \d+|Edelste Ausführung erreicht)$/);
+  await expect(look).not.toHaveText(`Neues Design ab Lv ${String(next)}`);
   await expect
     .poll(() => icon.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0))
     .toBe(true);
-  // Tische: eigene Optik-Stufen, Vorschau im selben Panel
+  // Tische: eigene Optik-Stufen, Vorschau im selben Panel (ein Tisch steht schon).
   await page.getByTestId('tile-ambience-seats').click();
+  const tables = page.getByTestId('ambience-look');
+  await expect(tables).toHaveText(/^Neues Design ab Lv \d+$/);
+  const seats = intIn(await page.getByTestId('ambience-level').innerText());
+  expect(intIn(await tables.innerText())).toBeGreaterThan(seats);
   await page.getByTestId('ambience-buy-seats').click();
-  await expect(page.getByTestId('ambience-look')).toHaveText('Neues Design ab Lv 13');
+  await expect(page.getByTestId('ambience-level')).toHaveText(
+    new RegExp(`^Lv ${String(seats + 1)}/\\d+$`),
+  );
 });
 
-test('Verwaltung: Karten-Tabs wechseln Shop, Marketing, Personal, Statistik', async ({ page }) => {
+test('Verwaltung: Karten-Tabs wechseln Shop, Einkauf, Personal, Social Media, Betrieb', async ({
+  page,
+}) => {
   await page.goto('?lang=de&tutorial=0');
   await page.getByTestId('nav-shop').click();
   await expect(page.getByTestId('panel-shop')).toBeVisible();
-  await page.getByTestId('manage-tab-marketing').click();
-  await expect(page.getByTestId('panel-marketing')).toBeVisible();
-  await page.getByTestId('manage-tab-staff').click();
-  await expect(page.getByTestId('panel-staff')).toBeVisible();
-  await page.getByTestId('manage-tab-stats').click();
-  await expect(page.getByTestId('stats-balance')).toContainText('Tagesbilanz');
-  await expect(page.getByTestId('manage-tab-stats')).toHaveAttribute('aria-current', 'page');
+  await expect(page.locator('.manage-tabs .tab')).toHaveCount(5);
+  const tabs = [
+    ['supply', 'supply-stock'],
+    ['staff', 'staff-team-cost'],
+    ['social', 'social-followers'],
+    ['stats', 'hours-text'],
+  ] as const;
+  for (const [tab, content] of tabs) {
+    await page.getByTestId(`manage-tab-${tab}`).click();
+    await expect(page.getByTestId(`panel-${tab}`)).toBeVisible();
+    await expect(page.getByTestId(content)).toBeVisible();
+    await expect(page.getByTestId(`manage-tab-${tab}`)).toHaveAttribute('aria-current', 'page');
+  }
+  await expect(page.getByTestId('ledger-today-balance')).toContainText('Tagesbilanz');
+  await page.getByTestId('manage-tab-shop').click();
+  await expect(page.getByTestId('panel-shop')).toBeVisible();
   await page.getByTestId('panel-close').click();
+  // Abkürzungen: Matcha-Sorte im HUD → Einkauf, Uhr → Betrieb, Hammer → Ambiente mit Parkplatz.
   await page.getByTestId('hud-quality').click();
-  await expect(page.getByTestId('quality-current')).toBeVisible();
+  await expect(page.getByTestId('supply-in-use')).toBeVisible();
+  await page.getByTestId('panel-close').click();
+  await page.getByTestId('hud-clock').click();
+  await expect(page.getByTestId('hours-text')).toBeVisible();
+  await page.getByTestId('panel-close').click();
   await page.getByTestId('nav-build').click();
   await expect(page.getByTestId('shop-ambience-seats')).toBeVisible();
+  await expect(page.getByTestId('shop-ambience-parking')).toBeVisible();
 });
 
 test('Lautstärke-Regler wirken und bleiben nach Neuladen', async ({ page }) => {
