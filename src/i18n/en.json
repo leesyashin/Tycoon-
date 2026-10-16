@@ -7,8 +7,6 @@
   "hud.hype": "Hype",
   "hud.hypeActive": "Hype! {sec} s",
   "scene.station.buy": "Buy",
-  "scene.station.locked": "from café lv {level}",
-  "scene.station.level": "Lv {level}",
   "scene.station.newLook": "New look!",
   "scene.crowd.more": "+{count}",
   "scene.coinPopup": "+{amount}",
