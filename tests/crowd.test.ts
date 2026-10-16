@@ -2,20 +2,13 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   CROWD,
-  cleanerPathToSpot,
-  cleanerPathToTable,
   getLayout,
   inRoom,
   LAYOUTS,
-  pathFromPickup,
-  pathFromStool,
-  pathFromTable,
-  pathToPickup,
-  pathToStool,
-  pathToTable,
+  NAV,
   visibleTables,
-  waiterPathToTable,
   type CafeLayout,
+  type GridPos,
 } from '@data/layouts';
 import { STATIONS } from '@data/stations';
 import { CUSTOMER_TYPES } from '@data/customerTypes';
@@ -30,6 +23,7 @@ import {
   walkInSec,
   type CrowdInput,
 } from '@scenes/agents/crowd';
+import { CafeNav, pathLength } from '@scenes/agents/nav';
 import { CUSTOMER_LOOKS, SUPPLY_ITEMS, storageLookTier, type StorageTier } from '@data/art';
 import { FRAME } from '@scenes/art';
 
@@ -71,7 +65,6 @@ describe('Grundriss (Phase 2)', () => {
       expect(inRoom(layout, 8, 12)).toBe(false);
       expect(inRoom(layout, o.x - 1, 5)).toBe(false);
       for (const c of layout.counter) expect(inGrid(c)).toBe(true);
-      for (const w of layout.order.path) expect(inGrid(w)).toBe(true);
       expect(layout.order.queue[0]).toEqual(layout.order.access);
       for (const q of [...layout.order.queue, layout.order.crowd]) expect(inGrid(q)).toBe(true);
       for (const tb of layout.tables) {
@@ -90,10 +83,9 @@ describe('Grundriss (Phase 2)', () => {
         }
         expect(inRoom(layout, Math.round(tb.tile.x), Math.round(tb.tile.y))).toBe(true);
         expect(inRoom(layout, Math.round(tb.side.x), Math.round(tb.side.y))).toBe(true);
-        expect(tb.tile.y).toBeGreaterThan(layout.walkRows.top);
-        // Gastraum-Tische zwischen den Laufzeilen, Wintergarten-Tische davor
-        const annex = tb.tile.y >= layout.annex.from.y - 0.5;
-        if (!annex) expect(tb.tile.y).toBeLessThan(layout.walkRows.bottom);
+        // Vor der Theke bleibt eine Laufzeile frei (Abholplätze, Barhocker, Weg zu den Tischen).
+        const counterY = Math.max(...layout.counter.filter((c) => !c.facesX).map((c) => c.y));
+        expect(tb.tile.y).toBeGreaterThan(counterY + 2);
       }
       expect(layout.tables.filter((t) => !t.outside)).toHaveLength(10);
       expect(visibleTables(layout, 0)).toHaveLength(0);
@@ -162,40 +154,74 @@ function samples(path: readonly { x: number; y: number }[]): { x: number; y: num
   return out;
 }
 
-/** Wege der Abgänger, Bedienungen und Putzkräfte (ohne die Schlange selbst). */
-function servicePaths(layout: CafeLayout): { x: number; y: number }[][] {
-  const exit = layout.order.exit;
-  const from = exit[exit.length - 1] ?? layout.order.access;
-  const out: { x: number; y: number }[][] = [];
-  for (const spot of layout.pickup.spots) {
-    out.push([...exit, ...pathToPickup(layout, from, spot)]);
-    out.push([spot, ...pathFromPickup(layout, spot)]);
-    for (const stool of layout.bar.stools) out.push([spot, ...pathToStool(layout, spot, stool)]);
+/** Punkte auf dem Gehweg, an denen Gäste auftauchen bzw. verschwinden (beide Richtungen, mittlere Streuung). */
+function sidewalkEnds(layout: CafeLayout): GridPos[] {
+  const { curb, axis, spreadMin, spreadMax } = layout.street;
+  return [-1, 1].flatMap((side) =>
+    [spreadMin, (spreadMin + spreadMax) / 2, spreadMax].map((d) =>
+      axis === 'u' ? { x: curb.x + side * d, y: curb.y } : { x: curb.x, y: curb.y + side * d },
+    ),
+  );
+}
+
+/**
+ * Wege der Abgänger, Bedienungen und Putzkräfte (ohne die Schlange selbst) aus der Wegsuche, alle Tische sichtbar;
+ * `trim`: ohne das Stück nahe Start und Ziel (dort darf man Wartende, Stühle und Hocker streifen).
+ */
+function servicePaths(layout: CafeLayout, trim = false): GridPos[][] {
+  const nav = new CafeNav(layout);
+  const access = layout.order.access;
+  const ends = sidewalkEnds(layout);
+  const out: GridPos[][] = [];
+  const add = (role: 'guest' | 'staff', from: GridPos, to: GridPos) => {
+    const path = [from, ...nav.path(role, from, to)];
+    out.push(trim ? samples(path).filter((p) => !near(p, from) && !near(p, to)) : path);
+  };
+  const near = (p: GridPos, q: GridPos) => Math.hypot(p.x - q.x, p.y - q.y) < NAV.endRadius;
+  for (const [i, spot] of layout.pickup.spots.entries()) {
+    add('guest', access, spot);
+    add('guest', spot, ends[i % ends.length] ?? access);
+    for (const stool of layout.bar.stools) add('guest', spot, stool);
   }
-  for (const stool of layout.bar.stools) out.push([stool, ...pathFromStool(layout, stool)]);
-  for (const t of layout.tables) {
-    out.push([...exit, ...pathToTable(layout, from, t)]);
-    out.push(pathFromTable(layout, t));
-    out.push([layout.pickup.waiterHomes[0] ?? from, ...waiterPathToTable(layout, t)]);
-    out.push(cleanerPathToTable(layout, layout.cleanerHome, t));
+  for (const [i, stool] of layout.bar.stools.entries())
+    add('guest', stool, ends[(i + 2) % ends.length] ?? access);
+  const home = layout.pickup.waiterHomes[0] ?? access;
+  for (const [i, t] of layout.tables.entries()) {
+    for (const seat of t.seats) {
+      add('guest', access, seat);
+      add('guest', seat, ends[i % ends.length] ?? access);
+      const serve = nav.standSpot('staff', seat, NAV.serveDist, home, t.side);
+      add('staff', home, serve);
+      add('staff', serve, home);
+    }
+    add(
+      'guest',
+      layout.cleanerHome,
+      nav.standSpot('guest', t.tile, NAV.wipeDist, layout.cleanerHome, t.side),
+    );
   }
-  for (const m of layout.mopSpots) out.push(cleanerPathToSpot(layout, layout.cleanerHome, m));
+  for (const m of layout.mopSpots) add('guest', layout.cleanerHome, m);
   return out;
+}
+
+/** Weg eines neuen Gasts vom Gehweg bis an die Kasse. */
+function walkInPaths(layout: CafeLayout): GridPos[][] {
+  const nav = new CafeNav(layout);
+  const access = layout.order.access;
+  return sidewalkEnds(layout).map((s) => [s, ...nav.path('guest', s, access)]);
 }
 
 describe('Wege im kompakten Grundriss', () => {
   const layout = getLayout('berlin');
 
-  it('nach der Tür steht man nach wenigen Kacheln in der Schlange', () => {
+  it('nach der Tür steht man nach wenigen Kacheln in der Schlange, direkt und ohne Haken', () => {
     const e = layout.entrance;
-    const walk = samples([e, ...layout.order.path, layout.order.access]);
-    let len = 0;
-    for (let i = 1; i < walk.length; i++) {
-      const a = walk[i - 1];
-      const b = walk[i];
-      if (a && b) len += Math.hypot(b.x - a.x, b.y - a.y);
-    }
+    const nav = new CafeNav(layout);
+    const len = pathLength(e, nav.path('guest', e, layout.order.access));
     expect(len).toBeLessThanOrEqual(4);
+    // Freie Strecke: gerade Linie statt erst neben die Schlange und dann seitlich hinein.
+    const air = Math.hypot(layout.order.access.x - e.x, layout.order.access.y - e.y);
+    expect(len).toBeLessThan(air * 1.05);
     // Bestellen → Abholen ist ein kurzer Weg um die Ecke
     const spot = layout.pickup.spots[0];
     if (!spot) throw new Error('no pickup');
@@ -211,8 +237,8 @@ describe('Wege im kompakten Grundriss', () => {
     ];
     const e = layout.entrance;
     for (const b of blocked) expect(Math.hypot(b.x - e.x, b.y - e.y)).toBeGreaterThan(1.2);
-    for (const path of servicePaths(layout))
-      for (const p of samples(path))
+    for (const path of servicePaths(layout, true))
+      for (const p of path)
         for (const b of blocked)
           expect(Math.hypot(p.x - b.x, p.y - b.y), `${String(p.x)},${String(p.y)}`).toBeGreaterThan(
             b.r,
@@ -262,10 +288,7 @@ describe('Wege im kompakten Grundriss', () => {
         .map((d) => ({ ...d.tile, frame: d.frame })),
       ...layout.ambience.map((a) => ({ ...a.tile, frame: `ambience-${a.id}` })),
     ];
-    const paths = [
-      ...servicePaths(layout),
-      [layout.street.curb, layout.entrance, ...layout.order.path, layout.order.access],
-    ].map(samples);
+    const paths = [...servicePaths(layout), ...walkInPaths(layout)].map(samples);
     for (const it of items) {
       for (const p of [it]) {
         for (const path of paths)
@@ -290,24 +313,19 @@ describe('Wege im kompakten Grundriss', () => {
   });
 
   it('Barhocker stehen vor der Theke, je einer als Deko, abseits aller anderen Wege', () => {
-    const { stools, row } = layout.bar;
+    const { stools } = layout.bar;
     expect(stools.length).toBeGreaterThanOrEqual(3);
     const decor = layout.decor.filter((d) => d.frame === 'deco-stool');
     expect(decor.map((d) => d.tile)).toEqual(stools);
     expect(decor.every((d) => d.minLevel === 0)).toBe(true);
     const counterY = Math.max(...layout.counter.filter((c) => !c.facesX).map((c) => c.y));
-    const others = [
-      [layout.street.curb, layout.entrance, ...layout.order.path, layout.order.access],
-      ...servicePaths(layout).filter(
-        (p) => !stools.some((st) => [p[0], p.at(-1)].some((q) => q?.x === st.x && q.y === st.y)),
-      ),
-    ].map(samples);
+    // Wege, die nicht an einem Hocker beginnen oder enden, ohne ihre Enden (Abholplatz, Tisch).
+    const others = [...walkInPaths(layout).map(samples), ...servicePaths(layout, true)];
     for (const [i, st] of stools.entries()) {
       // Direkt vor einem Thekenmodul (Blick zur Theke), nicht vor dem Durchgang der Bedienungen.
       expect(layout.counter.some((c) => Math.abs(c.x - st.x) < 0.5 && c.y === counterY)).toBe(true);
       expect(st.y - counterY).toBeGreaterThan(0.5);
       expect(st.y - counterY).toBeLessThan(1);
-      expect(row).toBeGreaterThan(st.y);
       for (const other of stools.slice(i + 1))
         expect(Math.hypot(other.x - st.x, other.y - st.y)).toBeGreaterThan(0.8);
       for (const path of others)
@@ -320,12 +338,14 @@ describe('Wege im kompakten Grundriss', () => {
         for (const s of [tb.tile, tb.side, ...tb.seats])
           expect(Math.hypot(st.x - s.x, st.y - s.y)).toBeGreaterThan(1);
     }
-    // Hin und zurück über die Zeile vor den Hockern.
+    // Hin zum Hocker und von dort hinaus auf den Gehweg.
+    const nav = new CafeNav(layout);
     const spot = layout.pickup.spots[0];
     const first = stools[0];
-    if (!spot || !first) throw new Error('no spot');
-    expect(pathToStool(layout, spot, first).at(-1)).toEqual(first);
-    expect(pathFromStool(layout, first).at(-1)).toEqual(layout.entrance);
+    const end = sidewalkEnds(layout)[0];
+    if (!spot || !first || !end) throw new Error('no spot');
+    expect(nav.path('guest', spot, first).at(-1)).toEqual(first);
+    expect(nav.path('guest', first, end).at(-1)).toEqual(end);
   });
 
   it('das Lager liegt hinter dem Personal-Gang und wächst mit den Geräten', () => {
@@ -560,6 +580,179 @@ describe('Gäste, Bedienungen und Putzkräfte (kosmetisch)', () => {
     expect(serveDuration(1)).toBe(1);
     expect(serveDuration(1000)).toBe(CROWD.minServeSec);
     expect(serveDuration(0)).toBe(CROWD.maxServeSec);
+  });
+});
+
+describe('Natürliche Laufwege', () => {
+  const layout = getLayout('berlin');
+  const posts = layout.stations
+    .filter((s) => s.stationId !== 'register' && s.stationId !== 'servingStation')
+    .slice(0, 4)
+    .map((s) => ({ station: s.stationId, home: s.workSpot }));
+  const busy = input({
+    served: 0.7,
+    orderCap: 3,
+    waiters: 3,
+    cleaners: 2,
+    tables: 10,
+    terrace: 3,
+    cleanliness: 30,
+    baristas: posts,
+    prepSec: 4,
+  });
+
+  it('Wege sind rund und stetig: kaum harte Knicke, niemand springt', () => {
+    const crowd = new CustomerCrowd(layout, 'berlin', lcg(41));
+    type Fig = { active: boolean; x: number; y: number };
+    const groups = [
+      ['guest', crowd.agents, CROWD.walkTilesPerSec * (1 + CROWD.paceSpread)],
+      ['waiter', crowd.waiters, CROWD.staffTilesPerSec],
+      ['cleaner', crowd.cleaners, CROWD.staffTilesPerSec],
+      ['barista', crowd.baristas, CROWD.staffTilesPerSec],
+    ] as const;
+    const last = new Map<Fig, { x: number; y: number; hx: number; hy: number }>();
+    const walked: Record<string, number> = {};
+    const sharp: Record<string, number> = {};
+    for (let f = 0; f < 120 * 60; f++) {
+      crowd.update(1 / 60, busy);
+      for (const [role, list, speed] of groups)
+        for (const a of list as readonly Fig[]) {
+          const s = last.get(a);
+          if (!a.active) {
+            last.delete(a);
+            continue;
+          }
+          if (!s) {
+            last.set(a, { x: a.x, y: a.y, hx: 0, hy: 0 });
+            continue;
+          }
+          const dx = a.x - s.x;
+          const dy = a.y - s.y;
+          const d = Math.hypot(dx, dy);
+          // Höchstens ein Schritt je Bild: kein Sprung, wenn sich ein Ziel unterwegs ändert.
+          if (d > (speed / 60) * 1.001 + 1e-9) expect(d, role).toBeLessThanOrEqual(speed / 60);
+          if (d > 1e-4) {
+            walked[role] = (walked[role] ?? 0) + d;
+            const h = Math.hypot(s.hx, s.hy);
+            if (h > 1e-4 && (dx * s.hx + dy * s.hy) / (d * h) < Math.SQRT1_2)
+              sharp[role] = (sharp[role] ?? 0) + 1;
+            s.hx = dx;
+            s.hy = dy;
+          } else {
+            s.hx = 0;
+            s.hy = 0;
+          }
+          s.x = a.x;
+          s.y = a.y;
+        }
+    }
+    // Vorher (feste Wegpunkte, rechte Winkel): 22–29 Knicke über 45° je 100 Kacheln.
+    for (const [role] of groups) {
+      const tiles = walked[role] ?? 0;
+      expect(tiles, role).toBeGreaterThan(50);
+      expect(((sharp[role] ?? 0) / tiles) * 100, role).toBeLessThan(role === 'guest' ? 2.5 : 1);
+    }
+  });
+
+  it('Putzkräfte gehen von Tisch zu Tisch, ohne Umweg über den Startplatz', () => {
+    const crowd = new CustomerCrowd(layout, 'berlin', lcg(42));
+    const c = crowd.cleaners[0];
+    if (!c) throw new Error('no cleaner');
+    let trip: { from: GridPos; walked: number } | null = null;
+    let prev = { x: 0, y: 0, phase: c.phase as string };
+    let hops = 0;
+    let chained = 0;
+    for (let f = 0; f < 120 * 60; f++) {
+      // Viel Schmutz: oft wartet schon der nächste Tisch. Deko wie mitten im Spiel.
+      const waiting = [...crowd.dirty].some((t) => t !== c.table);
+      crowd.update(
+        1 / 60,
+        input({
+          served: 1,
+          tables: 10,
+          cleaners: 1,
+          cleanliness: 0,
+          ambience: { decor: 12, music: 1, wifi: 1 },
+        }),
+      );
+      if (!c.active) continue;
+      const step = Math.hypot(c.x - prev.x, c.y - prev.y);
+      if (c.phase === 'toTable') {
+        trip =
+          trip && prev.phase === 'toTable' ? trip : { from: { x: prev.x, y: prev.y }, walked: 0 };
+        trip.walked += step;
+      }
+      if (prev.phase === 'toTable' && c.phase === 'wipe' && trip) {
+        // Der Weg zum Tisch beginnt dort, wo sie gerade ist, und ist kaum länger als die Luftlinie
+        // (vorher: zurück auf die Laufzeile bis zum Startpunkt, dann erst hin).
+        const air = Math.hypot(c.x - trip.from.x, c.y - trip.from.y);
+        expect(trip.walked).toBeLessThan(air * 1.3 + 0.6);
+        hops++;
+        trip = null;
+      }
+      // Wartet beim Fertigwischen schon ein Tisch, geht es ohne Pause dorthin.
+      if (prev.phase === 'wipe' && c.phase !== 'wipe' && waiting) {
+        expect(c.phase).toBe('toTable');
+        chained++;
+      }
+      prev = { x: c.x, y: c.y, phase: c.phase };
+    }
+    expect(hops).toBeGreaterThan(5);
+    expect(chained).toBeGreaterThan(0);
+  });
+
+  it('niemand läuft durch Tische; Gäste und Putzkräfte bleiben vor der Theke; Bedienungen treten neben den Gast', () => {
+    const crowd = new CustomerCrowd(layout, 'berlin', lcg(43));
+    const shown = visibleTables(layout, busy.tables, busy.terrace);
+    const { from, to } = layout.staffArea;
+    const behind = (p: GridPos) =>
+      Math.round(p.x) >= from.x &&
+      Math.round(p.x) <= to.x &&
+      Math.round(p.y) >= from.y &&
+      Math.round(p.y) <= to.y;
+    let served = 0;
+    for (let f = 0; f < 90 * 60; f++) {
+      crowd.update(1 / 60, busy);
+      // `expect` nur bei Verstoß: sonst kostet die Prüfung je Figur und Bild mehr als die Simulation.
+      for (const a of [...crowd.agents, ...crowd.waiters, ...crowd.cleaners]) {
+        if (!a.active) continue;
+        for (const t of shown) {
+          const d = Math.hypot(a.x - t.tile.x, a.y - t.tile.y);
+          if (d <= NAV.tableR + NAV.body - 1e-6) expect(d).toBeGreaterThan(NAV.tableR + NAV.body);
+        }
+      }
+      for (const a of [...crowd.agents, ...crowd.cleaners])
+        if (a.active && behind(a)) expect(behind(a), `${String(a.x)},${String(a.y)}`).toBe(false);
+      for (const w of crowd.waiters) {
+        if (!w.active || w.phase !== 'serve' || w.target < 0) continue;
+        const g = crowd.agents[w.target];
+        if (!g || g.table < 0) continue;
+        expect(Math.hypot(w.x - g.x, w.y - g.y)).toBeLessThan(NAV.serveDist + 0.3);
+        served++;
+      }
+    }
+    expect(served).toBeGreaterThan(0);
+  });
+
+  it('Gäste blenden auf dem Gehweg ein und am Ende ihres Wegs aus', () => {
+    const crowd = new CustomerCrowd(layout, 'berlin', lcg(44));
+    let fadedOut = 0;
+    const seen = new Map<number, number>();
+    for (let f = 0; f < 60 * 60; f++) {
+      crowd.update(1 / 60, input({ served: 0.8 }));
+      for (const a of crowd.agents) {
+        if (!a.active) {
+          const lastFade = seen.get(a.id);
+          if (lastFade !== undefined && lastFade < 0.2) fadedOut++;
+          seen.delete(a.id);
+          continue;
+        }
+        // Drinnen immer ganz sichtbar.
+        if (inRoom(layout, Math.round(a.x), Math.round(a.y))) expect(a.fade).toBe(1);
+        seen.set(a.id, a.fade);
+      }
+    }
+    expect(fadedOut).toBeGreaterThan(5);
   });
 });
 
