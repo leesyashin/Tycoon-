@@ -578,7 +578,7 @@ button.chip {
 .chip-group {
   display: contents;
 }
-.buy-row--single {
+.buy-row.buy-row--single {
   grid-template-columns: 1fr;
 }
 .screen-tabs .tab[aria-current='page'] {
@@ -739,6 +739,11 @@ button.chip {
 .station-card .stats,
 .station-card .station-extra {
   grid-column: 1 / -1;
+}
+/* Kauf direkt unter Name und Level: Antippen eines Objekts landet ohne Scrollen beim Verbessern. */
+.station-card .buy-row {
+  grid-column: 1 / -1;
+  margin: 8px 0 6px;
 }
 .stats {
   display: grid;
