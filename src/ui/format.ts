@@ -1,4 +1,4 @@
-import { getLang } from '@i18n/index';
+import { getLang, t } from '@i18n/index';
 import type { GameState } from '@core/GameState';
 import { formatDuration, formatMoney, formatNumber } from '@core/math/format';
 import type { DecimalSource } from '@core/math/bignum';
@@ -17,6 +17,15 @@ export function fmtMoney(value: DecimalSource): string {
 export function fmtGrams(grams: number): string {
   if (grams >= 1000) return `${fmtSmall(grams / 1000, 1)} kg`;
   return `${fmtSmall(Math.max(0, grams), 0)} g`;
+}
+
+/**
+ * Tage mit der richtigen Einzahl („1 Spieltag“, „1,5 Spieltage“): `t()` kennt keine Plural-Regeln. Was gerundet „1“
+ * ergibt, ist ein Tag. `kind`: Kalendertage, Spieltage oder Öffnungstage.
+ */
+export function fmtDays(value: number, kind: 'day' | 'gameDay' | 'openDay', digits = 1): string {
+  const count = fmtSmall(value, digits);
+  return count === fmtSmall(1, digits) ? t(`unit.${kind}`) : t(`unit.${kind}s`, { count });
 }
 
 export function fmtTime(sec: number): string {

@@ -37,7 +37,7 @@ import { createToaster } from './toast';
 import { createTutorial } from './tutorial';
 import type { PwaHooks } from './pwa';
 import { restartTutorial } from '@core/tutorial';
-import { fmt, fmtMoney, fmtTime } from './format';
+import { fmt, fmtDays, fmtMoney, fmtTime } from './format';
 import type { OfflineResult } from '@core/economy';
 import { UI_CONFIG } from '@data/ui';
 import type { SfxId } from '@data/audio';
@@ -546,11 +546,8 @@ export function startApp(o: AppOptions): App {
       if (elapsedSec < UI_CONFIG.offlineDialogMinSec) return;
       if (result.guests < 1 && result.earned.abs().lt(0.01)) return;
       const s = store.getState();
-      // Ohne Plural-Regeln in `t()`: „1 Spieltag“ und „3 Spieltage“ als eigene Texte, ohne Tageswechsel gar keiner.
-      const days =
-        result.days === 1
-          ? t('dialog.offline.day')
-          : t('dialog.offline.days', { count: result.days });
+      // Ohne Tageswechsel keine Tages-Angabe.
+      const days = fmtDays(result.days, 'gameDay', 0);
       const body = [
         t(result.days > 0 ? 'dialog.offline.body' : 'dialog.offline.bodyToday', {
           time: fmtTime(elapsedSec),

@@ -23,7 +23,7 @@ import { openHoursPerDay } from '@core/time/clock';
 import { SOCIAL } from '@data/social';
 import { STAFF_ROLES, type StaffRoleDef } from '@data/staff';
 import { h, on, setDisabled, setText, type View } from './dom';
-import { fmtMoney, fmtSigned, fmtSmall } from './format';
+import { fmtDays, fmtMoney, fmtSigned, fmtSmall } from './format';
 import { stageName } from './labels';
 import type { PanelContent } from './panel';
 import { createPipelineCard } from './pipeline';
@@ -48,7 +48,7 @@ function nowText(role: StaffRoleDef, s: GameState, loc: LocationState, r: Locati
         eq: fmtSmall(cleanlinessEquilibrium(loc, r.served), 0),
       });
     case 'manager':
-      return t('staff.now.manager', { days: getOfflineCapDays(s) });
+      return t('staff.now.manager', { days: fmtDays(getOfflineCapDays(s), 'gameDay', 0) });
     case 'socialMedia':
       return t('staff.now.socialMedia', {
         posts: Math.min(count, SOCIAL.managerPostHours.length),
@@ -61,7 +61,7 @@ function nextText(role: StaffRoleDef, s: GameState, locId: string, r: LocationRa
   const loc = getLocation(s, locId);
   if (role.id === 'manager') {
     const next = { ...s, locations: { ...s.locations, [locId]: hiredOnce(loc, role.id) } };
-    return t('staff.next.offline', { days: getOfflineCapDays(next) });
+    return t('staff.next.offline', { days: fmtDays(getOfflineCapDays(next), 'gameDay', 0) });
   }
   if (role.id === 'socialMedia') {
     return t('staff.next.socialMedia', {

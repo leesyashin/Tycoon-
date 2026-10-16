@@ -15,7 +15,7 @@ import {
 import { getCafeClock } from '@core/time/dayCycle';
 import { DELIVERY, MATCHA_GRADES, MATCHA_PACKAGES, getGradeDef } from '@data/matcha';
 import { h, on, setDisabled, setText, type View } from './dom';
-import { fmtClock, fmtGrams, fmtMoney, fmtSmall } from './format';
+import { fmtClock, fmtDays, fmtGrams, fmtMoney, fmtSmall } from './format';
 import { gradeName } from './labels';
 import type { PanelContent } from './panel';
 
@@ -174,7 +174,7 @@ export function createSupplyPanel(store: Store): PanelContent {
       setText(
         reach,
         need > 0
-          ? t('supply.reach', { days: fmtSmall(total / need, 1), need: fmtGrams(need) })
+          ? t('supply.reach', { days: fmtDays(total / need, 'openDay'), need: fmtGrams(need) })
           : t('supply.reachNone'),
       );
       setText(outHint, g < 0 ? t('supply.outHint') : '');
@@ -261,7 +261,7 @@ export function createSupplyPanel(store: Store): PanelContent {
         autoHint,
         t('supply.autoHint', {
           name: gradeName(sup.grade),
-          days: fmtSmall(DELIVERY.reorderDays, 1),
+          days: fmtDays(DELIVERY.reorderDays, 'openDay'),
         }),
       );
       setText(autoFail, sup.reorderFailed ? t('supply.autoFailed') : '');

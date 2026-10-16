@@ -6,6 +6,7 @@ import { TUTORIAL_STEPS } from '@data/tutorial';
 import { PRESTIGE } from '@data/prestige';
 import { getOfflineCapDays, getOfflineEfficiency } from '@core/economy';
 import { h, on, setText, type View } from './dom';
+import { fmtDays } from './format';
 
 /**
  * Onboarding-Overlay (PLAN S9): Ring um das Ziel-Element und eine Sprechblase. Blockiert nichts außer der
@@ -53,7 +54,7 @@ export function createTutorial(store: Store, isPanelOpen: () => boolean): View {
       setText(
         text,
         t(`tutorial.${def.id}.text`, {
-          days: getOfflineCapDays(s),
+          days: fmtDays(getOfflineCapDays(s), 'gameDay', 0),
           pct: Math.round(getOfflineEfficiency(s) * 100),
           level: PRESTIGE.resetMinCafeLevel,
         }),

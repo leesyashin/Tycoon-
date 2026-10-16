@@ -11,7 +11,7 @@ import { getCalendarEventDef } from '@data/events';
 import { MAX_GRADE } from '@data/matcha';
 import { h, on, setText, type View } from './dom';
 import { icon, setIcon, type IconName } from './icons';
-import { fmt, fmtClock, fmtMoney, fmtSmall, fmtTime } from './format';
+import { fmt, fmtClock, fmtDays, fmtMoney, fmtTime } from './format';
 import { gradeName, stageName } from './labels';
 
 export interface HudActions {
@@ -271,7 +271,7 @@ export function createHud(actions: HudActions): View {
       matcha.hidden = grade >= 0 && days >= MATCHA_HINT_BELOW_DAYS;
       setText(
         matchaValue,
-        grade < 0 ? t('hud.matchaOut') : t('hud.matchaLow', { days: fmtSmall(days, 1) }),
+        grade < 0 ? t('hud.matchaOut') : t('hud.matchaLow', { days: fmtDays(days, 'day') }),
       );
       matcha.setAttribute(
         'aria-label',
