@@ -432,7 +432,13 @@ export class CafeScene extends Phaser.Scene {
     // Schwenken über das Viertel, ohne je einen Rand zu sehen; die Startansicht passt auf den Raum (`fitCamera`).
     this.controls = new CameraControls(this, CityView.viewLimits());
     this.fitCamera();
-    const onResize = (): void => this.fitCamera();
+    const onResize = (
+      size: Phaser.Structs.Size,
+      _base: Phaser.Structs.Size,
+      _display: Phaser.Structs.Size,
+      prevWidth: number,
+      prevHeight: number,
+    ): void => this.onResize(size, prevWidth, prevHeight);
     this.scale.on('resize', onResize);
 
     // Alle Objekte unter dem Finger melden, nicht nur das oberste: `onPointerUp` wählt das sichtbar getroffene.
@@ -585,6 +591,19 @@ export class CafeScene extends Phaser.Scene {
     this.controls.setZoom(zoom);
     this.cameras.main.centerOn(r.centerX, r.centerY);
     this.controls.clamp();
+    this.controls.fitted();
+  }
+
+  /**
+   * Phaser meldet ein `resize` auch, wenn die Leinwand nur ein Stück verrutscht (Gummiband-Scrollen, Adressleiste am
+   * Handy): dann bleibt die Kamera, wo sie ist. Bei echter Größenänderung bleibt der Ausschnitt des Spielers stehen;
+   * nur wer die Kamera noch nicht bewegt hat, bekommt die Startansicht neu eingepasst. Vorher sprang die Kamera bei
+   * jedem `resize` auf die Startansicht zurück.
+   */
+  private onResize(size: Phaser.Structs.Size, prevWidth: number, prevHeight: number): void {
+    if (size.width === prevWidth && size.height === prevHeight) return;
+    if (this.controls.userMoved()) this.controls.keepCenter(prevWidth, prevHeight);
+    else this.fitCamera();
   }
 
   /** Steht auf dieser Kachel ein Möbel (Theke, Gerät), das die niedrige Vorderwand ersetzt? */

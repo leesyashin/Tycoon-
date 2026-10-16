@@ -65,6 +65,8 @@ export function startGame(o: GameOptions): GameHandle {
     scene: [BootScene, CafeScene],
   });
   game.registry.set(REGISTRY.store, o.store);
+  // Nur im Dev-Server (dort laufen auch die e2e-Tests): Kamera und Szene von außen prüfen.
+  if (import.meta.env.DEV) (window as unknown as { __mceGame?: Phaser.Game }).__mceGame = game;
   // Nur kosmetisch: `?debugSpawn=100` zeigt so viele Kunden/s, um die Agenten-Grenze zu prüfen.
   game.registry.set(REGISTRY.debugSpawn, o.debugSpawn);
   game.events.once(Phaser.Core.Events.READY, () => {
