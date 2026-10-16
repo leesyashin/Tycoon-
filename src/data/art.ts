@@ -137,6 +137,14 @@ export const SCENE_FX = {
   counterWaveMs: 45,
   /** Geldschein fliegt beim Bezahlen von der Kasse ins HUD. */
   cashFlyMs: 650,
+  /**
+   * Breite des fliegenden Scheins auf dem Bildschirm (CSS-Pixel) am Start und beim Ankommen im HUD, unabhängig vom
+   * Zoom: in Weltgröße war er am Handy (Startansicht ≈ 0,5) nur ein 10 px kleiner Fleck unter dem „+Betrag“.
+   */
+  cashBillPx: 34,
+  cashBillEndPx: 40,
+  /** Start links neben dem „+Betrag“ (Bildschirm-Pixel), damit der Schein den Text nicht verdeckt. */
+  cashBillOffset: { x: -32, y: -6 },
   /** Höchstens so viele fliegende Scheine gleichzeitig; mehrere Zahlungen auf einmal fliegen versetzt. */
   cashFlyMax: 6,
   cashFlyStaggerMs: 90,

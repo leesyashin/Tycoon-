@@ -82,6 +82,8 @@ const LABEL_STAGGER = 14;
 const LABEL_STAGGER_FROM = 1.05;
 /** HUD-Geldsymbol in CSS-Pixeln vom linken oberen Rand (Ziel des fliegenden Geldscheins). */
 const HUD_CASH = { x: 34, y: 34 };
+/** Der Schein startet auf Handhöhe des Zahlenden (Weltpixel über dem Fußpunkt). */
+const CASH_BILL_LIFT = 12;
 const DEPTH = { wall: -2000, floor: -1000, label: 10_000, overlay: 20_000 } as const;
 /** Teller/Becher-Sprites (`item-*`): Bodenpunkt 16 px unter der Oberkante einer 22 px hohen Leinwand. */
 const ITEM_ORIGIN_Y = 16 / 22;
@@ -2008,27 +2010,42 @@ export class CafeScene extends Phaser.Scene {
     });
   }
 
-  /** Geldschein fliegt vom zahlenden Gast zum Geld im HUD (nur Optik, gebucht ist schon). */
+  /**
+   * Geldschein fliegt vom zahlenden Gast zum Geld im HUD (nur Optik, gebucht ist schon). Er hat in jedem Zoom
+   * dieselbe Bildschirmgröße (`SCENE_FX.cashBillPx`), und das Ziel folgt der Kamera, auch wenn man währenddessen
+   * schiebt oder zoomt.
+   */
   private cashFly(gx: number, gy: number, delayMs: number): void {
     if (this.cashFlying >= SCENE_FX.cashFlyMax || reducedMotion()) return;
     this.cashFlying++;
-    const p = toScreen(gx, gy);
     const cam = this.cameras.main;
-    const target = cam.getWorldPoint(HUD_CASH.x, HUD_CASH.y);
-    const bill = this.sprite(p.x, p.y - 12, FRAME.cash)
-      .setDepth(DEPTH.overlay)
-      .setAngle(-12)
-      .setVisible(delayMs <= 0);
+    const p = toScreen(gx, gy);
+    const bill = this.sprite(p.x, p.y, FRAME.cash)
+      .setDepth(DEPTH.overlay + 1)
+      .setVisible(false);
+    const fly = { t: 0 };
+    const place = (): void => {
+      const z = cam.zoom;
+      const e = Phaser.Math.Easing.Cubic.In(fly.t);
+      const to = cam.getWorldPoint(HUD_CASH.x, HUD_CASH.y);
+      const fromX = p.x + SCENE_FX.cashBillOffset.x / z;
+      const fromY = p.y - CASH_BILL_LIFT + SCENE_FX.cashBillOffset.y / z;
+      const px = Phaser.Math.Linear(SCENE_FX.cashBillPx, SCENE_FX.cashBillEndPx, e);
+      bill
+        .setPosition(Phaser.Math.Linear(fromX, to.x, e), Phaser.Math.Linear(fromY, to.y, e))
+        .setScale(px / z / bill.frame.width)
+        .setAngle(Phaser.Math.Linear(-12, 8, e));
+    };
     this.tweens.add({
-      targets: bill,
-      x: target.x,
-      y: target.y,
-      angle: 8,
-      scale: ART_SCALE * 1.4,
+      targets: fly,
+      t: 1,
       delay: delayMs,
       duration: SCENE_FX.cashFlyMs,
-      ease: 'Cubic.In',
-      onStart: () => bill.setVisible(true),
+      onStart: () => {
+        place();
+        bill.setVisible(true);
+      },
+      onUpdate: place,
       onComplete: () => {
         bill.destroy();
         this.cashFlying--;
