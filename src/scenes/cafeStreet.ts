@@ -45,7 +45,10 @@ export class CafeStreet {
         : { x: e.x + 0.5, y: layout.gridSize };
     this.door = toScreen(doorGrid.x, doorGrid.y);
     this.signBg = scene.add.graphics().setDepth(depth);
-    this.signText = makeText(11, UI_THEME.textCss).setDepth(depth + 1);
+    // Klein wie ein Schild an der Tür; der farbige Grund trägt die Schrift, ohne Kontur wie die anderen Labels.
+    this.signText = makeText(SCENE_FX.doorSignPx, UI_THEME.textCss)
+      .setStroke(UI_THEME.inkCss, 0)
+      .setDepth(depth + 1);
     const [ox, oy] = [
       CITY_SPRITE.car.ox / CITY_SPRITE.car.w,
       CITY_SPRITE.car.oy / CITY_SPRITE.car.h,
@@ -70,14 +73,17 @@ export class CafeStreet {
     const x = this.door.x;
     const y = this.door.y - SCENE_FX.doorSignLift;
     this.signText.setText(text).setPosition(x, y);
-    const w = this.signText.width + 14;
-    const h = this.signText.height + 2;
+    // Der Grund wächst mit der Schrift, die beim Herauszoomen lesbar groß bleibt (vorher nur ein Strich darunter).
+    const f = this.signText.scaleX;
+    const w = this.signText.displayWidth + 10 * f;
+    const h = this.signText.displayHeight + 2 * f;
+    const top = y - this.signText.displayHeight - f;
     this.signBg
       .clear()
       .fillStyle(open ? UI_THEME.success : UI_THEME.danger, 1)
-      .fillRoundedRect(x - w / 2, y - h, w, h, h / 2)
-      .lineStyle(1.5, UI_THEME.surface, 0.9)
-      .strokeRoundedRect(x - w / 2, y - h, w, h, h / 2);
+      .fillRoundedRect(x - w / 2, top, w, h, h / 2)
+      .lineStyle(1.5 * f, UI_THEME.surface, 0.9)
+      .strokeRoundedRect(x - w / 2, top, w, h, h / 2);
   }
 
   /** Texte behalten beim Herauszoomen eine lesbare Größe (wie die anderen Labels). */

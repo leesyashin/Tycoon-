@@ -163,8 +163,9 @@ export const SCENE_FX = {
   ringLift: 1,
   /** Kassenlade bleibt nach dem Kassieren so lange offen. */
   drawerOpenMs: 650,
-  /** Schild „Geöffnet/Geschlossen“: so hoch über dem Boden an der Tür (Pixel). */
+  /** Schild „Geöffnet/Geschlossen“: so hoch über dem Boden an der Tür (Pixel) und Schriftgröße (Welt-Pixel). */
   doorSignLift: 46,
+  doorSignPx: 8,
   /** Nach Ladenschluss brennt drinnen nur noch so viel Licht (Anteil). */
   closedLight: 0.15,
   /**

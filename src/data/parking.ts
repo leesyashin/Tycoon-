@@ -35,13 +35,12 @@ export const PARKING_LOT = {
   /** Fahrgasse vor den Stellplätzen (Grid y). */
   aisleY: 9.95,
   slots: [
-    // Fahrradständer vorn am Gehweg (Stufe 1: drei Bügel, Stufe 2: drei weitere)
-    { kind: 'bike', x: -0.4, y: 11.4, minLevel: 1 },
-    { kind: 'bike', x: -1.0, y: 11.4, minLevel: 1 },
-    { kind: 'bike', x: -1.6, y: 11.4, minLevel: 1 },
-    { kind: 'bike', x: -2.2, y: 11.4, minLevel: 2 },
-    { kind: 'bike', x: -2.8, y: 11.4, minLevel: 2 },
-    { kind: 'bike', x: -3.4, y: 11.4, minLevel: 2 },
+    // Fahrradständer vorn am Gehweg (Stufe 1: zwei Bügel, Stufe 2: zwei weitere). Erst ab x ≈ −2: Weiter rechts
+    // stünden die Räder in der Ansicht hinter der Glaswand des Wintergartens, die immer hinten gezeichnet wird.
+    { kind: 'bike', x: -1.95, y: 11.4, minLevel: 1 },
+    { kind: 'bike', x: -2.5, y: 11.4, minLevel: 1 },
+    { kind: 'bike', x: -3.05, y: 11.4, minLevel: 2 },
+    { kind: 'bike', x: -3.6, y: 11.4, minLevel: 2 },
     // Roller-Plätze daneben (Stufe 3)
     { kind: 'moped', x: -4.05, y: 11.35, minLevel: 3 },
     { kind: 'moped', x: -4.65, y: 11.35, minLevel: 3 },

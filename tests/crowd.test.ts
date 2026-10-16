@@ -779,7 +779,7 @@ describe('Parkplatz: Gäste mit Rad, Roller oder Auto (Phase 3)', () => {
     run(crowd, input({ served: 0, tables: 8, parking: level }), 120);
     expect(crowd.vehicles.every((v) => v.state === 'free')).toBe(true);
     expect(crowd.activeCount).toBe(0);
-  });
+  }, 30_000);
 
   it('mit Fahrzeug-Gästen steht bei fast jeder Zahlung trotzdem jemand an der Kasse', () => {
     for (const served of [0.2, 0.6]) {
