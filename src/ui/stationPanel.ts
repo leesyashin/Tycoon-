@@ -5,22 +5,24 @@ import { computeLocationRates } from '@core/customers';
 import {
   buyAmbience,
   buyStation,
-  collectModifiers,
   getBulkCost,
+  getItemPrice,
   getNextAmbienceCost,
-  getStationPrice,
   getStationSpeed,
-  getStationWorkSeconds,
+  getStationWorkMinutes,
   isAmbienceMaxed,
   isAmbienceUnlocked,
+  isStationMaxed,
   isStationUnlocked,
-  milestoneCounts,
-  nextMilestone,
+  levelsLeft,
+  menuTier,
+  nextMenuLevel,
   resolveAmount,
   type BulkAmount,
 } from '@core/economy';
-import { attachRate, customerTypeShares, type StageId } from '@core/customers';
+import { type StageId } from '@core/customers';
 import { getStaffLevel } from '@core/staff';
+import { gradeInUse } from '@core/supply';
 import { STATIONS, getStationDef, type StationArea } from '@data/stations';
 import { AMBIENCE, getAmbienceDef } from '@data/ambience';
 import {
@@ -31,10 +33,18 @@ import {
 } from '@data/art';
 import { BALANCE } from '@data/balance';
 import { h, on, setDisabled, setText } from './dom';
-import { fmt, fmtSmall } from './format';
+import { fmtMoney, fmtSmall } from './format';
 import { icon, setIcon } from './icons';
 import type { PanelContent } from './panel';
-import { areaName, lockedReason, productName, roleName, stageName, stationName } from './labels';
+import {
+  areaName,
+  gradeName,
+  lockedReason,
+  productName,
+  roleName,
+  stageName,
+  stationName,
+} from './labels';
 import { stageLoadPct } from './pipeline';
 import { spriteIconUrl } from './sprites';
 
@@ -47,8 +57,7 @@ const AREA_STAGE: Record<StationArea, StageId> = {
 
 const AMOUNTS: { amount: BulkAmount; key: string }[] = [
   { amount: 1, key: 'ui.buy.x1' },
-  { amount: 10, key: 'ui.buy.x10' },
-  { amount: 100, key: 'ui.buy.x100' },
+  { amount: 5, key: 'ui.buy.x5' },
   { amount: 'max', key: 'ui.buy.max' },
 ];
 
@@ -123,7 +132,8 @@ function objectUnlocked(s: GameState, locId: string, o: ObjectRef): boolean {
 function objectAffordable(s: GameState, locId: string, o: ObjectRef): boolean {
   if (!objectUnlocked(s, locId, o)) return false;
   const coins = getLocation(s, locId).coins;
-  if (o.kind === 'station') return getBulkCost(s, locId, o.id, 1).lte(coins);
+  if (o.kind === 'station')
+    return !isStationMaxed(s, locId, o.id) && getBulkCost(s, locId, o.id, 1).lte(coins);
   return !isAmbienceMaxed(s, locId, o.id) && getNextAmbienceCost(s, locId, o.id).lte(coins);
 }
 
@@ -209,7 +219,7 @@ function objectGrid(locId: string, current: ObjectRef, open: (o: ObjectRef) => v
   };
 }
 
-/** Kopf-Chips: Einkommen/s und Kunden/s der Station bzw. Zufriedenheit. */
+/** Kopf-Chips: Umsatz/h und Kapazität der Stufe. */
 function chipsFor(): { el: HTMLElement; set(a: string, b: string): void } {
   const a = h('span', { class: 'chip', 'data-testid': 'station-chip-income' });
   const b = h('span', { class: 'chip', 'data-testid': 'station-chip-customers' });
@@ -226,8 +236,9 @@ function chipsFor(): { el: HTMLElement; set(a: string, b: string): void } {
 
 /**
  * Stations-Panel (GAME_DESIGN § 16.2, UI_STYLE § 3.8): Detailkarte der Ausstattung mit Level und gleich darunter
- * Kauf ×1/×10/×100/Max (Antippen in der Szene führt direkt zum Verbessern, auch auf kleinen Handys ohne
- * Scrollen), dann Bereich, Produkt, Preis, Arbeitszeit, Einkommen, Auslastung der Stufe; darunter das Icon-Grid.
+ * Kauf ×1/×5/Max (Antippen in der Szene führt direkt zum Verbessern, auch auf kleinen Handys ohne Scrollen), dann
+ * Bereich, Produkt auf der Karte (und das nächste), Preis, Arbeitszeit, Umsatz, Auslastung der Stufe; darunter
+ * das Icon-Grid. Raten pro Spielstunde zur aktuellen Stunde.
  */
 export function createStationPanel(
   store: Store,
@@ -245,7 +256,7 @@ export function createStationPanel(
     const value = h('dd', testId ? { 'data-testid': testId } : {});
     return [h('div', { class: 'stat' }, h('dt', { text: label }), value), value];
   };
-  const [priceRow, price] = stat(t('station.panel.price'));
+  const [priceRow, price] = stat(t('station.panel.price'), 'station-price');
   const [incomeRow, income] = stat(t('station.panel.income'));
   const [workRow, work] = stat(
     t(def.area === 'order' ? 'station.panel.orderTime' : 'station.panel.workTime'),
@@ -254,7 +265,7 @@ export function createStationPanel(
   const [speedRow, speed] = stat(t('station.panel.speed'));
   const [capRow, cap] = stat(t('station.panel.capacity'), 'station-capacity');
   const load = h('p', { class: 'muted', 'data-testid': 'station-load' });
-  const milestone = h('p', { class: 'muted' });
+  const nextMenu = h('p', { class: 'muted', 'data-testid': 'station-next-menu' });
   const product = h('p', { class: 'muted', 'data-testid': 'station-product' });
   const attach = h('p', { class: 'muted', 'data-testid': 'station-attach' });
   const staff = h('p', { class: 'muted', 'data-testid': 'station-staff' });
@@ -305,7 +316,7 @@ export function createStationPanel(
         capRow,
       ),
       load,
-      milestone,
+      isLine ? nextMenu : null,
       look.el,
       staff,
       locked,
@@ -319,43 +330,61 @@ export function createStationPanel(
     const unlocked = isStationUnlocked(s, locId, stationId);
     const src = spriteIconUrl(objectIcon(ref, lvl));
     if (img.getAttribute('src') !== src) img.src = src;
-    setText(level, t('station.panel.level', { level: lvl }));
+    setText(level, t('station.panel.levelMax', { level: lvl, max: def.maxLevel }));
     const rates = computeLocationRates(s, locId);
-    const mods = collectModifiers(s, locId);
-    const stageCap = t('pipeline.capacity', { amount: fmtSmall(rates.stages[stage], 2) });
+    const stageCap = t('pipeline.capacity', { amount: fmtSmall(rates.stages[stage], 0) });
     setText(cap, stageCap);
     setText(
       load,
-      t('station.panel.stageLoad', {
-        stage: stageName(stage),
-        pct: fmtSmall(stageLoadPct(rates, stage), 0),
-      }),
+      rates.open
+        ? t('station.panel.stageLoad', {
+            stage: stageName(stage),
+            pct: fmtSmall(stageLoadPct(rates, stage), 0),
+          })
+        : t('station.panel.closed'),
     );
     if (isLine) {
-      setText(price, fmt(s, getStationPrice(def, lvl, locId).mul(mods.priceMult)));
+      const grade = gradeInUse(loc.supply);
+      const tier = menuTier(def, Math.max(1, lvl));
+      const itemPrice = getItemPrice(def, Math.max(1, lvl), locId, Math.max(0, grade));
+      setText(price, fmtMoney(itemPrice));
+      const matchaNote =
+        def.matchaGrams > 0
+          ? grade < 0
+            ? ` · ${t('station.panel.noMatcha')}`
+            : ` · ${gradeName(grade)}`
+          : '';
       setText(
         product,
-        t('station.panel.product', { product: productName(stationId, loc.quality) }),
+        t('station.panel.product', { product: productName(stationId, lvl) }) + matchaNote,
       );
-      setText(
-        attach,
-        t('station.panel.attach', {
-          pct: fmtSmall(100 * attachRate(def, customerTypeShares(locId).tourist), 0),
-        }),
-      );
-      const inc = t('station.panel.perSec', {
-        amount: fmt(s, rates.perStationIncome[stationId] ?? 0),
+      setText(attach, t('station.panel.attach', { pct: fmtSmall(100 * (tier?.attach ?? 0), 0) }));
+      const inc = t('station.panel.perHour', {
+        amount: fmtMoney(rates.perStationIncome[stationId] ?? 0),
       });
       setText(income, inc);
-      const sec = getStationWorkSeconds(def, lvl);
+      const min = getStationWorkMinutes(def, lvl);
       setText(
         work,
-        Number.isFinite(sec) ? t('station.panel.seconds', { sec: fmtSmall(sec, 1) }) : '–',
+        Number.isFinite(min) ? t('station.panel.minutes', { min: fmtSmall(min, 1) }) : '–',
       );
+      const nextLvl = nextMenuLevel(lvl);
+      setText(
+        nextMenu,
+        lvl <= 0
+          ? ''
+          : nextLvl === null
+            ? t('station.panel.menuComplete')
+            : t('station.panel.nextMenu', {
+                level: nextLvl,
+                product: productName(stationId, nextLvl),
+              }),
+      );
+      nextMenu.hidden = lvl <= 0;
       chips.set(inc, stageCap);
     } else if (def.area === 'order') {
-      const sec = BALANCE.order.orderTime / getStationSpeed(def, lvl);
-      setText(work, t('station.panel.seconds', { sec: fmtSmall(sec, 1) }));
+      const min = BALANCE.order.orderMin / getStationSpeed(def, lvl);
+      setText(work, t('station.panel.minutes', { min: fmtSmall(min, 1) }));
       chips.set(stageCap, '');
     } else {
       setText(
@@ -367,17 +396,6 @@ export function createStationPanel(
     const nextLook = nextStationLookLevel(lvl);
     look.el.hidden = lvl <= 0;
     look.set(nextLook, objectIcon(ref, nextLook ?? lvl));
-    const next = nextMilestone(lvl);
-    const isPrice = milestoneCounts(next).price > milestoneCounts(lvl).price;
-    setText(
-      milestone,
-      t('station.panel.nextMilestone', {
-        level: next,
-        effect: t(
-          isPrice && isLine ? 'station.panel.milestone.price' : 'station.panel.milestone.speed',
-        ),
-      }),
-    );
     setText(
       staff,
       t('station.panel.staffCount', {
@@ -387,20 +405,23 @@ export function createStationPanel(
     );
     setText(locked, unlocked ? '' : lockedReason(s, locId, stationId, def.unlockCafeLevel));
     locked.hidden = unlocked;
+    const left = levelsLeft(def, lvl);
     for (const b of buttons) {
       const n = unlocked ? resolveAmount(s, locId, stationId, b.amount) : 0;
       const cost = getBulkCost(s, locId, stationId, b.amount);
       const firstBuy = lvl === 0 && b.amount === 1;
       setText(
         b.label,
-        firstBuy
-          ? t('station.panel.buyFirst')
-          : b.amount === 'max'
-            ? t('ui.buy.maxCount', { count: n })
-            : t(b.key),
+        left <= 0
+          ? t('ui.maxed')
+          : firstBuy
+            ? t('station.panel.buyFirst')
+            : b.amount === 'max'
+              ? t('ui.buy.maxCount', { count: n })
+              : t(b.key),
       );
-      setText(b.cost, n > 0 ? fmt(s, cost) : '–');
-      b.btn.setAttribute('aria-label', t('ui.buy.ariaLabel', { count: n, cost: fmt(s, cost) }));
+      setText(b.cost, n > 0 ? fmtMoney(cost) : '–');
+      b.btn.setAttribute('aria-label', t('ui.buy.ariaLabel', { count: n, cost: fmtMoney(cost) }));
       setDisabled(b.btn, !unlocked || n <= 0 || cost.gt(loc.coins));
     }
     grid.update(s);
@@ -472,7 +493,7 @@ export function createAmbienceObjectPanel(
         setText(level, t('shop.ambienceLevel', { level: lvl, max: def.maxLevel }));
         setText(locked, unlocked ? '' : t('ui.unlockAt', { level: def.unlockCafeLevel }));
         locked.hidden = unlocked;
-        const label = maxed ? t('ui.maxed') : t('shop.buyOne', { cost: fmt(s, cost) });
+        const label = maxed ? t('ui.maxed') : t('shop.buyOne', { cost: fmtMoney(cost) });
         setText(btn, label);
         btn.setAttribute('aria-label', `${name}: ${label}`);
         setDisabled(btn, !unlocked || maxed || cost.gt(getLocation(s, locId).coins));

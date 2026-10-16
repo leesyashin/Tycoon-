@@ -1,5 +1,5 @@
 import { t } from '@i18n/index';
-import { getLocation, type GameState } from '@core/GameState';
+import type { GameState } from '@core/GameState';
 import type { Store } from '@core/store';
 import {
   buyLeafBoost,
@@ -13,12 +13,10 @@ import {
   toggleSkin,
 } from '@core/leaves';
 import { getBoostRemaining, getFreeBoostWait, isFreeBoostReady } from '@core/events';
-import { campaignStatus, isMarketingUnlocked, skipCampaignCooldown } from '@core/marketing';
-import { BALANCE } from '@data/balance';
 import { BOOSTS, LEAF_PRICES, SKINS, TIME_SKIPS } from '@data/leaves';
 import { QUEST_CONFIG, QUESTS } from '@data/quests';
 import { h, on, setDisabled, setText, type View } from './dom';
-import { fmt, fmtTime } from './format';
+import { fmt, fmtMoney, fmtTime } from './format';
 import type { PanelContent } from './panel';
 
 interface Row {
@@ -69,11 +67,10 @@ function row(
 const price = (leaves: number): string => t('leafShop.price', { leaves });
 
 /**
- * Blätter-Shop (GAME_DESIGN § 10, § 16.8): Zeitsprung, Boosts, Kampagne, Quests, Skins. Gratis-Boost
- * läuft über den `MonetizationProvider` (`onFreeBoost`), nie direkt.
+ * Blätter-Shop (GAME_DESIGN § 10, § 16.8): Zeitsprung, Boosts, Quests, Skins (Bonus-Videos gibt es im
+ * Social-Media-Panel). Gratis-Boost läuft über den `MonetizationProvider` (`onFreeBoost`), nie direkt.
  */
 export function createLeafShopPanel(store: Store, onFreeBoost: () => void): PanelContent {
-  const locId = store.getState().activeLocationId;
   const has = (s: GameState, n: number): boolean => s.meta.goldenLeaves.gte(n);
   const balance = h('p', { class: 'zen-balance', 'data-testid': 'leafshop-balance' });
 
@@ -83,7 +80,7 @@ export function createLeafShopPanel(store: Store, onFreeBoost: () => void): Pane
       t('leafShop.skip.name', { hours: def.hours }),
       () => store.dispatch((s) => buyTimeSkip(s, def.id)),
       (s) => ({
-        desc: t('leafShop.skip.desc', { coins: fmt(s, previewTimeSkip(s, def.id)) }),
+        desc: t('leafShop.skip.desc', { coins: fmtMoney(previewTimeSkip(s, def.id)) }),
         label: price(def.cost),
         enabled: has(s, def.cost),
       }),
@@ -117,25 +114,6 @@ export function createLeafShopPanel(store: Store, onFreeBoost: () => void): Pane
           : t('leafShop.free.wait', { time: fmtTime(Math.ceil(getFreeBoostWait(s))) }),
         label: t('leafShop.free.watch'),
         enabled: ready,
-      };
-    },
-  );
-
-  const cooldown = row(
-    'leaf-cooldown',
-    t('leafShop.cooldown.name'),
-    () => store.dispatch((s) => skipCampaignCooldown(s, locId)),
-    (s) => {
-      const st = campaignStatus(getLocation(s, locId), s.playtimeSec);
-      const inCooldown = st.phase === 'cooldown';
-      return {
-        desc: t('leafShop.cooldown.desc'),
-        status: inCooldown
-          ? t('marketing.campaign.cooldown', { time: fmtTime(Math.ceil(st.remainingSec)) })
-          : t('leafShop.cooldown.none'),
-        label: price(BALANCE.marketing.skipCooldownLeaves),
-        enabled: inCooldown && has(s, BALANCE.marketing.skipCooldownLeaves),
-        hidden: !isMarketingUnlocked(s, locId),
       };
     },
   );
@@ -193,7 +171,7 @@ export function createLeafShopPanel(store: Store, onFreeBoost: () => void): Pane
       h('ul', { class: 'shop-list' }, ...rows.map((r) => r.el)),
       ...extra,
     );
-  const all = [...skips, boost, free, cooldown, ...quests, ...skins];
+  const all = [...skips, boost, free, ...quests, ...skins];
   const view: View = {
     el: h(
       'div',
@@ -201,7 +179,7 @@ export function createLeafShopPanel(store: Store, onFreeBoost: () => void): Pane
       balance,
       section(t('leafShop.section.skip'), skips),
       section(t('leafShop.section.boost'), [boost, free]),
-      section(t('leafShop.section.shortcuts'), [cooldown, ...quests], questsNone),
+      section(t('leafShop.section.shortcuts'), quests, questsNone),
       section(t('leafShop.section.skins'), skins),
       h('p', { class: 'muted', text: t('leafShop.note') }),
     ),

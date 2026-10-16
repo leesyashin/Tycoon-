@@ -1,14 +1,22 @@
 import { t } from '@i18n/index';
 import { getLocation, type GameState } from '@core/GameState';
 import { getHypeProgress, getHypeRemaining } from '@core/customers';
-import { getBulkCost, isStationUnlocked } from '@core/economy';
+import { getBulkCost, isStationMaxed, isStationUnlocked } from '@core/economy';
 import { STATIONS } from '@data/stations';
 import { h, on, setText, type View } from './dom';
 import { icon, type IconName } from './icons';
 import { spriteIconUrl } from './sprites';
 
 export type NavTarget =
-  'shop' | 'build' | 'staff' | 'stats' | 'marketing' | 'locations' | 'achievements' | 'settings';
+  | 'shop'
+  | 'build'
+  | 'staff'
+  | 'supply'
+  | 'stats'
+  | 'social'
+  | 'locations'
+  | 'achievements'
+  | 'settings';
 
 interface Item {
   id: NavTarget;
@@ -19,12 +27,13 @@ interface Item {
 /** Rechte Spalte: Verwaltung/Info (UI_STYLE § 3.4). */
 const SIDE: Item[] = [
   { id: 'staff', icon: 'users', variant: 'btn-round--white' },
+  { id: 'supply', icon: 'package', variant: 'btn-round--white' },
   { id: 'stats', icon: 'chart-bar', variant: 'btn-round--white' },
   { id: 'achievements', icon: 'trophy', variant: 'btn-round--white' },
 ];
 /** Untere Leiste rechts: Handeln (§ 3.5). */
 const BAR: Item[] = [
-  { id: 'marketing', icon: 'megaphone', variant: 'btn-round--white' },
+  { id: 'social', icon: 'video-camera', variant: 'btn-round--white' },
   { id: 'locations', icon: 'map-trifold', variant: 'btn-round--white' },
   { id: 'build', icon: 'hammer', variant: 'btn-round--white' },
 ];
@@ -39,7 +48,10 @@ export function hasAffordableUpgrade(s: GameState): boolean {
   const locId = s.activeLocationId;
   const coins = getLocation(s, locId).coins;
   return STATIONS.some(
-    (d) => isStationUnlocked(s, locId, d.id) && getBulkCost(s, locId, d.id, 1).lte(coins),
+    (d) =>
+      isStationUnlocked(s, locId, d.id) &&
+      !isStationMaxed(s, locId, d.id) &&
+      getBulkCost(s, locId, d.id, 1).lte(coins),
   );
 }
 

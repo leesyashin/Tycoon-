@@ -4,7 +4,7 @@ import type { Store } from '@core/store';
 import { advanceTutorial, currentTutorialStep, skipTutorial } from '@core/tutorial';
 import { TUTORIAL_STEPS } from '@data/tutorial';
 import { PRESTIGE } from '@data/prestige';
-import { getOfflineCapMs, getOfflineEfficiency } from '@core/economy';
+import { getOfflineCapDays, getOfflineEfficiency } from '@core/economy';
 import { h, on, setText, type View } from './dom';
 
 /**
@@ -53,7 +53,7 @@ export function createTutorial(store: Store, isPanelOpen: () => boolean): View {
       setText(
         text,
         t(`tutorial.${def.id}.text`, {
-          hours: getOfflineCapMs(s) / 3_600_000,
+          days: getOfflineCapDays(s),
           pct: Math.round(getOfflineEfficiency(s) * 100),
           level: PRESTIGE.resetMinCafeLevel,
         }),

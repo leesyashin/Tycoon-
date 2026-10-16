@@ -2,11 +2,16 @@ import { t } from '@i18n/index';
 import { getLocation, type GameState } from '@core/GameState';
 import { needsTerrace } from '@core/economy';
 import type { Unlock } from '@data/unlocks';
-import type { StationArea } from '@data/stations';
+import { menuTierIndex, type StationArea } from '@data/stations';
 import type { StageId } from '@core/customers';
 
 export function stationName(locationId: string, stationId: string): string {
   return t(`station.${locationId}.${stationId}.name`);
+}
+
+/** Name einer Matcha-Sorte. */
+export function gradeName(grade: number): string {
+  return t(`quality.tier.${String(Math.max(0, grade))}.name`);
 }
 
 /** Anzeigename einer Freischaltung aus `data/unlocks`. */
@@ -18,25 +23,22 @@ export function unlockLabel(locationId: string, u: Unlock): string {
       return t(`ambience.${u.id}.name`);
     case 'staff':
       return t(`staff.${u.id}.name`);
-    case 'quality':
-      return t('unlock.quality', { name: t(`quality.tier.${u.id}.name`) });
-    case 'marketing':
-      return t('unlock.marketing');
+    case 'grade':
+      return t('unlock.grade', { name: gradeName(Number(u.id)) });
+    case 'video':
+      return t('unlock.video', { name: t(`social.format.${u.id}.name`) });
   }
 }
 
-/** Warum eine Station gesperrt ist: Café-Level zu niedrig oder kein Platz (Terrasse fehlt). */
+/** Warum ein Gerät gesperrt ist: Café-Level zu niedrig oder kein Platz (Terrasse fehlt). */
 export function lockedReason(s: GameState, locId: string, id: string, unlockLevel: number): string {
   if (getLocation(s, locId).level < unlockLevel) return t('ui.unlockAt', { level: unlockLevel });
   return needsTerrace(s, locId, id) ? t('ui.needsTerrace') : '';
 }
 
-/** Produktname einer Station in der aktuellen Qualitätsstufe, z. B. „Premium-Matcha-Latte“ (nur Text). */
-export function productName(stationId: string, quality: number): string {
-  return t('product.format', {
-    quality: t(`quality.tier.${String(quality)}.prefix`),
-    product: t(`product.${stationId}`),
-  });
+/** Neuestes Produkt einer Linie auf der Karte bei diesem Level (Speisekarte, GAME_DESIGN § 4). */
+export function productName(stationId: string, level: number): string {
+  return t(`menu.${stationId}.${String(menuTierIndex(Math.max(1, level)))}`);
 }
 
 /** Name einer Stufe der Service-Pipeline (GAME_DESIGN § 7.2). */

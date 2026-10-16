@@ -2,14 +2,24 @@ import { t } from '@i18n/index';
 import { getLocation, type GameState } from '@core/GameState';
 import type { Store } from '@core/store';
 import { computeLocationRates, type SatisfactionBreakdown } from '@core/customers';
-import { cleanlinessRatePerMin } from '@core/staff';
+import { cleanlinessRatePerHour } from '@core/staff';
 import { h, setText, type View } from './dom';
 import { fmtSigned, fmtSmall } from './format';
 import type { PanelContent } from './panel';
 import { stageName } from './labels';
 
 type Part = keyof Omit<SatisfactionBreakdown, 'target'>;
-const PARTS: Part[] = ['base', 'decor', 'quality', 'zen', 'event', 'waitPressure', 'cleanliness'];
+const PARTS: Part[] = [
+  'base',
+  'decor',
+  'quality',
+  'tableService',
+  'zen',
+  'event',
+  'waitPressure',
+  'cleanliness',
+  'matcha',
+];
 
 /** Zufriedenheits-Detail (GAME_DESIGN § 7.3): Einzelbeiträge zum Ziel, damit klar ist, was drückt und was hebt. */
 export function createSatisfactionPanel(store: Store): PanelContent {
@@ -52,20 +62,26 @@ export function createSatisfactionPanel(store: Store): PanelContent {
       const v = b[x.p];
       const extra =
         x.p === 'cleanliness'
-          ? ` (${fmtSmall(loc.cleanliness, 0)} %, ${fmtSigned(cleanlinessRatePerMin(loc, rates.served))}/min)`
+          ? ` (${fmtSmall(loc.cleanliness, 0)} %, ${fmtSigned(cleanlinessRatePerHour(loc, rates.served))}/h)`
           : '';
       setText(x.label, `${t(`satisfaction.part.${x.p}`)}${extra}`);
       setText(x.value, fmtSigned(v));
+      // Bedienung und Matcha nur zeigen, wenn sie etwas ausmachen.
+      x.el.hidden =
+        (x.p === 'matcha' || x.p === 'tableService' || x.p === 'zen' || x.p === 'event') && v === 0;
       x.el.classList.toggle('neg', v < 0);
       x.el.classList.toggle('pos', v > 0 && x.p !== 'base');
     }
     setText(spawn, t('satisfaction.effect.spawn', { value: fmtSmall(rates.satisfactionFactor) }));
     setText(tips, t('satisfaction.effect.tips', { value: fmtSmall(rates.tipRate * 100, 1) }));
     // Hinweis auf den stärksten negativen Beitrag.
-    const worst = b.waitPressure <= b.cleanliness ? 'waitPressure' : 'cleanliness';
+    const worst =
+      b.matcha < 0 ? 'matcha' : b.waitPressure <= b.cleanliness ? 'waitPressure' : 'cleanliness';
     const key =
       b[worst] >= 0
-        ? 'ok'
+        ? (loc.staff['waiter'] ?? 0) === 0
+          ? 'noWaiter'
+          : 'ok'
         : worst === 'cleanliness' && (loc.staff['cleaner'] ?? 0) > 0
           ? 'moreCleaners'
           : worst;

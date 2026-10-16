@@ -13,7 +13,7 @@ import { cafeLevelProgress } from '@core/economy/cafeLevel';
 import { QUEST_CONFIG, QUESTS } from '@data/quests';
 import { CAFE_LEVEL_REWARD, getNextUnlockLevel, getUnlocksAt } from '@data/unlocks';
 import { h, on, setDisabled, setText, type View } from './dom';
-import { fmt, fmtTime } from './format';
+import { fmt, fmtMoney, fmtTime } from './format';
 import { unlockLabel } from './labels';
 import type { PanelContent } from './panel';
 import { createTabs } from './tabs';
@@ -30,6 +30,8 @@ export function achievementName(def: AchievementDef): string {
 
 function achievementTarget(state: GameState, def: AchievementDef): string {
   if (def.kind === 'playtime' || def.kind === 'highSatisfaction') return fmtTime(def.target);
+  if (def.kind === 'lifetimeEarned') return fmtMoney(def.target);
+  if (def.kind === 'quality') return t(`quality.tier.${String(def.target)}.name`);
   return fmt(state, def.target);
 }
 
@@ -181,7 +183,7 @@ function statsView(): View {
   const reward = h('p', {
     class: 'muted',
     text: t('stats.cafeLevelReward', {
-      sec: CAFE_LEVEL_REWARD.incomeSeconds,
+      hours: CAFE_LEVEL_REWARD.incomeHours,
       from: CAFE_LEVEL_REWARD.leavesFromLevel,
     }),
   });
@@ -223,7 +225,7 @@ function statsView(): View {
                 .join(', '),
             }),
       );
-      setText(earned, fmt(s, s.meta.lifetimeEarned));
+      setText(earned, fmtMoney(s.meta.lifetimeEarned));
       setText(served, fmt(s, Math.floor(s.stats.customersServed)));
       setText(play, fmtTime(s.playtimeSec));
       setText(levels, fmt(s, s.stats.levelsBought));

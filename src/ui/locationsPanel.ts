@@ -1,7 +1,7 @@
 import { t } from '@i18n/index';
 import { getLocation, type GameState } from '@core/GameState';
 import type { Store } from '@core/store';
-import { getIncomePerSec } from '@core/customers';
+import { peakIncomePerHour } from '@core/customers';
 import {
   buyMetaUpgrade,
   canReset,
@@ -21,7 +21,7 @@ import { LOCATIONS } from '@data/locations';
 import { BALANCE } from '@data/balance';
 import { META_UPGRADES, PRESTIGE, type MetaUpgradeDef } from '@data/prestige';
 import { h, on, setDisabled, setText, type View } from './dom';
-import { fmt, fmtSmall, fmtTime } from './format';
+import { fmt, fmtMoney, fmtSmall } from './format';
 import type { PanelContent } from './panel';
 import { createTabs } from './tabs';
 
@@ -81,8 +81,8 @@ function locationRow(store: Store, id: string, onReset: (id: string) => void): R
           detail,
           t('locations.detail', {
             level: loc.level,
-            income: fmt(s, getIncomePerSec(s, id)),
-            coins: fmt(s, loc.coins),
+            income: fmtMoney(peakIncomePerHour(s, id)),
+            coins: fmtMoney(loc.coins),
           }),
         );
         setText(
@@ -113,6 +113,7 @@ function locationRow(store: Store, id: string, onReset: (id: string) => void): R
               level: r.cafeLevel,
               best: r.prevBestLevel,
               zen: fmt(s, r.zen),
+              cost: fmtMoney(r.cost),
             })
           : '',
       );
@@ -134,7 +135,7 @@ function metaEffectText(s: GameState, def: MetaUpgradeDef): string {
     case 'globalIncome':
       return t('zen.effect.income', { pct: fmtSmall((fx.incomeMult - 1) * 100, 0) });
     case 'startCapital':
-      return t('zen.effect.startCapital', { time: fmtTime(fx.startCapitalSec) });
+      return t('zen.effect.startCapital', { hours: fx.startCapitalHours });
     case 'offlineEfficiency':
       return t('zen.effect.offline', {
         pct: fmtSmall(

@@ -1,71 +1,75 @@
 import { t } from '@i18n/index';
 import { getLocation, type GameState, type LocationState } from '@core/GameState';
 import type { Store } from '@core/store';
-import { computeLocationRates, type LocationRates } from '@core/customers';
-import { getOfflineCapMs } from '@core/economy';
-import { campaignCooldownSec } from '@core/marketing';
+import { roleWagePerHour, wagesPerOpenHour, type LocationRates } from '@core/customers';
+import { getOfflineCapDays } from '@core/economy';
 import {
   canAutoBuy,
+  canFireStaff,
   cleanlinessEquilibrium,
-  cleanlinessRatePerMin,
+  cleanlinessRatePerHour,
+  fireStaff,
   getNextStaffCost,
   getStaffLevel,
   hireStaff,
   isStaffMaxed,
   isStaffUnlocked,
+  minStaff,
+  peakRates,
   previewStaffHire,
   setAutoBuy,
 } from '@core/staff';
-import { BALANCE } from '@data/balance';
+import { openHoursPerDay } from '@core/time/clock';
+import { SOCIAL } from '@data/social';
 import { STAFF_ROLES, type StaffRoleDef } from '@data/staff';
 import { h, on, setDisabled, setText, type View } from './dom';
-import { fmt, fmtBonusPct, fmtSigned, fmtSmall, fmtTime } from './format';
+import { fmtMoney, fmtSigned, fmtSmall } from './format';
 import { stageName } from './labels';
 import type { PanelContent } from './panel';
 import { createPipelineCard } from './pipeline';
 
-const HOUR_MS = 3_600_000;
-
-/** Aktueller Effekt einer Rolle in Zahlen (GAME_DESIGN § 6). */
+/** Aktueller Effekt einer Rolle in Zahlen (GAME_DESIGN § 6), zur Hauptzeit gerechnet. */
 function nowText(role: StaffRoleDef, s: GameState, loc: LocationState, r: LocationRates): string {
   const count = getStaffLevel(loc, role.id);
   switch (role.id) {
     case 'cashier':
-      return t('staff.now.cashier', { count, amount: fmtSmall(r.stages.order, 2) });
+      return t('staff.now.cashier', { count, amount: fmtSmall(r.stages.order, 0) });
     case 'barista':
-      return t('staff.now.barista', { count, amount: fmtSmall(r.stages.production, 2) });
+      return t('staff.now.barista', { count, amount: fmtSmall(r.stages.production, 0) });
     case 'waiter':
-      return t('staff.now.waiter', { count, amount: fmtSmall(r.stages.service, 2) });
+      return t('staff.now.waiter', {
+        count,
+        amount: fmtSmall(r.stages.service, 0),
+        pct: fmtSmall(r.tableServiceShare * 100, 0),
+      });
     case 'cleaner':
       return t('staff.now.cleaner', {
         count,
         eq: fmtSmall(cleanlinessEquilibrium(loc, r.served), 0),
       });
     case 'manager':
-      return t('staff.now.manager', { hours: getOfflineCapMs(s) / HOUR_MS });
+      return t('staff.now.manager', { days: getOfflineCapDays(s) });
     case 'socialMedia':
       return t('staff.now.socialMedia', {
-        pct: fmtBonusPct(1 + count * BALANCE.spawn.perSocialMedia),
-        time: fmtTime(campaignCooldownSec(loc)),
+        posts: Math.min(count, SOCIAL.managerPostHours.length),
       });
   }
 }
 
-/** Was die nächste Kraft bringt; Einkommen zuerst, sonst der rollen-typische Effekt. */
+/** Was die nächste Kraft bringt; Umsatz zuerst, sonst der rollen-typische Effekt. */
 function nextText(role: StaffRoleDef, s: GameState, locId: string, r: LocationRates): string {
   const loc = getLocation(s, locId);
   if (role.id === 'manager') {
     const next = { ...s, locations: { ...s.locations, [locId]: hiredOnce(loc, role.id) } };
-    return t('staff.next.offline', { hours: getOfflineCapMs(next) / HOUR_MS });
+    return t('staff.next.offline', { days: getOfflineCapDays(next) });
   }
   if (role.id === 'socialMedia') {
-    const p = previewStaffHire(s, locId, role.id);
-    return p.incomeDelta.gt(0)
-      ? t('staff.next.income', { amount: fmt(s, p.incomeDelta) })
-      : t('staff.next.cooldown', { time: fmtTime(campaignCooldownSec(hiredOnce(loc, role.id))) });
+    return t('staff.next.socialMedia', {
+      posts: Math.min(getStaffLevel(loc, role.id) + 1, SOCIAL.managerPostHours.length),
+    });
   }
   const p = previewStaffHire(s, locId, role.id);
-  if (p.incomeDelta.gt(0)) return t('staff.next.income', { amount: fmt(s, p.incomeDelta) });
+  if (p.incomeDelta.gt(0)) return t('staff.next.income', { amount: fmtMoney(p.incomeDelta) });
   if (role.id === 'cleaner') {
     if (Math.abs(p.satisfactionDelta) >= 0.05) {
       return t('staff.next.satisfaction', { value: fmtSigned(p.satisfactionDelta) });
@@ -74,16 +78,8 @@ function nextText(role: StaffRoleDef, s: GameState, locId: string, r: LocationRa
       eq: fmtSmall(cleanlinessEquilibrium(hiredOnce(loc, role.id), r.served), 0),
     });
   }
-  if (role.stage && role.stage !== 'cleaning') {
-    // Mehr Kapazität an einer Stufe, die gerade nicht bremst: ehrlich sagen, wo der Engpass liegt.
-    const after = computeLocationRates(
-      { ...s, locations: { ...s.locations, [locId]: hiredOnce(loc, role.id) } },
-      locId,
-    );
-    const gain = after.stages[role.stage] - r.stages[role.stage];
-    if (r.bottleneck !== role.stage)
-      return t('staff.next.none', { stage: stageName(r.bottleneck) });
-    return t('staff.next.capacity', { amount: fmtSmall(gain, 2), stage: stageName(role.stage) });
+  if (role.id === 'waiter' && Math.abs(p.satisfactionDelta) >= 0.05) {
+    return t('staff.next.satisfaction', { value: fmtSigned(p.satisfactionDelta) });
   }
   return t('staff.next.none', { stage: stageName(r.bottleneck) });
 }
@@ -99,14 +95,21 @@ interface Row {
 
 function staffRow(store: Store, locId: string, role: StaffRoleDef): Row {
   const status = h('span', { class: 'row-status' });
+  const wage = h('span', { class: 'row-status row-wage', 'data-testid': `staff-wage-${role.id}` });
   const now = h('span', { class: 'row-status' });
   const next = h('span', { class: 'row-status row-next' });
-  const btn = h('button', {
+  const hire = h('button', {
     class: 'btn btn-row',
     type: 'button',
     'data-testid': `staff-hire-${role.id}`,
   });
-  on(btn, 'click', () => store.dispatch((s) => hireStaff(s, locId, role.id)));
+  on(hire, 'click', () => store.dispatch((s) => hireStaff(s, locId, role.id)));
+  const fire = h('button', {
+    class: 'btn btn-row btn-fire',
+    type: 'button',
+    'data-testid': `staff-fire-${role.id}`,
+  });
+  on(fire, 'click', () => store.dispatch((s) => fireStaff(s, locId, role.id)));
   const name = t(`staff.${role.id}.name`);
   const text = h(
     'div',
@@ -114,6 +117,7 @@ function staffRow(store: Store, locId: string, role: StaffRoleDef): Row {
     h('strong', { text: name }),
     h('span', { class: 'muted', text: t(`staff.${role.id}.effect`) }),
     status,
+    wage,
     now,
     next,
   );
@@ -136,7 +140,12 @@ function staffRow(store: Store, locId: string, role: StaffRoleDef): Row {
     auto = { input, hint };
   }
 
-  const el = h('li', { class: 'shop-row', 'data-testid': `staff-row-${role.id}` }, text, btn);
+  const el = h(
+    'li',
+    { class: 'shop-row shop-row-stack', 'data-testid': `staff-row-${role.id}` },
+    text,
+    h('div', { class: 'btn-row-group' }, hire, fire),
+  );
   return {
     el,
     update(s, r) {
@@ -144,29 +153,54 @@ function staffRow(store: Store, locId: string, role: StaffRoleDef): Row {
       const lvl = getStaffLevel(loc, role.id);
       const unlocked = isStaffUnlocked(s, locId, role.id);
       const maxed = isStaffMaxed(s, locId, role.id);
-      const cost = getNextStaffCost(s, locId, role.id);
-      const affordable = unlocked && !maxed && cost.lte(loc.coins);
+      const fee = getNextStaffCost(s, locId, role.id);
+      const affordable = unlocked && !maxed && fee.lte(loc.coins);
       el.classList.toggle('affordable', affordable);
       el.classList.toggle('locked', !unlocked);
       el.classList.toggle('is-bottleneck', !!role.stage && role.stage === r.bottleneck);
       const countText = role.headcount
         ? t('staff.count', { count: lvl, max: role.maxLevel })
         : t('staff.level', { level: lvl, max: role.maxLevel });
+      const owner = role.owner > 0 ? ` · ${t('staff.ownerIncluded')}` : '';
       setText(
         status,
-        unlocked
-          ? `${countText}${affordable ? ` · ${t('ui.affordable')}` : ''}`
-          : t('ui.unlockAt', { level: role.unlockCafeLevel }),
+        unlocked ? `${countText}${owner}` : t('ui.unlockAt', { level: role.unlockCafeLevel }),
       );
+      // Was die Rolle kostet: Lohn je Stunde und je Öffnungstag (nur geöffnet bezahlt).
+      const perHour = roleWagePerHour(loc, role.id, locId);
+      const hours = openHoursPerDay(loc.hours);
+      const nextWage = roleWagePerHour(hiredOnce(loc, role.id), role.id, locId) - perHour;
+      setText(
+        wage,
+        perHour > 0
+          ? t('staff.wageNow', {
+              hour: fmtMoney(perHour),
+              day: fmtMoney(perHour * hours),
+              next: fmtMoney(nextWage),
+            })
+          : t('staff.wageNext', { next: fmtMoney(nextWage) }),
+      );
+      wage.hidden = !unlocked || (maxed && perHour <= 0);
       setText(now, unlocked ? nowText(role, s, loc, r) : '');
       now.hidden = !unlocked;
       const nextLine = unlocked && !maxed ? nextText(role, s, locId, r) : '';
       setText(next, nextLine);
       next.hidden = nextLine === '';
-      const label = maxed ? t('ui.maxed') : t('staff.hire', { cost: fmt(s, cost) });
-      setText(btn, label);
-      btn.setAttribute('aria-label', `${name}: ${label}`);
-      setDisabled(btn, !affordable);
+      const label = maxed ? t('ui.maxed') : t('staff.hire', { cost: fmtMoney(fee) });
+      setText(hire, label);
+      hire.setAttribute('aria-label', `${t(`staff.${role.id}.name`)}: ${label}`);
+      setDisabled(hire, !affordable);
+      const canFire = canFireStaff(s, locId, role.id);
+      setText(fire, role.headcount ? t('staff.fire') : t('staff.demote'));
+      fire.setAttribute(
+        'aria-label',
+        `${t(`staff.${role.id}.name`)}: ${role.headcount ? t('staff.fire') : t('staff.demote')}`,
+      );
+      fire.hidden = !unlocked || lvl <= role.owner;
+      setDisabled(fire, !canFire);
+      // Am Minimum (ohne Barista bereitet niemand zu) sagt der Tooltip, warum nicht entlassen werden kann.
+      const min = minStaff(role.id);
+      fire.title = !canFire && lvl <= min ? t('staff.fireMin', { count: min, name }) : '';
       if (auto) {
         const allowed = canAutoBuy(loc);
         auto.input.disabled = !allowed;
@@ -179,25 +213,46 @@ function staffRow(store: Store, locId: string, role: StaffRoleDef): Row {
 }
 
 /**
- * Personal (GAME_DESIGN § 16.4): Pipeline-Karte mit Engpass, dann die Rollen mit Köpfen/Stufen, Effekt in
- * Zahlen, Einstellen; Auto-Kauf beim Filialleiter.
+ * Personal (GAME_DESIGN § 16.4): Teamkosten, Pipeline-Karte mit Engpass, dann die Rollen mit Köpfen/Stufen, Lohn,
+ * Effekt in Zahlen, Einstellen und Entlassen; Auto-Kauf beim Filialleiter. Kapazitäten zur Hauptzeit, damit das
+ * Panel auch nachts zeigt, was das Team schafft.
  */
 export function createStaffPanel(store: Store): PanelContent {
   const locId = store.getState().activeLocationId;
-  const pipeline = createPipelineCard(locId);
+  const pipeline = createPipelineCard(locId, 'pipeline', true);
   const rows = STAFF_ROLES.map((r) => staffRow(store, locId, r));
+  const team = h('p', { class: 'team-cost', 'data-testid': 'staff-team-cost' });
   const clean = h('p', { class: 'muted', 'data-testid': 'staff-cleanliness' });
   const view: View = {
-    el: h('div', {}, pipeline.el, clean, h('ul', { class: 'shop-list' }, ...rows.map((r) => r.el))),
+    el: h(
+      'div',
+      {},
+      team,
+      pipeline.el,
+      clean,
+      h('ul', { class: 'shop-list' }, ...rows.map((r) => r.el)),
+    ),
     update(s) {
       const loc = getLocation(s, locId);
-      const r = computeLocationRates(s, locId);
+      const r = peakRates(s, locId);
+      const perHour = wagesPerOpenHour(loc, locId);
+      const heads = Object.values(loc.staff).reduce((a, b) => a + b, 0);
+      setText(
+        team,
+        t('staff.teamCost', {
+          count: heads,
+          hour: fmtMoney(perHour),
+          day: fmtMoney(perHour * openHoursPerDay(loc.hours)),
+          open: loc.hours.open,
+          close: loc.hours.close,
+        }),
+      );
       pipeline.update(s);
       setText(
         clean,
         t('staff.cleanliness', {
           value: fmtSmall(loc.cleanliness, 0),
-          rate: fmtSigned(cleanlinessRatePerMin(loc, r.served)),
+          rate: fmtSigned(cleanlinessRatePerHour(loc, r.served)),
         }),
       );
       for (const row of rows) row.update(s, r);
