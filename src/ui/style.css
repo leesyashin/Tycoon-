@@ -781,6 +781,11 @@ button.chip {
   color: var(--c-ink);
   font-weight: 700;
 }
+/* Hinweis direkt auf dem dunklen Bottom-Sheet (nicht auf einer Karte): helle Schrift. */
+.sheet-hint {
+  color: var(--c-text);
+  font-weight: 700;
+}
 /* Nächste Optik-Stufe einer Ausstattung (UI_STYLE § 4: Geräte werden mit dem Level edler). */
 .station-card .look-next {
   display: flex;
@@ -1177,7 +1182,8 @@ legend {
 .event-slot {
   position: absolute;
   right: var(--edge);
-  top: calc(var(--safe-top) + var(--edge) + 56px + (var(--size-btn-round) + 12px) * 3);
+  /* Unter den vier Knöpfen der rechten Spalte (`SIDE` in nav.ts), sonst liegt die Karte unter dem Pokal. */
+  top: calc(var(--safe-top) + var(--edge) + 56px + (var(--size-btn-round) + 12px) * 4);
   z-index: var(--z-hud);
 }
 .event-card {
@@ -1570,7 +1576,9 @@ legend {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 32px;
+  /* Touch-Ziel 44 px (UI_STYLE § 3), ohne die HUD-Zeile höher zu machen: der negative Rand gleicht es aus. */
+  min-height: 44px;
+  margin: -6px 0;
   padding: 0;
   border: 0;
   background: none;

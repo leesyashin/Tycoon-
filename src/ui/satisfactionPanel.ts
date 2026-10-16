@@ -38,7 +38,7 @@ export function createSatisfactionPanel(store: Store): PanelContent {
   });
   const spawn = h('li', { class: 'part-row' });
   const tips = h('li', { class: 'part-row' });
-  const hint = h('p', { class: 'locked-hint', 'data-testid': 'sat-hint' });
+  const hint = h('p', { class: 'sheet-hint', 'data-testid': 'sat-hint' });
 
   const el = h(
     'div',
