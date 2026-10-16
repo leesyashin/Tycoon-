@@ -148,6 +148,8 @@ interface StorageView {
 interface StaffFigure {
   sprite: Phaser.GameObjects.Image;
   prev: { x: number; y: number };
+  /** Letzte Blickrichtung (Hysterese beim Gehen), `null` = neu sichtbar. */
+  look: Look | null;
 }
 
 /** Größe der Farbfilter (Event, Nacht): deckt jeden Kamera-Ausschnitt ab, egal wie weit gezoomt. */
@@ -162,10 +164,26 @@ function storageTierAt(tier: number): StorageTier {
   return Math.min(3, Math.max(1, Math.trunc(tier))) as StorageTier;
 }
 
+type Look = { dir: 'front' | 'back'; flip: boolean };
+
 /** Blickrichtung einer Figur aus einem Bewegungs-/Blickvektor im Grid. */
-function facing(dx: number, dy: number): { dir: 'front' | 'back'; flip: boolean } {
+function facing(dx: number, dy: number): Look {
   if (Math.abs(dx) > Math.abs(dy)) return { dir: dx > 0 ? 'front' : 'back', flip: true };
   return { dir: dy >= 0 ? 'front' : 'back', flip: false };
+}
+
+/**
+ * Blickrichtung beim Gehen mit Hysterese: Die Figuren haben nur vier Ansichten (entlang der Raster-Achsen); auf
+ * schrägen Wegen und in Kurven bleibt die bisherige Ansicht, solange die Figur in diese Richtung vorankommt und die
+ * andere Achse nicht deutlich überwiegt – sonst flackert sie auf jeder Diagonale zwischen zwei Ansichten.
+ */
+function walkFacing(prev: Look | null, dx: number, dy: number): Look {
+  if (!prev) return facing(dx, dy);
+  const sign = prev.dir === 'front' ? 1 : -1;
+  const along = (prev.flip ? dx : dy) * sign;
+  const across = Math.abs(prev.flip ? dy : dx);
+  if (along > 0 && across < along * SCENE_FX.facingKeep) return prev;
+  return facing(dx, dy);
 }
 
 /** Frame im Lauf-Zyklus nach `sec` Sekunden Gehen. */
@@ -196,6 +214,7 @@ export class CafeScene extends Phaser.Scene {
   private sparkles!: Phaser.GameObjects.Particles.ParticleEmitter;
   private agentSprites: Phaser.GameObjects.Image[] = [];
   private agentPrev: { x: number; y: number }[] = [];
+  private agentLook: (Look | null)[] = [];
   private waiterFigures: StaffFigure[] = [];
   private cleanerFigures: StaffFigure[] = [];
   private cashierFigures: Phaser.GameObjects.Image[] = [];
@@ -271,6 +290,7 @@ export class CafeScene extends Phaser.Scene {
     this.supplySprites = [];
     this.agentSprites = [];
     this.agentPrev = [];
+    this.agentLook = [];
     this.waiterFigures = [];
     this.cleanerFigures = [];
     this.cashierFigures = [];
@@ -353,6 +373,7 @@ export class CafeScene extends Phaser.Scene {
         .setVisible(false),
     );
     this.agentPrev = this.crowd.agents.map(() => ({ x: 0, y: 0 }));
+    this.agentLook = this.crowd.agents.map(() => null);
     this.moodSprites = this.crowd.agents.map(() =>
       this.sprite(0, 0, FRAME.mood('happy')).setOrigin(0.5, 1).setVisible(false),
     );
@@ -468,6 +489,7 @@ export class CafeScene extends Phaser.Scene {
       cleaners: getStaffLevel(loc, 'cleaner'),
       tables: loc.ambience['seats'] ?? 0,
       terrace: loc.ambience['terrace'] ?? 0,
+      ambience: loc.ambience,
       cleanliness: loc.cleanliness,
       baristas: this.baristaPosts,
       prepSec: this.prepSec(this.rates),
@@ -1251,6 +1273,7 @@ export class CafeScene extends Phaser.Scene {
           .setOrigin(0.5, CHAR_FOOT_ORIGIN_Y)
           .setVisible(false),
         prev: { x: 0, y: 0 },
+        look: null,
       }));
     this.baristaFigures = moving('barista', CROWD.maxBaristas);
     this.waiterFigures = moving('waiter', CROWD.maxWaiters);
@@ -1263,7 +1286,7 @@ export class CafeScene extends Phaser.Scene {
   }
 
   /** Blickrichtung der Verkäufer: zur Kasse (quer gestellt → nach +x). */
-  private cashierLook(): ReturnType<typeof facing> {
+  private cashierLook(): Look {
     const reg = this.layout.stations.find((s) => s.stationId === REGISTER_ID);
     return reg?.facesX ? facing(1, 0) : facing(0, 1);
   }
@@ -1318,6 +1341,7 @@ export class CafeScene extends Phaser.Scene {
       if (!f) return;
       if (!b.active) {
         if (f.sprite.visible) f.sprite.setVisible(false);
+        f.look = null;
         return;
       }
       const dx = b.x - f.prev.x;
@@ -1331,7 +1355,7 @@ export class CafeScene extends Phaser.Scene {
       let look = across ? facing(-1, 0) : facing(0, -1);
       let frame: number = CHAR_FRAMES.stand;
       if (moving) {
-        look = facing(dx, dy);
+        look = walkFacing(f.look, dx, dy);
         const cycle = carrying ? CHAR_CARRY : CHAR_WALK;
         const c = cycle.cycle;
         frame = still
@@ -1348,6 +1372,7 @@ export class CafeScene extends Phaser.Scene {
         look = facing(-1, 0);
         frame = this.workFrame(i * 0.5);
       }
+      f.look = look;
       const name = FRAME.staff('barista', staffLookFor('barista', i), look.dir, frame);
       if (f.sprite.frame.name !== name) f.sprite.setFrame(name);
       const p = toScreen(b.x, b.y);
@@ -1403,10 +1428,7 @@ export class CafeScene extends Phaser.Scene {
       role: StaffRoleId,
       figures: StaffFigure[],
       agents: { active: boolean; x: number; y: number; phase: string }[],
-      lookWhenIdle: (
-        a: { x: number; y: number; phase: string },
-        i: number,
-      ) => ReturnType<typeof facing>,
+      lookWhenIdle: (a: { x: number; y: number; phase: string }, i: number) => Look,
       workPhases: readonly string[] = [],
     ): void => {
       agents.forEach((a, i) => {
@@ -1414,6 +1436,7 @@ export class CafeScene extends Phaser.Scene {
         if (!f) return;
         if (!a.active) {
           f.sprite.setVisible(false);
+          f.look = null;
           return;
         }
         const p = toScreen(a.x, a.y);
@@ -1422,7 +1445,8 @@ export class CafeScene extends Phaser.Scene {
         const moving = f.sprite.visible && Math.hypot(dx, dy) > 1e-4;
         f.prev.x = a.x;
         f.prev.y = a.y;
-        const look = moving ? facing(dx, dy) : lookWhenIdle(a, i);
+        const look = moving ? walkFacing(f.look, dx, dy) : lookWhenIdle(a, i);
+        f.look = look;
         // Laufend im Zyklus, je Figur versetzt; wischend im Arbeits-Takt; sonst Frame 0.
         const frame =
           moving && !still
@@ -1439,8 +1463,15 @@ export class CafeScene extends Phaser.Scene {
           .setDepth(isoDepth(a.x, a.y, 6));
       });
     };
-    // Stehend blicken Bedienungen zum Gastraum (+y), Putzkräfte zum Tisch bzw. beim Bodenwischen schräg zur Kamera.
-    sync('waiter', this.waiterFigures, this.crowd.waiters, () => facing(0, 1));
+    // Stehend blicken Bedienungen zum Gastraum (+y) bzw. beim Servieren zum Gast, Putzkräfte zum Tisch bzw. beim
+    // Bodenwischen schräg zur Kamera.
+    sync('waiter', this.waiterFigures, this.crowd.waiters, (a, i) => {
+      const w = this.crowd.waiters[i];
+      const guest =
+        w && w.phase === 'serve' && w.target >= 0 ? this.crowd.agents[w.target] : undefined;
+      if (guest?.active && guest.table >= 0) return facing(guest.x - a.x, guest.y - a.y);
+      return facing(0, 1);
+    });
     sync(
       'cleaner',
       this.cleanerFigures,
@@ -1774,6 +1805,7 @@ export class CafeScene extends Phaser.Scene {
       if (!a.active) {
         s.setVisible(false);
         m.setVisible(false);
+        this.agentLook[i] = null;
         continue;
       }
       const p = toScreen(a.x, a.y);
@@ -1792,14 +1824,16 @@ export class CafeScene extends Phaser.Scene {
         const frame = FRAME.customerSit(a.type, a.look, look.dir);
         if (s.frame.name !== frame) s.setFrame(frame);
         s.setFlipX(look.flip);
+        this.agentLook[i] = null;
       } else {
         const dx = a.x - prev.x;
         const dy = a.y - prev.y;
         const moving = s.visible && Math.hypot(dx, dy) > 1e-4;
-        let look: ReturnType<typeof facing>;
-        if (moving) look = facing(dx, dy);
+        let look: Look;
+        if (moving) look = walkFacing(s.visible ? (this.agentLook[i] ?? null) : null, dx, dy);
         else if (a.phase === 'queue' || a.phase === 'order') look = this.queueLook(a);
         else look = facing(0, 1);
+        this.agentLook[i] = look;
         const frameNo =
           moving && !still
             ? walkFrame(this.walkClock + a.id * CHAR_WALK.stepSec)
@@ -1810,8 +1844,9 @@ export class CafeScene extends Phaser.Scene {
       }
       prev.x = a.x;
       prev.y = a.y;
-      // Auf dem Barhocker sitzt man höher als auf einem Stuhl.
+      // Auf dem Barhocker sitzt man höher als auf einem Stuhl. Auf dem Gehweg blenden Gäste ein und aus.
       s.setVisible(true)
+        .setAlpha(a.fade)
         .setPosition(x, onStool ? y - STOOL_SEAT_LIFT : y)
         .setDepth(isoDepth(a.x, a.y, 6));
       // Smiley nur über den sichtbaren Schlangenplätzen, nicht über dem Grüppchen dahinter.
@@ -1825,7 +1860,7 @@ export class CafeScene extends Phaser.Scene {
   }
 
   /** Wartende blicken nach vorn in der Schlange, wer bestellt, zur Kasse. */
-  private queueLook(a: Agent): ReturnType<typeof facing> {
+  private queueLook(a: Agent): Look {
     const { queue, access } = this.layout.order;
     const idx = this.crowd.queueIndex(a);
     const reg = this.layout.stations.find((s) => s.stationId === REGISTER_ID)?.tile ?? access;

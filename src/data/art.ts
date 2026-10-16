@@ -120,6 +120,11 @@ export function nextTableLookLevel(seatsLevel: number): number | null {
 
 /** Szene-Effekte (Millisekunden, Pixel in Weltkoordinaten). */
 export const SCENE_FX = {
+  /**
+   * Gehende Figuren behalten ihre Ansicht, bis die andere Raster-Achse um diesen Faktor überwiegt (≈ 56° statt 45°),
+   * damit sie auf schrägen Wegen nicht zwischen zwei Ansichten flackern.
+   */
+  facingKeep: 1.5,
   /** Kauf-Plopp: Scale 0 → 1.1 → 1 (§ 4 „Feedback“). */
   plopMs: 250,
   plopOvershoot: 1.1,
