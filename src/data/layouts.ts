@@ -118,6 +118,15 @@ export interface StorageArea {
   fetchSpot: GridPos;
 }
 
+/**
+ * Barhocker vor dem linken Thekenstück: Abholer setzen sich mit ihrem Getränk dorthin und trinken mit Blick zur
+ * Theke. `row` = Laufzeile davor (Hin- und Rückweg, eine halbe Kachel vor den Abholplätzen).
+ */
+export interface BarArea {
+  stools: GridPos[];
+  row: number;
+}
+
 export interface AmbiencePlacement {
   /** Schlüssel in `LocationState.ambience`. */
   id: string;
@@ -164,6 +173,7 @@ export interface CafeLayout {
   order: OrderArea;
   pickup: PickupArea;
   storage: StorageArea;
+  bar: BarArea;
   tables: TablePlacement[];
   ambience: AmbiencePlacement[];
   decor: DecorItem[];
@@ -201,6 +211,19 @@ export const CROWD = {
   dwellMaxSec: 12,
   /** Anteil der Gäste, die sich setzen (wie im Rate-Modell), wenn ein Platz frei ist. */
   dineInShare: BALANCE.service.dineInShare,
+  /** Anteil der Abholer, die sich mit ihrem Getränk auf einen freien Barhocker setzen (nur Optik). */
+  barShare: 0.7,
+  /**
+   * Kasse (GAME_DESIGN § 7.2): Neue Gäste kommen so früh, dass sie diese Sekunden vor ihrer Zahlung an der Kasse
+   * stehen; wer länger als `maxPayWaitSec` auf seine Zahlung wartet (Raten eingebrochen), geht ohne weiter.
+   */
+  payLeadSec: 1.2,
+  maxPayWaitSec: 25,
+  /**
+   * So viele Zahlungen je Sekunde zeigen Figuren an der Kasse; darüber zahlen Gäste ohne Figur (Tafel, „+N“). Mehr
+   * hält der Figuren-Pool (`maxAgents`) mit Sitzgästen und Wegen nicht durch.
+   */
+  maxVisiblePayPerSec: 1.2,
   /** Höchstens so viele Figuren je Rolle, egal wie viele eingestellt sind. */
   maxCashiers: 3,
   maxWaiters: 3,
@@ -254,6 +277,8 @@ const COUNTER_Y = 5;
 /** Kurzer Thekenschenkel (quer, Front nach +x) mit der Kasse vorn an der Ecke. */
 const LEG_X = 9;
 const SEAT_OFFSET = 0.42;
+/** Barhocker vor dem langen Thekenschenkel links vom Durchgang (dort läuft niemand). */
+const BAR_STOOLS: GridPos[] = [1.05, 2, 2.95].map((x) => ({ x, y: COUNTER_Y + 0.85 }));
 /** Laufzeile vor der Theke bzw. vorn am Fenster. */
 const TOP_ROW = 7;
 const BOTTOM_ROW = 11;
@@ -363,8 +388,8 @@ const TABLES: TablePlacement[] = [...INSIDE_TABLES, ...ANNEX_TABLES, ...TERRACE_
  * nur auf freien Plätzen (Wandseite, Lücken zwischen den Tischen, vorn am Fenster), nie auf Gängen.
  */
 const DECOR: DecorItem[] = [
-  // Barhocker vor dem linken Thekenstück (dort läuft niemand)
-  { frame: 'deco-stools', minLevel: 0, tile: { x: 2, y: 5.85 } },
+  // Barhocker vor dem linken Thekenstück: je Hocker ein Sprite, damit Sitzende richtig davor sortiert werden
+  ...BAR_STOOLS.map((tile) => ({ frame: 'deco-stool', minLevel: 0, tile })),
   { frame: 'deco-plants', minLevel: 1, tile: { x: 9, y: 9 } },
   { frame: 'deco-rug', minLevel: 2, tile: { x: 2.3, y: 12.6 }, floor: true },
   { frame: 'deco-rug-blue', minLevel: 6, tile: { x: 2.5, y: 8 }, floor: true },
@@ -375,8 +400,12 @@ const DECOR: DecorItem[] = [
   { frame: 'deco-rug-blue', minLevel: 17, tile: { x: 2.5, y: 10 }, floor: true },
   ...[1.3, 3.3].map((x) => ({ frame: 'deco-pendant', minLevel: 19, tile: { x, y: WG_Y } })),
   { frame: 'deco-rug-blue', minLevel: 21, tile: { x: 8.5, y: 10 }, floor: true },
-  // Über den Barhockern
-  ...[1, 3].map((x) => ({ frame: 'deco-pendant', minLevel: 23, tile: { x, y: 5.85 } })),
+  // Über der Theke vor den Barhockern (nicht über den Hockern: dort sitzen Gäste)
+  ...[1, 3].map((x) => ({
+    frame: 'deco-pendant-bar',
+    minLevel: 23,
+    tile: { x, y: COUNTER_Y + 0.15 },
+  })),
   { frame: 'wall-art-leaf', minLevel: 3, tile: { x: 1, y: 6 }, wall: 'v' },
   { frame: 'deco-monstera', minLevel: 4, tile: { x: 1, y: 11 } },
   { frame: 'wall-neon', minLevel: 5, tile: { x: 11, y: 2 }, wall: 'u' },
@@ -469,6 +498,7 @@ const DEFAULT_LAYOUT: CafeLayout = {
     ],
     fetchSpot: { x: 1.95, y: 3.45 },
   },
+  bar: { stools: BAR_STOOLS, row: 6.5 },
   tables: TABLES,
   ambience: [
     { id: 'decor', tile: { x: 6, y: 9 }, minLevel: 0 },
@@ -602,6 +632,19 @@ export function pathFromPickup(layout: CafeLayout, spot: GridPos): GridPos[] {
   const e = layout.entrance;
   const y = spot.y + 0.5;
   return [{ x: spot.x, y }, { x: e.x - 0.6, y }, { ...e }];
+}
+
+/** Weg von einem Abholplatz zum Barhocker: eine halbe Kachel vor der Ausgabe entlang, dann auf den Hocker. */
+export function pathToStool(layout: CafeLayout, from: GridPos, stool: GridPos): GridPos[] {
+  const y = layout.bar.row;
+  return [{ x: from.x, y }, { x: stool.x, y }, { ...stool }];
+}
+
+/** Weg vom Barhocker zur Tür: zurück auf die Zeile davor, an den Abholplätzen vorbei hinaus. */
+export function pathFromStool(layout: CafeLayout, stool: GridPos): GridPos[] {
+  const e = layout.entrance;
+  const y = layout.bar.row;
+  return [{ x: stool.x, y }, { x: e.x - 0.6, y }, { ...e }];
 }
 
 /** Weg einer Bedienung von ihrem Platz hinter der Ausgabe zur Seitenkachel eines Tischs (auch nach draußen). */

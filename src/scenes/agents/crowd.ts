@@ -3,8 +3,10 @@ import {
   pathFromPickup,
   cleanerPathToSpot,
   cleanerPathToTable,
+  pathFromStool,
   pathFromTable,
   pathToPickup,
+  pathToStool,
   pathToTable,
   visibleTables,
   waiterPathToTable,
@@ -17,13 +19,22 @@ import { CUSTOMER_LOOKS } from '@data/art';
 import { customerTypeShares, pickCustomerType } from '@core/customers/types';
 
 /**
- * Kosmetische Figuren des bedienten Cafés (Phase 2): Gäste stellen sich an der Kasse an, bestellen,
- * setzen sich oder warten an der Ausgabe, Bedienungen bringen die Bestellung, Putzkräfte wischen dreckige
- * Tische. Liest nur Raten und Zähler aus `core`, schreibt nie in den GameState: Einnahmen entstehen
- * ausschließlich im Rate-Modell. Kein Phaser-Import, damit testbar.
+ * Kosmetische Figuren des bedienten Cafés (Phase 2): Gäste stellen sich an der Kasse an, bestellen und bezahlen,
+ * setzen sich oder warten an der Ausgabe, Bedienungen bringen die Bestellung, Abholer trinken auf den Barhockern,
+ * Putzkräfte wischen dreckige Tische. Liest nur Raten und Zähler aus `core`, schreibt nie in den GameState:
+ * Einnahmen entstehen ausschließlich im Rate-Modell; der Gast an der Kasse bezahlt, wenn `core` die Zahlung bucht
+ * (`CrowdInput.till`). Kein Phaser-Import, damit testbar.
  */
 export type CustomerPhase =
-  'walkIn' | 'queue' | 'order' | 'toSeat' | 'toPickup' | 'waitServe' | 'consume' | 'leave';
+  | 'walkIn'
+  | 'queue'
+  | 'order'
+  | 'toSeat'
+  | 'toPickup'
+  | 'waitServe'
+  | 'toStool'
+  | 'consume'
+  | 'leave';
 
 export interface Agent {
   readonly id: number;
@@ -42,6 +53,8 @@ export interface Agent {
   /** Tisch-Index in `layout.tables` oder −1 (Abholung an der Ausgabe). */
   table: number;
   seat: 0 | 1;
+  /** Barhocker (Index in `layout.bar.stools`), auf dem der Abholer trinkt, sonst −1. */
+  stool: number;
   /** Warteplatz an der Ausgabe (Index in `layout.pickup.spots`). */
   spot: number;
   /** Sekunden, die der Gast schon auf die Bedienung wartet. */
@@ -133,13 +146,25 @@ export interface CrowdInput {
   baristas?: readonly BaristaPost[];
   /** Sekunden je Becher und Barista (aus der Zubereitungs-Kapazität); 0 = niemand arbeitet. */
   prepSec?: number;
+  /**
+   * Kasse aus `core` (GAME_DESIGN § 7.2): Zahlungen seit dem letzten Schritt und wie weit der nächste Gast mit dem
+   * Bezahlen ist (0..1). Gesetzt, bezahlt der Gast an der Kasse genau dann, wenn `core` die Zahlung bucht, und neue
+   * Gäste kommen so rechtzeitig, dass bei jeder Zahlung jemand an der Kasse steht. Ohne (Debug-Spawn, Tests):
+   * Bestellzeit aus `orderCap`, Gäste im Takt von `served`, jede fertige Bestellung zählt als Zahlung.
+   */
+  till?: { payments: number; progress: number };
 }
 
 export interface CrowdUpdate {
-  /** Gäste, die in diesem Schritt ihre Bestellung bekommen haben (Münz-Popups). */
+  /** Gäste, die in diesem Schritt ihre Bestellung bekommen haben (Emote). */
   purchases: Agent[];
-  /** Gäste, die in diesem Schritt an der Kasse fertig bestellt haben (Kassenlade). */
+  /** Gäste, die in diesem Schritt an der Kasse fertig bestellt und bezahlt haben. */
   orders: Agent[];
+  /**
+   * Zahlungen an der Kasse in diesem Schritt (Kassenlade, Geldschein, Betrag). Mit `till` so viele, wie `core`
+   * gebucht hat – auch ohne Figur an der Kasse (sehr viele Gäste); sonst = `orders.length`.
+   */
+  payments: number;
   spawned: number;
 }
 
@@ -160,6 +185,17 @@ export class CustomerCrowd {
   private readonly queue: Agent[] = [];
   private readonly serviceQueue: Agent[] = [];
   private readonly seatTaken: [boolean, boolean][];
+  private readonly stoolTaken: boolean[];
+  /** Sekunden vom Auftauchen auf dem Gehweg bis an die Kasse … */
+  private readonly walkSec: number;
+  /** … plus Vorlauf (`CROWD.payLeadSec`). */
+  private readonly leadSec: number;
+  /** Höchstens so viele Gäste in der Schlange (mit Kasse zählen die dazu, die noch hereinkommen). */
+  private queueCap: number = CROWD.maxQueueFigures;
+  /** Sekunden bis zur nächsten Zahlung laut `core` (unendlich ohne Gäste). */
+  private payRemaining = Infinity;
+  /** Erste Kassen-Runde: wer zur ersten Zahlung gebraucht wird, steht beim Szenenstart schon an. */
+  private warm = false;
   private readonly shares: Record<CustomerTypeId, number>;
   private spawnAcc = 0;
   private totalRate = 0;
@@ -177,6 +213,9 @@ export class CustomerCrowd {
   ) {
     this.shares = customerTypeShares(locationId);
     this.seatTaken = layout.tables.map(() => [false, false]);
+    this.stoolTaken = layout.bar.stools.map(() => false);
+    this.walkSec = walkInSec(layout);
+    this.leadSec = this.walkSec + CROWD.payLeadSec;
     for (let i = 0; i < CROWD.maxAgents; i++) {
       this.agents.push({
         id: i,
@@ -191,6 +230,7 @@ export class CustomerCrowd {
         serveTotal: 0,
         table: -1,
         seat: 0,
+        stool: -1,
         spot: 0,
         waited: 0,
         jx: 0,
@@ -281,13 +321,15 @@ export class CustomerCrowd {
     this.tableShown = this.layout.tables.map((t) => shown.has(t));
     this.tablesVisible = shown.size;
 
-    let spawned = 0;
-    this.spawnAcc += this.totalRate * dt;
+    const till = input.till;
+    this.queueCap = CROWD.maxQueueFigures;
+    let spawned = till ? this.spawnForTill(till.progress) : 0;
+    this.spawnAcc += till ? 0 : this.totalRate * dt;
     // Nach langen Pausen nicht hunderte Figuren auf einmal erzeugen.
     this.spawnAcc = Math.min(this.spawnAcc, CROWD.maxAgents);
     while (this.spawnAcc >= 1) {
       this.spawnAcc -= 1;
-      if (this.queue.length >= CROWD.maxQueueFigures) {
+      if (this.queue.length >= this.queueCap) {
         this.overflow = Math.min(CROWD.maxQueueOverflow, this.overflow + 1);
         continue;
       }
@@ -295,7 +337,7 @@ export class CustomerCrowd {
     }
     if (this.totalRate <= 0) this.overflow = 0;
     // Wer auf der Tafel wartet, kommt nach, sobald in der Schlange Platz ist.
-    while (this.overflow > 0 && this.queue.length < CROWD.maxQueueFigures && this.spawn()) {
+    while (this.overflow > 0 && this.queue.length < this.queueCap && this.spawn()) {
       this.overflow--;
       spawned++;
     }
@@ -303,14 +345,52 @@ export class CustomerCrowd {
     const purchases: Agent[] = [];
     const orders: Agent[] = [];
     const step = CROWD.walkTilesPerSec * dt;
+    this.payRemaining =
+      till && this.totalRate > 0 ? Math.max(0, 1 - till.progress) / this.totalRate : Infinity;
     for (const a of this.agents) {
       if (!a.active) continue;
-      this.advance(a, step, dt, input.orderCap, purchases, orders);
+      this.advance(a, step, dt, input.orderCap, purchases, orders, !!till);
     }
+    // Gebuchte Zahlungen: Wer an der Kasse steht, hat bezahlt (es steht immer nur einer dort); weitere Zahlungen
+    // (mehr Gäste, als Figuren an die Kasse passen) zeigt die Szene nur an der Kasse.
+    const payments = till ? Math.max(0, Math.floor(till.payments)) : orders.length;
+    const head = this.queue[0];
+    if (till && payments > 0 && head?.phase === 'order') this.finishOrder(head, orders);
     this.updateWaiters(dt, input.waiters, purchases);
     this.updateCleaners(dt, input.cleaners, input.cleanliness);
     this.updateBaristas(dt, input.baristas ?? [], input.prepSec ?? 0);
-    return { purchases, orders, spawned };
+    return { purchases, orders, payments, spawned };
+  }
+
+  /**
+   * Gäste für die Kasse: Jede Zahlung, die `core` in den nächsten `leadSec` bucht, braucht einen Gast, der dann an
+   * der Kasse steht – fehlt einer, kommt er jetzt vom Gehweg. Beim Szenenstart stehen die ersten schon an. Mehr als
+   * `maxVisiblePayPerSec` schafft keine Figur an der Kasse; was darüber liegt, bezahlt ohne Figur (Tafel, „+N“).
+   */
+  private spawnForTill(progress: number): number {
+    const warm = !this.warm && this.activeCount === 0;
+    this.warm = true;
+    if (this.totalRate <= 0) return 0;
+    const rate = Math.min(this.totalRate, CROWD.maxVisiblePayPerSec);
+    const due = Math.floor(Math.max(0, progress) + rate * this.leadSec);
+    // Wer noch hereinkommt, steht nicht an der Theke: die Schlange darf um die Gäste unterwegs länger sein.
+    this.queueCap = CROWD.maxQueueFigures + Math.ceil(rate * this.walkSec);
+    // Szenenstart: wer bezahlt, bevor ein neuer Gast vom Gehweg da wäre, steht schon an.
+    let inside = warm
+      ? Math.min(CROWD.maxQueueFigures, Math.floor(Math.max(0, progress) + rate * this.walkSec))
+      : 0;
+    let spawned = 0;
+    while (this.queue.length + this.overflow < due) {
+      if (this.queue.length >= this.queueCap) {
+        if (this.overflow >= CROWD.maxQueueOverflow) break;
+        this.overflow++;
+        continue;
+      }
+      if (!this.spawn(inside > 0)) break;
+      inside--;
+      spawned++;
+    }
+    return spawned;
   }
 
   /** Punkt auf dem Gehweg vor oder hinter dem Eingang (Erscheinen und Verschwinden der Gäste). */
@@ -320,7 +400,8 @@ export class CustomerCrowd {
     return axis === 'u' ? { x: curb.x + off, y: curb.y } : { x: curb.x, y: curb.y + off };
   }
 
-  private spawn(): boolean {
+  /** `inQueue`: gleich auf dem eigenen Schlangenplatz (Szenenstart), sonst vom Gehweg her. */
+  private spawn(inQueue = false): boolean {
     const free = this.agents.find((a) => !a.active);
     if (!free || this.totalRate <= 0) return false;
     this.queue.push(free);
@@ -336,6 +417,7 @@ export class CustomerCrowd {
     free.outside = false;
     free.serveTotal = 0;
     free.table = -1;
+    free.stool = -1;
     free.spot = 0;
     free.waited = 0;
     free.jx = (this.rng() - 0.5) * CROWD.crowdSpread;
@@ -352,7 +434,26 @@ export class CustomerCrowd {
       ...path.map((p) => ({ ...p })),
       approach,
     ];
+    if (inQueue) {
+      free.x = slot.x;
+      free.y = slot.y;
+      free.path = [];
+      free.phase = 'queue';
+    }
     return true;
+  }
+
+  /**
+   * Wer schon da ist, stellt sich vor die, die noch hereinkommen (wer näher an der Tür auftaucht, ist früher an
+   * der Kasse); die anderen planen ihren Platz unterwegs neu.
+   */
+  private overtake(a: Agent): void {
+    const i = this.queue.indexOf(a);
+    let j = i;
+    while (j > 0 && this.queue[j - 1]?.phase === 'walkIn') j--;
+    if (j >= i) return;
+    this.queue.splice(i, 1);
+    this.queue.splice(j, 0, a);
   }
 
   /** Sichtbare Schlangenplätze (`order.queue`, höchstens `maxQueue`). */
@@ -374,28 +475,50 @@ export class CustomerCrowd {
     orderCap: number,
     purchases: Agent[],
     orders: Agent[],
+    paysWithTill: boolean,
   ): void {
     switch (a.phase) {
-      case 'walkIn':
-        if (follow(a, step)) a.phase = 'queue';
+      case 'walkIn': {
+        // Ist vorn inzwischen Platz, geht es gleich auf Höhe des neuen Platzes (nicht erst ans alte Ende).
+        const idx = this.queue.indexOf(a);
+        const last = a.path[a.path.length - 1];
+        if (last && idx >= 0) {
+          const slot = this.slotPos(a, idx);
+          const { lane } = this.layout.order;
+          a.path[a.path.length - 1] =
+            idx < this.visibleSlots ? { x: slot.x + lane.x, y: slot.y + lane.y } : slot;
+        }
+        if (follow(a, step)) {
+          a.phase = 'queue';
+          this.overtake(a);
+        }
         return;
+      }
       case 'queue': {
         const idx = this.queue.indexOf(a);
         const arrived = moveToward(a, this.slotPos(a, Math.max(0, idx)), step);
         if (arrived && idx === 0) {
           a.phase = 'order';
-          a.timer = serveDuration(orderCap);
+          a.waited = 0;
+          // Mit Kasse: der Ring läuft bis zur Zahlung, die `core` als Nächstes bucht.
+          a.timer = paysWithTill
+            ? clamp(this.payRemaining, CROWD.minServeSec, CROWD.maxPayWaitSec)
+            : serveDuration(orderCap);
           a.serveTotal = a.timer;
         }
         return;
       }
       case 'order':
+        if (paysWithTill) {
+          // Bezahlt wird in `update`, sobald `core` die Zahlung bucht; bis dahin füllt sich der Ring.
+          a.waited += dt;
+          a.timer = clamp(this.payRemaining, 0, a.serveTotal);
+          if (a.waited > CROWD.maxPayWaitSec) this.finishOrder(a, orders);
+          return;
+        }
         a.timer -= dt;
         if (a.timer > 0) return;
-        a.serveTotal = 0;
-        this.removeFrom(this.queue, a);
-        orders.push(a);
-        this.afterOrder(a);
+        this.finishOrder(a, orders);
         return;
       case 'toSeat':
       case 'toPickup':
@@ -410,10 +533,17 @@ export class CustomerCrowd {
         // Keine Bedienung in Sicht: der Gast holt sich die Bestellung über die Theke (nur Optik).
         if (a.waited > CROWD.maxServiceWaitSec) this.completeService(a, purchases);
         return;
+      case 'toStool':
+        if (follow(a, step)) {
+          a.phase = 'consume';
+          a.timer = CROWD.dwellMinSec + this.rng() * (CROWD.dwellMaxSec - CROWD.dwellMinSec);
+        }
+        return;
       case 'consume':
         a.timer -= dt;
         if (a.timer > 0) return;
-        this.leaveTable(a);
+        if (a.stool >= 0) this.leaveStool(a);
+        else this.leaveTable(a);
         return;
       case 'leave':
         if (!follow(a, step)) return;
@@ -426,6 +556,15 @@ export class CustomerCrowd {
         a.path = [{ ...this.layout.street.curb }, this.sidewalkPoint()];
         return;
     }
+  }
+
+  /** Bestellt und bezahlt: raus aus der Schlange, weiter zum Tisch oder zur Abholung. */
+  private finishOrder(a: Agent, orders: Agent[]): void {
+    a.serveTotal = 0;
+    a.waited = 0;
+    this.removeFrom(this.queue, a);
+    orders.push(a);
+    this.afterOrder(a);
   }
 
   /** Nach dem Bestellen um die Ecke: Platz am Tisch, wenn einer frei ist und der Gast bleiben will, sonst Abholung. */
@@ -475,8 +614,31 @@ export class CustomerCrowd {
       return;
     }
     const spot = this.layout.pickup.spots[a.spot] ?? { x: a.x, y: a.y };
+    // Mit dem Getränk auf einen freien Barhocker, sonst gleich hinaus.
+    const stools = this.layout.bar.stools;
+    const free = stools.map((_, i) => i).filter((i) => !this.stoolTaken[i]);
+    const stool =
+      free.length > 0 && this.rng() < CROWD.barShare
+        ? free[Math.floor(this.rng() * free.length)]
+        : undefined;
+    const at = stool === undefined ? undefined : stools[stool];
+    if (stool !== undefined && at) {
+      this.stoolTaken[stool] = true;
+      a.stool = stool;
+      a.phase = 'toStool';
+      a.path = pathToStool(this.layout, spot, at);
+      return;
+    }
     a.phase = 'leave';
     a.path = pathFromPickup(this.layout, spot).map((p) => ({ ...p }));
+  }
+
+  private leaveStool(a: Agent): void {
+    const at = this.layout.bar.stools[a.stool];
+    this.stoolTaken[a.stool] = false;
+    a.stool = -1;
+    a.phase = 'leave';
+    a.path = at ? pathFromStool(this.layout, at) : [{ ...this.layout.entrance }];
   }
 
   private leaveTable(a: Agent): void {
@@ -798,6 +960,10 @@ export class CustomerCrowd {
   private release(a: Agent): void {
     this.removeFrom(this.queue, a);
     this.removeFrom(this.serviceQueue, a);
+    if (a.stool >= 0) {
+      this.stoolTaken[a.stool] = false;
+      a.stool = -1;
+    }
     if (a.table >= 0) {
       const taken = this.seatTaken[a.table];
       if (taken) taken[a.seat] = false;
@@ -816,6 +982,30 @@ export function pickLook(type: CustomerTypeId, roll: number): string {
   const looks = CUSTOMER_LOOKS[type];
   const i = Math.min(looks.length - 1, Math.max(0, Math.floor(roll * looks.length)));
   return looks[i] ?? looks[0] ?? '';
+}
+
+/**
+ * Typischer Weg eines neuen Gasts vom Gehweg bis an die Kasse in Sekunden (mittlere Streuung beim Auftauchen,
+ * Abbiegen zur Tür, Weg zur Schlange, seitlich heran an den ersten Platz).
+ */
+export function walkInSec(layout: CafeLayout): number {
+  const { street, entrance, order } = layout;
+  const spread = (street.spreadMin + street.spreadMax) / 2;
+  const first = order.queue[0] ?? order.access;
+  const pts = [
+    street.curb,
+    entrance,
+    ...order.path,
+    { x: first.x + order.lane.x, y: first.y + order.lane.y },
+    first,
+  ];
+  let tiles = spread;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1];
+    const b = pts[i];
+    if (a && b) tiles += Math.hypot(b.x - a.x, b.y - a.y);
+  }
+  return tiles / CROWD.walkTilesPerSec;
 }
 
 /** Sichtbare Bestellzeit des Schlangenkopfs aus der Kapazität der Bestelltheke. */

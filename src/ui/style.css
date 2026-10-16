@@ -170,8 +170,24 @@ a {
   fill: currentColor;
   vertical-align: -0.2em;
 }
-.icon-coin {
+.icon-cash {
   color: var(--c-cash);
+}
+/* Ein Gast hat bezahlt: Geld-Betrag springt kurz an (§ 3.1). */
+.hud-cash-in {
+  animation: cash-in 0.45s ease-out;
+}
+@keyframes cash-in {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.12);
+    color: var(--c-cash);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 .icon-leaf {
   color: var(--c-gem);
@@ -1431,6 +1447,7 @@ legend {
 @media (prefers-reduced-motion: reduce) {
   .toast,
   .event-card,
+  .hud-cash-in,
   .tutorial-ring {
     animation: none;
   }

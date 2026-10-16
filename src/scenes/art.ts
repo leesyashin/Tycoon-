@@ -12,7 +12,7 @@ import {
  * docs/ASSETS.md); Phaser zeigt sie mit `ART_SCALE`.
  */
 export const ATLAS = {
-  /** Figuren, Smileys, Münzen, Partikel. */
+  /** Figuren, Smileys, Geldschein, Partikel. */
   common: 'common',
   /** Ausstattung in fünf Stufen, Thekenmodule, Tische, Ambiente (eigene Palette, eigene Textur). */
   furniture: 'furniture',
@@ -58,7 +58,8 @@ export const FRAME = {
   /** Terrassen-Tisch mit Schirm in derselben Stufe. */
   tableOut: (seatsLevel: number) => `table-out-${String(tableLookTier(seatsLevel))}`,
   // Atlas `common`
-  coin: 'coin',
+  /** Geldschein (Währung, fliegt beim Bezahlen ins HUD). */
+  cash: 'cash',
   leaf: 'leaf',
   rain: 'fx-rain',
   petal: 'fx-petal',

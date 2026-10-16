@@ -25,11 +25,11 @@ Meta-Loop (Tage/Wochen): Café-Level steigern → Qualitätsstufen → neuen Sta
 
 | Währung | Code | Symbol | Scope | Quelle | Verwendung |
 |---|---|---|---|---|---|
-| Münzen | `coins` | ¤ (Pixel-Münze) | pro Standort | Verkäufe, Trinkgeld, Offline | Stationen, Ambiente, Personal, Qualität, Marketing |
+| Geld | `coins` | 💵 (grüner Geldschein) | pro Standort | Bezahlte Gäste (inkl. Trinkgeld), Offline | Stationen, Ambiente, Personal, Qualität, Marketing |
 | Goldene Blätter | `goldenLeaves` | 🍃 | global | Achievements, Daily Quests, Events, seltene Kunden-Drops, (später: Monetarisierung) | Zeitsprünge, Boosts, Sofort-Fertigstellung, Skins |
 | Zen | `zen` | ☯ | global | Franchise-Reset eines Standorts | Meta-Upgrades, Freischaltung von Standorten |
 
-Münzen werden als `Decimal` (break_infinity) geführt. Goldene Blätter und Zen bleiben praktisch im `number`-Bereich, werden aber ebenfalls als `Decimal` gespeichert, damit das Save-Schema einheitlich ist.
+Geld wird als `Decimal` (break_infinity) geführt; der Code-Name bleibt `coins` (Phase 1: „Münzen“, seit 2026-10-15 Geldscheine). Goldene Blätter und Zen bleiben praktisch im `number`-Bereich, werden aber ebenfalls als `Decimal` gespeichert, damit das Save-Schema einheitlich ist.
 
 ---
 
@@ -169,13 +169,25 @@ serviceCap      = waiters × speed(servingStation) / avgServeTime × speedBoosts
 totalThroughput = min(orderCap, prodCap, serviceCap)
 served          = min(spawnRate, totalThroughput)
 bottleneck      = argmin(spawnRate, orderCap, prodCap, serviceCap)   → „Nachfrage“ | „Bestellung“ | „Zubereitung“ | „Ausgabe“
-income/s        = served × avgTicket × priceMults
+income/s        = served × avgTicket × priceMults        (Umsatz; landet zuerst auf den offenen Bons, s. u.)
 priceMults      = qualityMult × (1 + tipRate) × eventMult × boostMult × metaIncomeMult × prestigeMult
 tipRate         = satisfaction/100 × 0.15 + music.level × 0.005   (Kundentypen § 7.5)
 perStation_i    = served × attach_i          (Bestellungen/s je Produktlinie, für Szene und Statistik)
 ```
 Die UI zeigt die vier Stufen als Balken (Kapazität je Stufe, bedient, Engpass markiert), damit jede
 Personal- oder Ausstattungs-Entscheidung erklärbar ist.
+
+**Kasse – Geld kommt erst beim Bezahlen** (Vorgabe Vincent, 2026-10-15; `core/economy/till.ts`, Save v10):
+```
+till.open     += income/s × dt          // Umsatz der Gäste, die gerade bestellen und bezahlen
+till.progress += served × dt            // wie weit der nächste Gast mit dem Bezahlen ist
+n = floor(till.progress)                // so viele Gäste haben in diesem Schritt fertig bezahlt
+coins         += till.open × n / till.progress ;  till.open −= dieser Betrag ;  till.progress −= n ;  till.paid += n
+```
+Bei gleichbleibenden Raten zahlt jeder Gast genau den Durchschnittsbon (`income/served`); über die Zeit ist die
+Summe dieselbe wie bei laufender Gutschrift, nur um höchstens einen Gast verzögert. Offline-Einnahmen, Zeitsprung,
+Tap-Bonus und Belohnungen werden weiter direkt gutgeschrieben. Die Szene zeigt jede gebuchte Zahlung an der Kasse
+(der Gast dort bezahlt genau in diesem Moment, neue Gäste kommen rechtzeitig vom Gehweg); bleibt kosmetisch.
 
 ### 7.3 Zufriedenheit (0–100)
 ```

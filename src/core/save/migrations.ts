@@ -186,6 +186,15 @@ export const migrations: ((raw: Json) => Json)[] = [
       tutorial: tutorial['done'] === true ? tutorial : { step: 0, done: false },
     };
   },
+  // v9 → v10: Kasse mit offenen Bons je Standort; Geld kommt erst, wenn ein Gast bezahlt hat (leer starten).
+  (raw) => {
+    const locations = (raw['locations'] as Record<string, Json> | undefined) ?? {};
+    const next: Record<string, Json> = {};
+    for (const [id, loc] of Object.entries(locations)) {
+      next[id] = { ...loc, till: { open: '0', progress: 0, paid: 0 } };
+    }
+    return { ...raw, schemaVersion: 10, locations: next };
+  },
 ];
 
 export class SaveError extends Error {}

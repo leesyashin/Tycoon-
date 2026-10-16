@@ -125,6 +125,10 @@ export const C = {
   // Kiez-Café im Stil der Berliner Third-Wave-Kettenläden (Vorgabe Vincent: knallblaue Fassade, Edelstahl,
   // Weiß, minimal): Kobaltblau als Lack und Glasur, gebürsteter Edelstahl, heller Terrazzo.
   cobalt: '#2146f2',
+  // Geldschein (Währung): Grün wie das Geld im HUD (--c-cash), dunkler Rand, helle Felder
+  bill: '#3fb950',
+  billDark: '#23863a',
+  billLight: '#bdf0c4',
   cobaltDeep: '#1631b8',
   cobaltLight: '#6483ff',
   cobaltTile: '#2a51f6',

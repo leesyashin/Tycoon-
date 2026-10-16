@@ -65,7 +65,7 @@ test('Blätter-Shop: Zeitsprung, Boost, Skin – über das „+“ am Blätter-S
   await expect(page.getByTestId('leafshop-balance')).toContainText('40');
   await axe(page);
 
-  // Boost zuerst: danach bringt der Zeitsprung Münzen, und Münz-Erfolge zahlen eigene Blätter aus.
+  // Boost zuerst: danach bringt der Zeitsprung Geld, und Geld-Erfolge zahlen eigene Blätter aus.
   await page.getByTestId('leaf-boost').click();
   await expect(page.getByTestId('leafshop-balance')).toContainText('32');
   await expect(page.getByTestId('hud-boost-leaf')).toBeVisible();

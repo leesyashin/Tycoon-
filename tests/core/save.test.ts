@@ -165,7 +165,7 @@ describe('Storage und Export', () => {
     delete v1['tap'];
     st.setItem('mce.save.v1', JSON.stringify(v1));
     expect(loadGame(st)?.tap.hype).toBe(0);
-    expect(SAVE_KEY).toBe('mce.save.v9');
+    expect(SAVE_KEY).toBe('mce.save.v10');
   });
   it('Laden bringt Offline-Einnahmen und setzt lastSavedAt', () => {
     const st = new MemStorage();

@@ -316,12 +316,19 @@ export function fxSprites(): SpriteDef[] {
       ),
     },
     {
-      // Matcha-Münze: grün mit hellem Blatt-Glyph
-      name: 'coin',
+      // Geldschein: grüner Schein mit Rand, Mittelfeld mit Blatt-Emblem und zwei Wertfeldern in den Ecken
+      name: 'cash',
       svg: flat(
-        12,
-        12,
-        `<circle cx="6" cy="6" r="5.6" fill="#3fb950"/><circle cx="6" cy="6" r="4.2" fill="#56cf66"/><path d="M6 2.8 C8.6 4.2 8.6 7.6 6 9.2 C3.4 7.6 3.4 4.2 6 2.8 Z" fill="${C.white}"/>`,
+        20,
+        11,
+        `<rect x="0.4" y="0.4" width="19.2" height="10.2" rx="1.4" fill="${C.billDark}"/>` +
+          `<rect x="1.4" y="1.4" width="17.2" height="8.2" rx="0.8" fill="${C.bill}"/>` +
+          `<rect x="2.4" y="4.9" width="15.2" height="1.2" fill="${tint(C.bill, 0.25)}"/>` +
+          `<ellipse cx="10" cy="5.5" rx="3.4" ry="3.1" fill="${C.billLight}"/>` +
+          `<path d="M10 2.9 C12.2 4 12.2 6.9 10 8.1 C7.8 6.9 7.8 4 10 2.9 Z" fill="${C.billDark}"/>` +
+          `<path d="M10 3.6 L10 7.6" stroke="${C.billLight}" stroke-width="0.5"/>` +
+          `<circle cx="3.7" cy="3.4" r="1.1" fill="${C.billLight}"/>` +
+          `<circle cx="16.3" cy="7.6" r="1.1" fill="${C.billLight}"/>`,
       ),
     },
     {

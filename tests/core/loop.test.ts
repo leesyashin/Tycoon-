@@ -89,15 +89,18 @@ describe('Rate-Modell', () => {
 });
 
 describe('tick', () => {
-  it('schreibt Einkommen gut und zählt Spielzeit', () => {
+  it('legt den Umsatz auf die offenen Bons und zählt Spielzeit; ins Geld kommt er erst beim Bezahlen', () => {
     const s = tick(fresh(), 1000);
     expect(s.playtimeSec).toBeCloseTo(1, 9);
-    const gained = getLocation(s, 'berlin').coins.toNumber() - BALANCE.startCoins;
+    const loc = getLocation(s, 'berlin');
     // Im Tick zählt der Influencer-Hype mit (aktive Spielzeit), offline nicht (START_INCOME).
     const perSec = getIncomePerSec(fresh(), 'berlin').toNumber();
-    expect(gained).toBeCloseTo(perSec, 6);
-    expect(s.meta.lifetimeEarned.toNumber()).toBeCloseTo(perSec, 6);
-    expect(getLocation(s, 'berlin').earnedThisRun.toNumber()).toBeCloseTo(perSec, 6);
+    // Nach 1 s hat beim Start (< 1 Gast/s) noch niemand fertig bezahlt.
+    expect(computeLocationRates(fresh(), 'berlin').served).toBeLessThan(1);
+    expect(loc.coins.toNumber()).toBe(BALANCE.startCoins);
+    expect(loc.till.open.toNumber()).toBeCloseTo(perSec, 6);
+    expect(s.meta.lifetimeEarned.toNumber()).toBe(0);
+    expect(loc.earnedThisRun.toNumber()).toBe(0);
   });
   it('ist pur und ignoriert negative/ungültige Deltas', () => {
     const s = fresh();

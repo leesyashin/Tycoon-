@@ -5,7 +5,7 @@
  * die Szene sie bündig auf die Wand legt. Platzierung und Level: `DECOR` in `src/data/layouts.ts`.
  * Bilder haben Rahmen mit Tiefe (Leisten als Quader, Bild zurückgesetzt) und einen Schlagschatten auf der Wand.
  */
-import { DECOR_BIG } from '../../src/data/art';
+import { COUNTER_TOP_PX, DECOR_BIG } from '../../src/data/art';
 import { STATION_CANVAS, TABLE_TIERS, drawTable } from './equipment';
 import { IsoCanvas, SHADOW, Z_PER_TILE, shade, tint, type Vec3 } from './iso';
 import { C } from './palette';
@@ -877,7 +877,7 @@ const FLOOR_ITEMS: Record<string, (c: IsoCanvas) => void> = {
   },
 };
 
-/** Große Leinwand für Teppiche und Hocker über mehrere Kacheln (`DECOR_BIG`). */
+/** Große Leinwand für Teppiche und Kronleuchter über mehrere Kacheln (`DECOR_BIG`). */
 const BIG = DECOR_BIG;
 
 const BIG_ITEMS: Record<string, (c: IsoCanvas) => void> = {
@@ -959,9 +959,18 @@ const BIG_ITEMS: Record<string, (c: IsoCanvas) => void> = {
   },
 };
 
+/** Lichtschein einer Pendelleuchte: auf der Tischplatte bzw. (über der Theke) auf der Thekenplatte. */
+interface PendantGlow {
+  z: number;
+  size: number;
+}
+const TABLE_GLOW: PendantGlow = { z: 15.6, size: 0.52 };
+const COUNTER_GLOW: PendantGlow = { z: COUNTER_TOP_PX + 0.2, size: 0.4 };
+
 /** Pendelleuchte über einem Tisch: dünnes Kabel nach oben, Emailschirm mit Messingkappe, Birne, Lichtkegel. */
-function pendant(c: IsoCanvas) {
-  c.glowFlat(0.24, 0.24, 15.6, 0.52, 0.52, C.glow, 0.34, 2.6);
+function pendant(c: IsoCanvas, glow: PendantGlow = TABLE_GLOW) {
+  const g0 = 0.5 - glow.size / 2;
+  c.glowFlat(g0, g0, glow.z, glow.size, glow.size, C.glow, 0.34, 2.6);
   strut(c, [0.5, 0.5, 72], [0.5, 0.5, 58], C.ink, 0.45, 0.35);
   strut(c, [0.5, 0.5, 58], [0.5, 0.5, 46.5], C.ink, 0.5);
   c.cylinder(0.5, 0.5, 45, 0.028, 1.6, C.brass, tint(C.brass, 0.35));
@@ -973,8 +982,10 @@ function pendant(c: IsoCanvas) {
 }
 
 /** Pendelleuchte im Endausbau: Messingstange, Opalglas-Kugel mit Messingkappe, warmer Schein. */
-function pendantLux(c: IsoCanvas) {
-  c.glowFlat(0.2, 0.2, 15.6, 0.6, 0.6, C.glow, 0.42, 3);
+function pendantLux(c: IsoCanvas, glow: PendantGlow = TABLE_GLOW) {
+  const size = glow.size + 0.08;
+  const g0 = 0.5 - size / 2;
+  c.glowFlat(g0, g0, glow.z, size, size, C.glow, 0.42, 3);
   strut(c, [0.5, 0.5, 72], [0.5, 0.5, 60], C.brass, 0.7, 0.4);
   strut(c, [0.5, 0.5, 60], [0.5, 0.5, 47], C.brass, 0.8);
   c.cylinder(0.5, 0.5, 46, 0.035, 2, C.brass, tint(C.brass, 0.35));
@@ -983,19 +994,21 @@ function pendantLux(c: IsoCanvas) {
   c.cylinder(0.5, 0.5, 44.6, 0.05, 1.6, C.brass, tint(C.brass, 0.35));
 }
 
-/** Drei Barhocker vor der Theke: Edelstahl mit Fußring, gepolsterter blauer Sitz mit Keder, Bodenplatte. */
-function stools(c: IsoCanvas) {
-  for (const u of [-0.45, 0.5, 1.45]) {
-    c.shadowDisc(u, 0.5, 0, 0.15, 0.26);
-    c.cylinder(u, 0.5, 0, 0.12, 1.2, C.stainlessDark, C.stainless);
-    c.cylinder(u, 0.5, 1.2, 0.022, 15, C.stainless);
-    c.shine(u, 0.5, 1.2, 0.022, 15, C.stainless, 0.5);
-    c.cylinder(u, 0.5, 7, 0.09, 0.7, C.stainlessDark, C.stainless);
-    c.cylinder(u, 0.5, 15.6, 0.06, 0.8, C.stainlessDark);
-    c.cylinder(u, 0.5, 16.4, 0.125, 2.6, C.cobalt, C.cobaltLight);
-    c.cylinder(u, 0.5, 18.4, 0.127, 0.5, C.cobaltDeep, C.cobaltLight);
-    c.disc(u - 0.02, 0.49, 19.01, 0.06, tint(C.cobaltLight, 0.25));
-  }
+/**
+ * Barhocker vor der Theke (einer je Sprite, damit Sitzende davor sortiert werden): Edelstahl mit Fußring,
+ * gepolsterter blauer Sitz mit Keder, Bodenplatte. Sitzhöhe ≈ 19 px (`STOOL_SEAT_LIFT` über einem Stuhl).
+ */
+function stool(c: IsoCanvas) {
+  const u = 0.5;
+  c.shadowDisc(u, 0.5, 0, 0.15, 0.26);
+  c.cylinder(u, 0.5, 0, 0.12, 1.2, C.stainlessDark, C.stainless);
+  c.cylinder(u, 0.5, 1.2, 0.022, 15, C.stainless);
+  c.shine(u, 0.5, 1.2, 0.022, 15, C.stainless, 0.5);
+  c.cylinder(u, 0.5, 7, 0.09, 0.7, C.stainlessDark, C.stainless);
+  c.cylinder(u, 0.5, 15.6, 0.06, 0.8, C.stainlessDark);
+  c.cylinder(u, 0.5, 16.4, 0.125, 2.6, C.cobalt, C.cobaltLight);
+  c.cylinder(u, 0.5, 18.4, 0.127, 0.5, C.cobaltDeep, C.cobaltLight);
+  c.disc(u - 0.02, 0.49, 19.01, 0.06, tint(C.cobaltLight, 0.25));
 }
 
 const UMBRELLAS: Record<1 | 2 | 3 | 4, [string, string]> = {
@@ -1042,9 +1055,16 @@ export function decorSprites(): SpriteDef[] {
   const pl = canvas();
   pendantLux(pl);
   out.push({ name: 'deco-pendant-lux', svg: pl.svg() });
-  const st = new IsoCanvas(BIG.w, BIG.h, BIG.ox, BIG.oy);
-  stools(st);
-  out.push({ name: 'deco-stools', svg: st.svg() });
+  // Über der Theke vor den Barhockern: Schein auf der Thekenplatte statt auf einer Tischplatte.
+  const pb = canvas();
+  pendant(pb, COUNTER_GLOW);
+  out.push({ name: 'deco-pendant-bar', svg: pb.svg() });
+  const pbl = canvas();
+  pendantLux(pbl, COUNTER_GLOW);
+  out.push({ name: 'deco-pendant-bar-lux', svg: pbl.svg() });
+  const st = canvas();
+  stool(st);
+  out.push({ name: 'deco-stool', svg: st.svg() });
   return out;
 }
 
@@ -1055,5 +1075,7 @@ export const DECOR_IDS: readonly string[] = [
   ...Object.keys(BIG_ITEMS),
   'deco-pendant',
   'deco-pendant-lux',
-  'deco-stools',
+  'deco-pendant-bar',
+  'deco-pendant-bar-lux',
+  'deco-stool',
 ];

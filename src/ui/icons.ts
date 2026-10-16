@@ -1,5 +1,6 @@
-/** Namen im Sprite `public/assets/ui/icons.svg` (Phosphor Fill, MIT; siehe docs/ASSETS.md). */
+/** Namen im Sprite `public/assets/ui/icons.svg` (Phosphor Fill, MIT, und eigene; siehe docs/ASSETS.md). */
 export type IconName =
+  | 'banknote'
   | 'coffee'
   | 'leaf'
   | 'plus'

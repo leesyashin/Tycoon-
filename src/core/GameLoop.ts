@@ -7,10 +7,12 @@ import { advanceCleanliness } from './staff/effects';
 import { HIGH_SATISFACTION } from '@data/achievements';
 import { stepEvents } from './events/schedule';
 import { accrueLeafDrops, expectedLeafDrops } from './customers/drops';
+import { settleTill } from './economy/till';
 
 /**
  * Ein Simulationsschritt beliebiger Länge; die Rate-Formeln sind linear, die Zufriedenheit nähert sich exakt.
  * Einnahmen nutzen den Zustand zu Beginn des Schritts, danach ändern sich Sauberkeit und Zufriedenheit.
+ * Der Umsatz landet zuerst auf den offenen Bons der Kasse und kommt erst ins Geld, wenn ein Gast bezahlt hat.
  */
 export function tick(state: GameState, dtMs: number): GameState {
   const dt = Number.isFinite(dtMs) ? Math.max(0, dtMs) / 1000 : 0;
@@ -24,7 +26,11 @@ export function tick(state: GameState, dtMs: number): GameState {
   for (const id of Object.keys(state.locations)) {
     const loc = getLocation(state, id);
     const rates = computeLocationRates(state, id);
-    const gain = rates.incomePerSec.mul(dt);
+    const { till, paidAmount: gain } = settleTill(
+      loc.till,
+      rates.incomePerSec.mul(dt),
+      rates.served * dt,
+    );
     const target = rates.satisfaction.target;
     const satisfaction = target + (loc.satisfaction - target) * keep ** dt;
     locations[id] = {
@@ -33,6 +39,7 @@ export function tick(state: GameState, dtMs: number): GameState {
       earnedThisRun: loc.earnedThisRun.add(gain),
       satisfaction,
       cleanliness: advanceCleanliness(loc, dt, rates.served),
+      till,
     };
     earnedTotal = earnedTotal.add(gain);
     served += rates.served * dt;
