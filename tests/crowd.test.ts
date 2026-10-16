@@ -847,6 +847,53 @@ describe('Kasse: Gäste bezahlen, wenn core die Zahlung bucht', () => {
   });
 });
 
+describe('Kein Ruckeln bei vielen Gästen', () => {
+  const layout = getLayout('berlin');
+  it('rückt die Schlange auf, planen höchstens replansPerFrame Hereinkommende je Frame neu', () => {
+    const crowd = new CustomerCrowd(layout, 'berlin', lcg(41));
+    const served = CROWD.maxVisiblePayPerSec * 3;
+    const till = tillDriver(served);
+    let most = 0;
+    let replans = 0;
+    for (let t = 0; t < 90 * 60; t++) {
+      const before = new Map(
+        crowd.agents
+          .filter((a) => a.active && a.phase === 'walkIn')
+          .map((a) => [a, { ...a.goal }] as const),
+      );
+      crowd.update(1 / 60, input({ served, orderCap: 6, tables: 12, till: till(1 / 60) }));
+      // Neues Ziel unterwegs = neu geplanter Weg (`spawn` setzt das erste Ziel, die zählen hier nicht).
+      let n = 0;
+      for (const [a, goal] of before) if (a.goal.x !== goal.x || a.goal.y !== goal.y) n++;
+      most = Math.max(most, n);
+      replans += n;
+    }
+    expect(replans).toBeGreaterThan(20);
+    expect(most).toBeLessThanOrEqual(CROWD.replansPerFrame);
+  });
+
+  it('wer an der Kasse gebraucht wird, steht beim Szenenstart ohne berechneten Weg an', () => {
+    const calls: GridPos[] = [];
+    const nav = CafeNav.prototype.path;
+    CafeNav.prototype.path = function (this: CafeNav, ...a: Parameters<typeof nav>) {
+      calls.push(a[1]);
+      return nav.apply(this, a);
+    };
+    try {
+      const crowd = new CustomerCrowd(layout, 'berlin', lcg(42));
+      calls.length = 0;
+      crowd.update(1 / 60, input({ served: 1, till: { payments: 0, progress: 0.9 } }));
+      const queued = crowd.agents.filter((a) => a.active && a.phase !== 'walkIn');
+      expect(queued.length).toBeGreaterThan(0);
+      // Wer schon ansteht, hat keinen Weg vom Gehweg berechnet bekommen.
+      for (const a of queued) expect(a.path).toEqual([]);
+      expect(calls.length).toBeLessThanOrEqual(crowd.activeCount - queued.length);
+    } finally {
+      CafeNav.prototype.path = nav;
+    }
+  });
+});
+
 describe('Szene beeinflusst keine Einnahmen', () => {
   function busyState(): GameState {
     const s = createInitialState(0);

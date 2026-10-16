@@ -198,6 +198,8 @@ export class CustomerCrowd {
   private warm = false;
   private readonly shares: Record<CustomerTypeId, number>;
   private spawnAcc = 0;
+  /** Neuplanungen unterwegs, die in diesem Frame noch frei sind (`CROWD.replansPerFrame`). */
+  private replans = 0;
   private totalRate = 0;
   /** Gäste, die nur auf der Tafel warten (die Schlange ist voll); kommen nach, sobald Platz ist. */
   private overflow = 0;
@@ -353,6 +355,7 @@ export class CustomerCrowd {
     const step = CROWD.walkTilesPerSec * dt;
     this.payRemaining =
       till && this.totalRate > 0 ? Math.max(0, 1 - till.progress) / this.totalRate : Infinity;
+    this.replans = CROWD.replansPerFrame;
     for (const a of this.agents) {
       if (!a.active) continue;
       this.advance(a, step * a.pace, dt, input.orderCap, purchases, orders, !!till);
@@ -440,14 +443,15 @@ export class CustomerCrowd {
     // Zum eigenen Platz; die Wegsuche führt neben der Schlange heran (niemand läuft durch Wartende).
     const slot = this.slotPos(free, this.queue.length - 1);
     free.goal = slot;
-    free.path = this.nav.path('guest', start, slot, this.standing);
     if (inQueue) {
       free.x = slot.x;
       free.y = slot.y;
       free.path = [];
       free.phase = 'queue';
       free.fade = 1;
+      return true;
     }
+    free.path = this.nav.path('guest', start, slot, this.standing);
     return true;
   }
 
@@ -491,7 +495,8 @@ export class CustomerCrowd {
         const idx = this.queue.indexOf(a);
         if (idx >= 0) {
           const slot = this.slotPos(a, idx);
-          if (Math.hypot(slot.x - a.goal.x, slot.y - a.goal.y) > 0.05) {
+          if (Math.hypot(slot.x - a.goal.x, slot.y - a.goal.y) > 0.05 && this.replans > 0) {
+            this.replans--;
             a.goal = slot;
             a.path = this.nav.path('guest', a, slot, this.standing);
           }
