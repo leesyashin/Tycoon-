@@ -107,6 +107,28 @@ const AMBIENCE: Record<string, (c: IsoCanvas) => void> = {
     }
     c.wallV(0.11, 0.8035, 2.6, 0.14, 0.6, C.brass);
   },
+  // Parkplatz (Icon): blaues „P“-Schild auf der Stange, davor ein Anlehnbügel mit Fahrrad-Rad und ein Rollerheck
+  parking(c) {
+    c.shadowDisc(0.5, 0.5, 0, 0.3, 0.24);
+    c.flat(0.18, 0.2, 0, 0.64, 0.6, '#6f7383');
+    for (const u of [0.32, 0.52, 0.72]) c.flat(u, 0.24, 0.01, 0.02, 0.5, C.white);
+    c.cylinder(0.32, 0.36, 0, 0.022, 30, C.galvanized, tint(C.galvanized, 0.3));
+    c.wallU(0.345, 0.22, 24, 0.28, 12, C.white);
+    c.wallU(0.347, 0.235, 25, 0.25, 10, C.cobalt);
+    const glyph = (v0: number, v1: number, z0: number, z1: number) =>
+      c.wallU(0.349, v0, z0, v1 - v0, z1 - z0, C.white);
+    // Auf der Fläche zur Kamera liegt größeres v links: Stamm bei großem v, Bogen rechts davon.
+    glyph(0.37, 0.4, 26.5, 33.5);
+    glyph(0.29, 0.4, 32.4, 33.5);
+    glyph(0.29, 0.4, 29.4, 30.5);
+    glyph(0.29, 0.32, 29.4, 33.5);
+    // Rollerheck und Rad vorn
+    c.bevel(0.5, 0.56, 1.6, 0.26, 0.14, 6, '#77c4b1', { b: 1 });
+    c.bevel(0.53, 0.57, 7.4, 0.2, 0.12, 1.4, C.cream, { b: 0.5 });
+    strut(c, [0.66, 0.78, 0], [0.66, 0.78, 8], C.galvanized, 1.4);
+    strut(c, [0.66, 0.78, 8], [0.86, 0.78, 8], C.galvanized, 1.4);
+    strut(c, [0.86, 0.78, 8], [0.86, 0.78, 0], C.galvanized, 1.4);
+  },
   // Beistelltisch mit Router (drei Antennen, LEDs) und Steckdosenleiste mit Kabel
   wifi(c) {
     c.shadowDisc(0.5, 0.5, 0, 0.22, 0.26);
@@ -276,11 +298,72 @@ function passItemSprites(): SpriteDef[] {
       c.disc(-0.01, -0.01, 4.45, 0.022, tint(C.matchaFoam, 0.5));
     },
   };
-  return Object.entries(items).map(([id, draw]) => {
-    const c = canvasItem();
-    draw(c);
-    return { name: `item-${id}`, svg: c.svg() };
-  });
+  // Benutztes Geschirr (`item-<id>-empty`): bleibt auf dem Tisch, bis eine Bedienung abräumt bzw. der Gast es zur
+  // Rückgabe bringt.
+  const crumbs = (c: IsoCanvas, z: number) => {
+    for (const [u, v] of [
+      [-0.03, 0.02],
+      [0.02, -0.03],
+      [0.035, 0.025],
+      [-0.012, -0.018],
+    ] as const)
+      c.disc(u, v, z, 0.008, '#c9893c');
+  };
+  const empty: Record<string, (c: IsoCanvas) => void> = {
+    matcha(c) {
+      saucer(c);
+      c.frustum(0, 0, 0.8, 0.045, 0.06, 6, C.cup, tint(C.cup, 0.25));
+      c.disc(0, 0, 6.85, 0.05, tint(C.matchaFoam, 0.55));
+      c.disc(0.01, 0.005, 6.86, 0.03, tint(C.cup, 0.3));
+      c.box(0.055, -0.008, 3, 0.02, 0.016, 2.6, C.cup);
+      c.box(-0.075, 0.02, 0.8, 0.05, 0.012, 0.4, C.stainless);
+    },
+    coffee(c) {
+      saucer(c);
+      c.frustum(0, 0, 0.8, 0.04, 0.052, 5, C.cobalt, tint(C.cobalt, 0.3));
+      c.disc(0, 0, 5.85, 0.042, tint(C.coffee, 0.55));
+      c.disc(0.008, 0.004, 5.86, 0.026, tint(C.cobalt, 0.45));
+      c.box(0.048, -0.008, 2.6, 0.02, 0.016, 2.4, C.cobalt);
+      c.box(-0.07, 0.02, 0.8, 0.045, 0.012, 0.4, C.stainless);
+    },
+    iced(c) {
+      c.shadowDisc(0, 0, 0, 0.06, 0.2);
+      c.group(0.6, () => c.cylinder(0, 0, 0, 0.045, 7.2, C.glass, tint(C.glass, 0.5)));
+      c.box(-0.02, -0.02, 0.4, 0.02, 0.02, 1.4, C.white);
+      c.box(0.004, 0.002, 0.4, 0.018, 0.018, 1.2, C.white);
+      c.disc(0, 0, 0.5, 0.03, tint(C.matcha, 0.55));
+      c.box(0.012, -0.006, 6.4, 0.012, 0.012, 5, C.cobalt);
+    },
+    croissant(c) {
+      saucer(c);
+      crumbs(c, 0.82);
+      c.dome(0.03, 0.02, 0.8, 0.018, 1.2, '#d9953f');
+    },
+    cake(c) {
+      saucer(c);
+      crumbs(c, 0.82);
+      c.disc(-0.02, 0.0, 0.82, 0.02, tint(C.matchaFoam, 0.3));
+      c.box(-0.06, 0.02, 0.8, 0.08, 0.012, 0.4, C.stainless);
+    },
+    bowl(c) {
+      c.shadowDisc(0, 0, 0, 0.08, 0.22);
+      c.frustum(0, 0, 0, 0.04, 0.07, 4.6, '#5a4a3e', '#7a6656');
+      c.disc(0, 0, 4.4, 0.058, '#6b584a');
+      c.disc(0.006, 0.004, 4.42, 0.03, tint(C.matcha, 0.35));
+    },
+  };
+  return [
+    ...Object.entries(items).map(([id, draw]) => {
+      const c = canvasItem();
+      draw(c);
+      return { name: `item-${id}`, svg: c.svg() };
+    }),
+    ...Object.entries(empty).map(([id, draw]) => {
+      const c = canvasItem();
+      draw(c);
+      return { name: `item-${id}-empty`, svg: c.svg() };
+    }),
+  ];
 }
 
 export function fxSprites(): SpriteDef[] {
