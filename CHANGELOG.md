@@ -4,6 +4,15 @@ Alle nennenswerten Änderungen an Matcha Café Empire. Format angelehnt an [Keep
 
 ## [Unreleased]
 
+### Objekte antippen statt Level-Schilder (2026-10-16)
+
+Vorgabe Vincent: Keine Level-Symbole mehr über Kasse und Co. – das Level soll man erst sehen, wenn man das Objekt
+antippt, und das Antippen soll direkt ins Upgrade-Menü führen, für alle Objekte.
+
+- Über Geräten stehen keine „Lv …“-Schilder mehr, über gesperrten Bauplätzen kein „ab Café-Lv …“. Das Level steht im Panel.
+- Jedes Objekt im Café öffnet beim Antippen sein Upgrade-Panel: Geräte, Theke und die Warteschlangen-Tafel (Kasse), Tische, Terrassen-Tische (Terrasse), Pflanzen, Leuchten, Barhocker und Wand-Deko (Deko), Musik-Anlage und WLAN. Getroffen wird, was man sieht – ein Tisch davor verdeckt die Theke nicht mehr. Boden antippen füllt weiter den Hype.
+- Im Panel stehen die Kauf-Buttons (×1, ×10, ×100, Max) gleich unter Name und Level, auch auf kleinen Handys ohne Scrollen.
+
 ### Geldscheine, Bezahlen an der Kasse, Barhocker (2026-10-15)
 
 Vorgabe Vincent: Die Währung soll aus normalen Geldscheinen bestehen, das Geld erst reinkommen, wenn der Kunde
