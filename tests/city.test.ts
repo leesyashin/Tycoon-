@@ -24,7 +24,8 @@ import {
   type GridRect,
 } from '@data/city';
 import { LOCATIONS } from '@data/locations';
-import { getLayout, pathToTable, waiterPathToTable } from '@data/layouts';
+import { getLayout } from '@data/layouts';
+import { CafeNav } from '@scenes/agents/nav';
 import { StreetLife } from '../src/scenes/city/streetLife';
 import { ART_SCALE } from '../src/scenes/art';
 import { toScreen } from '../src/scenes/iso/iso';
@@ -255,13 +256,15 @@ describe('Stadtviertel: Grundriss', () => {
       first = crowd.agents.find((a) => a.active);
     }
     expect(first).toBeDefined();
-    // Sie tauchen auf dem Gehweg seitlich der Tür auf (entlang der Gehweg-Richtung).
+    // Sie tauchen auf dem Gehweg seitlich der Tür auf (entlang der Gehweg-Richtung) und blenden dort ein; im ersten
+    // Schritt sind sie schon ein Stück gegangen.
     const along = layout.street.axis === 'u' ? 'x' : 'y';
     const across = along === 'x' ? 'y' : 'x';
-    expect(first?.[across]).toBeCloseTo(curb[across]);
+    expect(Math.abs((first?.[across] ?? 0) - curb[across])).toBeLessThan(0.1);
     expect(Math.abs((first?.[along] ?? 0) - curb[along])).toBeGreaterThanOrEqual(
-      layout.street.spreadMin,
+      layout.street.spreadMin - 0.1,
     );
+    expect(first?.fade).toBeLessThan(0.2);
   });
 });
 
@@ -341,10 +344,26 @@ describe('Stadtviertel: Kamera und Wege', () => {
     const layout = getLayout('berlin');
     const out = layout.tables.find((t) => t.outside);
     if (!out) throw new Error('no terrace table');
+    // Die Tür ist die Lücke in der rechten Fassade: der Weg kreuzt die Fassade innerhalb der Türkachel.
+    const e = layout.entrance;
+    const wall = e.x + 0.5;
     const through = (path: readonly { x: number; y: number }[]) =>
-      path.some((p) => p.x === layout.entrance.x && p.y === layout.entrance.y);
-    expect(through(pathToTable(layout, layout.order.access, out))).toBe(true);
-    expect(through(waiterPathToTable(layout, out))).toBe(true);
+      path.some((p, i) => {
+        const q = path[i - 1];
+        if (!q || (q.x - wall) * (p.x - wall) > 0 || p.x === q.x) return false;
+        const y = q.y + ((p.y - q.y) * (wall - q.x)) / (p.x - q.x);
+        return Math.abs(y - e.y) < 0.5;
+      });
+    const nav = new CafeNav(layout);
+    const seat = out.seats[0];
+    const home = layout.pickup.waiterHomes[0];
+    if (!home) throw new Error('no waiter');
+    const access = layout.order.access;
+    expect(through([access, ...nav.path('guest', access, seat)])).toBe(true);
+    expect(through([home, ...nav.path('staff', home, out.side)])).toBe(true);
+    // Nirgends sonst durch eine Wand: jeder Wechsel zwischen drinnen und draußen liegt in der Tür.
+    for (const path of [nav.path('guest', access, seat), nav.path('staff', home, out.side)])
+      for (const p of path) expect(nav.blocked('staff', p.x, p.y)).toBe(false);
   });
 });
 

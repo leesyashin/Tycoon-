@@ -1,15 +1,8 @@
 import {
   CROWD,
-  pathFromPickup,
-  cleanerPathToSpot,
-  cleanerPathToTable,
-  pathFromStool,
-  pathFromTable,
-  pathToPickup,
-  pathToStool,
-  pathToTable,
+  NAV,
+  inRoom,
   visibleTables,
-  waiterPathToTable,
   type CafeLayout,
   type GridPos,
   type TablePlacement,
@@ -17,13 +10,15 @@ import {
 import type { CustomerTypeId } from '@data/customerTypes';
 import { CUSTOMER_LOOKS } from '@data/art';
 import { customerTypeShares, pickCustomerType } from '@core/customers/types';
+import { CafeNav, pathLength } from './nav';
 
 /**
  * Kosmetische Figuren des bedienten Cafés (Phase 2): Gäste stellen sich an der Kasse an, bestellen und bezahlen,
  * setzen sich oder warten an der Ausgabe, Bedienungen bringen die Bestellung, Abholer trinken auf den Barhockern,
  * Putzkräfte wischen dreckige Tische. Liest nur Raten und Zähler aus `core`, schreibt nie in den GameState:
  * Einnahmen entstehen ausschließlich im Rate-Modell; der Gast an der Kasse bezahlt, wenn `core` die Zahlung bucht
- * (`CrowdInput.till`). Kein Phaser-Import, damit testbar.
+ * (`CrowdInput.till`). Wege kommen aus der Wegsuche (`nav.ts`) und beginnen immer dort, wo die Figur gerade steht.
+ * Kein Phaser-Import, damit testbar.
  */
 export type CustomerPhase =
   | 'walkIn'
@@ -62,8 +57,12 @@ export interface Agent {
   /** Versatz im Gedränge hinter der sichtbaren Schlange. */
   jx: number;
   jy: number;
-  /** Beim Gehen: schon zur Tür hinaus und auf dem Gehweg unterwegs. */
-  outside: boolean;
+  /** Ziel des laufenden Wegs beim Hereinkommen (Schlangenplatz); ändert es sich, wird ab hier neu geplant. */
+  goal: GridPos;
+  /** Eigenes Lauftempo (Faktor um 1), damit nicht alle im Gleichschritt gehen. */
+  pace: number;
+  /** Deckkraft 0..1: Gäste blenden auf dem Gehweg ein und am Ende ihres Wegs wieder aus. */
+  fade: number;
 }
 
 export type WaiterPhase = 'idle' | 'toTable' | 'serve' | 'back';
@@ -78,8 +77,6 @@ export interface Waiter {
   timer: number;
   /** Gast (Agent-ID), der gerade bedient wird, sonst −1. */
   target: number;
-  /** Hinweg zum Tisch; zurück geht es denselben Weg (auch durch die Tür von der Terrasse). */
-  route: GridPos[];
 }
 
 /** `toMop`/`mop`: kein Tisch ist dreckig, die Putzkraft wischt den Boden (nur Optik). */
@@ -95,8 +92,6 @@ export interface Cleaner {
   timer: number;
   /** Tisch, der gerade geputzt wird, sonst −1. */
   table: number;
-  /** Hinweg zum zuletzt geputzten Tisch (rückwärts zurück auf die Laufzeile). */
-  route: GridPos[];
 }
 
 /**
@@ -140,6 +135,11 @@ export interface CrowdInput {
   tables: number;
   /** Terrassen-Stufe: Tische draußen (Standard 0). */
   terrace?: number;
+  /**
+   * Ambiente-Level (`LocationState.ambience`): welche Deko, Musik- und WLAN-Ecke im Raum steht und umgangen wird.
+   * Ohne Angabe umgehen die Wege jedes Deko-Stück.
+   */
+  ambience?: Readonly<Record<string, number>>;
   /** Sauberkeit 0..100 → Anteil dreckiger Tische. */
   cleanliness: number;
   /** Sichtbare Baristas (je gekauftem Gerät einer, in Reihenfolge); leer = keine Barista-Figuren. */
@@ -205,6 +205,9 @@ export class CustomerCrowd {
   /** Sichtbar je Tisch-Index (Raum nach `seats`, Terrasse nach Terrassen-Stufe). */
   private tableShown: boolean[] = [];
   private nextSpot = 0;
+  private readonly nav: CafeNav;
+  /** Stehende Figuren dieses Schritts (wartende Abholer, servierende Bedienungen, wischende Putzkräfte). */
+  private readonly standing: GridPos[] = [];
 
   constructor(
     private readonly layout: CafeLayout,
@@ -214,7 +217,8 @@ export class CustomerCrowd {
     this.shares = customerTypeShares(locationId);
     this.seatTaken = layout.tables.map(() => [false, false]);
     this.stoolTaken = layout.bar.stools.map(() => false);
-    this.walkSec = walkInSec(layout);
+    this.nav = new CafeNav(layout);
+    this.walkSec = walkInSec(layout, this.nav);
     this.leadSec = this.walkSec + CROWD.payLeadSec;
     for (let i = 0; i < CROWD.maxAgents; i++) {
       this.agents.push({
@@ -235,7 +239,9 @@ export class CustomerCrowd {
         waited: 0,
         jx: 0,
         jy: 0,
-        outside: false,
+        goal: { x: 0, y: 0 },
+        pace: 1,
+        fade: 1,
       });
     }
     for (let i = 0; i < CROWD.maxWaiters; i++) {
@@ -249,7 +255,6 @@ export class CustomerCrowd {
         path: [],
         timer: 0,
         target: -1,
-        route: [],
       });
     }
     for (let i = 0; i < CROWD.maxCleaners; i++) {
@@ -262,7 +267,6 @@ export class CustomerCrowd {
         path: [],
         timer: 0,
         table: -1,
-        route: [],
       });
     }
     for (let i = 0; i < CROWD.maxBaristas; i++) {
@@ -320,6 +324,8 @@ export class CustomerCrowd {
     const shown = new Set(visibleTables(this.layout, input.tables, input.terrace ?? 0));
     this.tableShown = this.layout.tables.map((t) => shown.has(t));
     this.tablesVisible = shown.size;
+    this.nav.setVisible(this.tableShown, input.ambience);
+    this.collectStanding();
 
     const till = input.till;
     this.queueCap = CROWD.maxQueueFigures;
@@ -349,7 +355,7 @@ export class CustomerCrowd {
       till && this.totalRate > 0 ? Math.max(0, 1 - till.progress) / this.totalRate : Infinity;
     for (const a of this.agents) {
       if (!a.active) continue;
-      this.advance(a, step, dt, input.orderCap, purchases, orders, !!till);
+      this.advance(a, step * a.pace, dt, input.orderCap, purchases, orders, !!till);
     }
     // Gebuchte Zahlungen: Wer an der Kasse steht, hat bezahlt (es steht immer nur einer dort); weitere Zahlungen
     // (mehr Gäste, als Figuren an die Kasse passen) zeigt die Szene nur an der Kasse.
@@ -393,11 +399,19 @@ export class CustomerCrowd {
     return spawned;
   }
 
-  /** Punkt auf dem Gehweg vor oder hinter dem Eingang (Erscheinen und Verschwinden der Gäste). */
+  /**
+   * Punkt auf dem Gehweg vor oder hinter dem Eingang (Erscheinen und Verschwinden der Gäste), möglichst nicht in
+   * einem Terrassen-Stuhl oder Pflanzkübel.
+   */
   private sidewalkPoint(): GridPos {
     const { curb, axis, spreadMin, spreadMax } = this.layout.street;
-    const off = (this.rng() < 0.5 ? -1 : 1) * (spreadMin + this.rng() * (spreadMax - spreadMin));
-    return axis === 'u' ? { x: curb.x + off, y: curb.y } : { x: curb.x, y: curb.y + off };
+    let p: GridPos = { ...curb };
+    for (let tries = 0; tries < 6; tries++) {
+      const off = (this.rng() < 0.5 ? -1 : 1) * (spreadMin + this.rng() * (spreadMax - spreadMin));
+      p = axis === 'u' ? { x: curb.x + off, y: curb.y } : { x: curb.x, y: curb.y + off };
+      if (this.nav.clear('guest', p.x, p.y)) break;
+    }
+    return p;
   }
 
   /** `inQueue`: gleich auf dem eigenen Schlangenplatz (Szenenstart), sonst vom Gehweg her. */
@@ -409,12 +423,11 @@ export class CustomerCrowd {
     free.type = pickCustomerType(this.shares, this.rng());
     free.look = pickLook(free.type, this.rng());
     free.phase = 'walkIn';
-    // Vom Gehweg her: seitlich auftauchen, zur Tür abbiegen, dann wie bisher zur Schlange.
+    // Vom Gehweg her: seitlich auftauchen (einblenden) und direkt durch die Tür zum eigenen Platz.
     const start = this.sidewalkPoint();
     free.x = start.x;
     free.y = start.y;
     free.timer = 0;
-    free.outside = false;
     free.serveTotal = 0;
     free.table = -1;
     free.stool = -1;
@@ -422,23 +435,18 @@ export class CustomerCrowd {
     free.waited = 0;
     free.jx = (this.rng() - 0.5) * CROWD.crowdSpread;
     free.jy = (this.rng() - 0.5) * CROWD.crowdSpread;
-    // Neben der Schlange heran bis auf Höhe des eigenen Platzes, erst dann hinein (niemand läuft durch Wartende).
-    const { lane, path } = this.layout.order;
-    const index = this.queue.length - 1;
-    const slot = this.slotPos(free, index);
-    const approach =
-      index < this.visibleSlots ? { x: slot.x + lane.x, y: slot.y + lane.y } : { ...slot };
-    free.path = [
-      { ...this.layout.street.curb },
-      { ...this.layout.entrance },
-      ...path.map((p) => ({ ...p })),
-      approach,
-    ];
+    free.pace = 1 + (this.rng() * 2 - 1) * CROWD.paceSpread;
+    free.fade = 0;
+    // Zum eigenen Platz; die Wegsuche führt neben der Schlange heran (niemand läuft durch Wartende).
+    const slot = this.slotPos(free, this.queue.length - 1);
+    free.goal = slot;
+    free.path = this.nav.path('guest', start, slot, this.standing);
     if (inQueue) {
       free.x = slot.x;
       free.y = slot.y;
       free.path = [];
       free.phase = 'queue';
+      free.fade = 1;
     }
     return true;
   }
@@ -479,15 +487,16 @@ export class CustomerCrowd {
   ): void {
     switch (a.phase) {
       case 'walkIn': {
-        // Ist vorn inzwischen Platz, geht es gleich auf Höhe des neuen Platzes (nicht erst ans alte Ende).
+        // Ist vorn inzwischen Platz (oder hinten nicht mehr), geht es von hier aus direkt zum neuen Platz.
         const idx = this.queue.indexOf(a);
-        const last = a.path[a.path.length - 1];
-        if (last && idx >= 0) {
+        if (idx >= 0) {
           const slot = this.slotPos(a, idx);
-          const { lane } = this.layout.order;
-          a.path[a.path.length - 1] =
-            idx < this.visibleSlots ? { x: slot.x + lane.x, y: slot.y + lane.y } : slot;
+          if (Math.hypot(slot.x - a.goal.x, slot.y - a.goal.y) > 0.05) {
+            a.goal = slot;
+            a.path = this.nav.path('guest', a, slot, this.standing);
+          }
         }
+        a.fade = Math.min(1, a.fade + step / CROWD.fadeTiles);
         if (follow(a, step)) {
           a.phase = 'queue';
           this.overtake(a);
@@ -545,16 +554,18 @@ export class CustomerCrowd {
         if (a.stool >= 0) this.leaveStool(a);
         else this.leaveTable(a);
         return;
-      case 'leave':
-        if (!follow(a, step)) return;
-        if (a.outside) {
+      case 'leave': {
+        if (follow(a, step)) {
           this.release(a);
           return;
         }
-        // An der Tür angekommen: über den Gehweg zur Seite weg.
-        a.outside = true;
-        a.path = [{ ...this.layout.street.curb }, this.sidewalkPoint()];
+        // Draußen auf dem letzten Stück ausblenden.
+        if (!inRoom(this.layout, Math.round(a.x), Math.round(a.y))) {
+          const rest = pathLength(a, a.path);
+          a.fade = Math.min(1, rest / CROWD.fadeTiles);
+        }
         return;
+      }
     }
   }
 
@@ -569,8 +580,6 @@ export class CustomerCrowd {
 
   /** Nach dem Bestellen um die Ecke: Platz am Tisch, wenn einer frei ist und der Gast bleiben will, sonst Abholung. */
   private afterOrder(a: Agent): void {
-    const exit = this.layout.order.exit.map((p) => ({ ...p }));
-    const from = exit[exit.length - 1] ?? this.layout.order.access;
     const seat = this.rng() < CROWD.dineInShare ? this.pickSeat() : null;
     if (seat) {
       const table = this.layout.tables[seat.table];
@@ -580,16 +589,37 @@ export class CustomerCrowd {
         a.table = seat.table;
         a.seat = seat.seat;
         a.phase = 'toSeat';
-        a.path = [...exit, ...pathToTable(this.layout, from, table), { ...table.seats[seat.seat] }];
+        a.path = this.nav.path('guest', a, table.seats[seat.seat], this.standing);
         return;
       }
     }
     const spots = this.layout.pickup.spots;
     a.table = -1;
-    a.spot = spots.length > 0 ? this.nextSpot++ % spots.length : 0;
-    const spot = spots[a.spot] ?? from;
+    a.spot = this.pickSpot();
+    const spot = spots[a.spot] ?? { x: a.x, y: a.y };
     a.phase = 'toPickup';
-    a.path = [...exit, ...pathToPickup(this.layout, from, spot).map((p) => ({ ...p }))];
+    a.path = this.nav.path('guest', a, spot, this.standing);
+  }
+
+  /** Nächster Abholplatz reihum, ein freier vor einem, an dem schon jemand wartet. */
+  private pickSpot(): number {
+    const spots = this.layout.pickup.spots;
+    if (spots.length === 0) return 0;
+    for (let k = 0; k < spots.length; k++) {
+      const i = (this.nextSpot + k) % spots.length;
+      const busy = this.agents.some(
+        (o) =>
+          o.active &&
+          o.table < 0 &&
+          o.spot === i &&
+          (o.phase === 'toPickup' || o.phase === 'waitServe'),
+      );
+      if (!busy) {
+        this.nextSpot = i + 1;
+        return i;
+      }
+    }
+    return this.nextSpot++ % spots.length;
   }
 
   private pickSeat(): { table: number; seat: 0 | 1 } | null {
@@ -613,7 +643,6 @@ export class CustomerCrowd {
       a.timer = CROWD.dwellMinSec + this.rng() * (CROWD.dwellMaxSec - CROWD.dwellMinSec);
       return;
     }
-    const spot = this.layout.pickup.spots[a.spot] ?? { x: a.x, y: a.y };
     // Mit dem Getränk auf einen freien Barhocker, sonst gleich hinaus.
     const stools = this.layout.bar.stools;
     const free = stools.map((_, i) => i).filter((i) => !this.stoolTaken[i]);
@@ -626,19 +655,16 @@ export class CustomerCrowd {
       this.stoolTaken[stool] = true;
       a.stool = stool;
       a.phase = 'toStool';
-      a.path = pathToStool(this.layout, spot, at);
+      a.path = this.nav.path('guest', a, at, this.standing);
       return;
     }
-    a.phase = 'leave';
-    a.path = pathFromPickup(this.layout, spot).map((p) => ({ ...p }));
+    this.leave(a, this.sidewalkPoint());
   }
 
   private leaveStool(a: Agent): void {
-    const at = this.layout.bar.stools[a.stool];
     this.stoolTaken[a.stool] = false;
     a.stool = -1;
-    a.phase = 'leave';
-    a.path = at ? pathFromStool(this.layout, at) : [{ ...this.layout.entrance }];
+    this.leave(a, this.sidewalkPoint());
   }
 
   private leaveTable(a: Agent): void {
@@ -646,22 +672,35 @@ export class CustomerCrowd {
     const taken = this.seatTaken[a.table];
     if (taken) taken[a.seat] = false;
     if (table && this.dirty.size < this.desiredDirty) this.dirty.add(a.table);
-    a.phase = 'leave';
-    a.path = table
-      ? pathFromTable(this.layout, table).map((p) => ({ ...p }))
-      : [{ ...this.layout.entrance }];
-    // Von der Terrasse direkt über den Gehweg weg (nicht noch einmal durchs Café): rechts den Gehweg entlang,
-    // vorn vom Café weg nach links.
-    if (table?.outside) {
-      a.outside = true;
-      const end = a.path[a.path.length - 1] ?? this.layout.street.curb;
-      const { spreadMin, spreadMax } = this.layout.street;
-      const off = spreadMin + this.rng() * (spreadMax - spreadMin);
-      a.path.push(
-        table.outside.side === 'right' ? this.sidewalkPoint() : { x: end.x - off, y: end.y },
-      );
-    }
     a.table = -1;
+    // Vorn auf der Terrasse geht man vom Café weg nach links, sonst den Gehweg rechts entlang (durch die Tür).
+    if (table?.outside?.side === 'front') {
+      const { spreadMin, spreadMax, frontWalk } = this.layout.street;
+      const off = spreadMin + this.rng() * (spreadMax - spreadMin);
+      this.leave(a, { x: table.side.x - off, y: frontWalk });
+      return;
+    }
+    this.leave(a, this.sidewalkPoint());
+  }
+
+  /** Direkt von hier zu einem Punkt auf dem Gehweg, dort ausblenden. */
+  private leave(a: Agent, to: GridPos): void {
+    a.phase = 'leave';
+    a.path = this.nav.path('guest', a, to, this.standing);
+  }
+
+  /**
+   * Stehende Figuren dieses Schritts, um die neue Wege herumführen: wartende Abholer, servierende Bedienungen,
+   * wischende Putzkräfte. (Die Schlange, Stühle und Hocker kennt die Wegsuche selbst.)
+   */
+  private collectStanding(): void {
+    const s = this.standing;
+    s.length = 0;
+    for (const a of this.agents)
+      if (a.active && a.table < 0 && a.stool < 0 && a.phase === 'waitServe') s.push(a);
+    for (const w of this.waiters) if (w.active && w.phase === 'serve') s.push(w);
+    for (const c of this.cleaners)
+      if (c.active && (c.phase === 'wipe' || c.phase === 'mop')) s.push(c);
   }
 
   private desiredDirtyCache = { cleanliness: -1, tables: -1, value: 0 };
@@ -700,10 +739,12 @@ export class CustomerCrowd {
             return;
           }
           const table = this.layout.tables[next.table];
-          if (!table) return;
+          const seat = table?.seats[next.seat];
+          if (!table || !seat) return;
+          // Neben den Gast treten (auf der Seite, von der sie kommt), nicht an einen festen Punkt am Tisch.
+          const at = this.nav.standSpot('staff', seat, NAV.serveDist, w, table.side);
           w.phase = 'toTable';
-          w.route = waiterPathToTable(this.layout, table).map((p) => ({ ...p }));
-          w.path = w.route.map((p) => ({ ...p }));
+          w.path = this.nav.path('staff', w, at, this.standing);
           return;
         }
         case 'toTable':
@@ -722,9 +763,9 @@ export class CustomerCrowd {
             w.phase = 'idle';
             return;
           }
+          // Direkt zurück zur Ausgabe (von der Terrasse durch die Tür), nicht den Hinweg rückwärts.
           w.phase = 'back';
-          // Denselben Weg zurück (über die Laufzeile, von der Terrasse durch die Tür), dann nach Hause.
-          w.path = [...w.route.slice(0, -1).reverse(), { ...home }];
+          w.path = this.nav.path('staff', w, home, this.standing);
           return;
         }
         case 'back':
@@ -754,7 +795,6 @@ export class CustomerCrowd {
     const visible = Math.min(CROWD.maxCleaners, Math.max(0, Math.floor(hired)));
     const step = CROWD.staffTilesPerSec * dt;
     const home = this.layout.cleanerHome;
-    const row = this.layout.walkRows.top;
     this.cleaners.forEach((c, i) => {
       const spot = { x: home.x + i * 0.6, y: home.y };
       if (i >= visible) {
@@ -768,36 +808,22 @@ export class CustomerCrowd {
         c.table = -1;
         c.timer = this.rest(i);
       }
-      // Ein dreckiger Tisch geht immer vor: auch vom Bodenwischen weg.
-      if (c.phase === 'idle' || c.phase === 'toMop' || c.phase === 'mop') {
-        const target = [...this.dirty].find((t) => !this.cleaners.some((o) => o.table === t));
-        const table = target === undefined ? undefined : this.layout.tables[target];
-        if (target !== undefined && table) {
-          c.table = target;
-          c.phase = 'toTable';
-          // Erst den letzten Weg zurück auf die Laufzeile (z. B. von der Terrasse), dann zum nächsten Tisch.
-          const back = c.route.slice(0, -1).reverse();
-          const from = back[back.length - 1] ?? { x: c.x, y: c.y };
-          c.route = cleanerPathToTable(this.layout, from, table).map((p) => ({ ...p }));
-          c.path = [...back, ...c.route];
-          return;
-        }
-      }
+      // Ein dreckiger Tisch geht immer vor – auch vom Bodenwischen oder vom Rückweg weg, und zwar der nächste,
+      // direkt von hier aus (von Tisch zu Tisch statt über den Startplatz).
+      if (
+        (c.phase === 'idle' || c.phase === 'back' || c.phase === 'toMop' || c.phase === 'mop') &&
+        this.goWipe(c)
+      )
+        return;
       switch (c.phase) {
         case 'idle': {
-          // Nichts zu tun: kurz verschnaufen, dann irgendwo den Boden wischen.
+          // Nichts zu tun: kurz verschnaufen, dann in der Nähe den Boden wischen.
           c.timer -= dt;
-          const spots = this.layout.mopSpots;
-          if (c.timer > 0 || spots.length === 0) return;
-          const taken = this.cleaners
-            .filter((o) => o !== c && (o.phase === 'toMop' || o.phase === 'mop'))
-            .map((o) => o.path[o.path.length - 1] ?? { x: o.x, y: o.y });
-          const free = spots.filter((p) => !taken.some((t) => t.x === p.x && t.y === p.y));
-          const to = free[Math.floor(this.rng() * free.length)] ?? spots[0];
+          if (c.timer > 0) return;
+          const to = this.pickMopSpot(c);
           if (!to) return;
           c.phase = 'toMop';
-          c.route = cleanerPathToSpot(this.layout, { x: c.x, y: c.y }, to);
-          c.path = c.route.map((p) => ({ ...p }));
+          c.path = this.nav.path('guest', c, to, this.standing);
           return;
         }
         case 'toTable':
@@ -811,14 +837,8 @@ export class CustomerCrowd {
           if (c.timer > 0) return;
           this.dirty.delete(c.table);
           c.table = -1;
-          if (this.dirty.size > 0) {
-            c.phase = 'idle';
-            c.timer = 0;
-            return;
-          }
-          c.phase = 'back';
-          c.path = [...c.route.slice(0, -1).reverse(), { x: spot.x, y: row }, { ...spot }];
-          c.route = [];
+          // Gleich weiter zum nächsten dreckigen Tisch, sonst in der Nähe wischen oder Pause.
+          if (!this.goWipe(c)) this.afterChore(c, spot);
           return;
         case 'back':
           if (follow(c, step)) {
@@ -835,18 +855,63 @@ export class CustomerCrowd {
         case 'mop':
           c.timer -= dt;
           if (c.timer > 0) return;
-          // Noch eine Stelle oder zurück zum Startplatz.
-          if (this.rng() < 0.5) {
-            c.phase = 'idle';
-            c.timer = 0;
-            return;
-          }
-          c.phase = 'back';
-          c.path = [...c.route.slice(0, -1).reverse(), { x: spot.x, y: row }, { ...spot }];
-          c.route = [];
+          this.afterChore(c, spot);
           return;
       }
     });
+  }
+
+  /** Zum nächsten dreckigen Tisch, den niemand sonst ansteuert; false, wenn keiner wartet. */
+  private goWipe(c: Cleaner): boolean {
+    const target = this.nearestDirty(c);
+    const table = target < 0 ? undefined : this.layout.tables[target];
+    if (!table) return false;
+    c.table = target;
+    c.phase = 'toTable';
+    const at = this.nav.standSpot('guest', table.tile, NAV.wipeDist, c, table.side);
+    c.path = this.nav.path('guest', c, at, this.standing);
+    return true;
+  }
+
+  /** Nach dem Wischen: gleich die nächste Stelle in der Nähe oder zum Startplatz verschnaufen. */
+  private afterChore(c: Cleaner, home: GridPos): void {
+    if (this.rng() < CROWD.mopAgainChance) {
+      c.phase = 'idle';
+      c.timer = 0;
+      return;
+    }
+    c.phase = 'back';
+    c.path = this.nav.path('guest', c, home, this.standing);
+  }
+
+  /** Nächster dreckiger Tisch, den keine andere Putzkraft schon ansteuert (−1 = keiner). */
+  private nearestDirty(c: Cleaner): number {
+    let best = -1;
+    let bestD = Infinity;
+    for (const t of this.dirty) {
+      if (this.cleaners.some((o) => o !== c && o.table === t)) continue;
+      const tile = this.layout.tables[t]?.tile;
+      if (!tile) continue;
+      const d = Math.hypot(tile.x - c.x, tile.y - c.y);
+      if (d < bestD) {
+        bestD = d;
+        best = t;
+      }
+    }
+    return best;
+  }
+
+  /** Wischstelle, an der niemand wischt und an der die Putzkraft nicht gerade steht; eher eine nahe. */
+  private pickMopSpot(c: Cleaner): GridPos | undefined {
+    const taken = this.cleaners
+      .filter((o) => o !== c && (o.phase === 'toMop' || o.phase === 'mop'))
+      .map((o) => o.path[o.path.length - 1] ?? { x: o.x, y: o.y });
+    const free = this.layout.mopSpots
+      .filter((p) => !taken.some((t) => Math.hypot(t.x - p.x, t.y - p.y) < 0.5))
+      .filter((p) => Math.hypot(p.x - c.x, p.y - c.y) > 0.5)
+      .sort((a, b) => Math.hypot(a.x - c.x, a.y - c.y) - Math.hypot(b.x - c.x, b.y - c.y));
+    const near = free.slice(0, CROWD.mopNearest);
+    return near[Math.floor(this.rng() * near.length)] ?? this.layout.mopSpots[0];
   }
 
   private rest(i: number): number {
@@ -891,11 +956,11 @@ export class CustomerCrowd {
           if (b.timer > 0) return;
           b.workTotal = 0;
           b.phase = 'toPass';
-          // Über den Gang; leicht versetzt, damit zwei Baristas an der Ausgabe nicht übereinander stehen.
-          b.path = [
-            ...this.toAisle(b.home),
-            { x: drop.x - (i % 3) * 0.12, y: drop.y + ((i % 2) - 0.5) * 0.16 },
-          ];
+          // Leicht versetzt, damit zwei Baristas an der Ausgabe nicht übereinander stehen.
+          b.path = this.nav.path('back', b, {
+            x: drop.x - (i % 3) * 0.12,
+            y: drop.y + ((i % 2) - 0.5) * 0.16,
+          });
           return;
         case 'toPass':
           if (follow(b, step)) {
@@ -912,11 +977,11 @@ export class CustomerCrowd {
           const busy = this.baristas.some((o) => o !== b && o.active && FETCHING.includes(o.phase));
           if (!busy && this.rng() < CROWD.fetchChance) {
             b.phase = 'toStore';
-            b.path = [{ ...this.layout.storage.fetchSpot }];
+            b.path = this.nav.path('back', b, this.layout.storage.fetchSpot);
             return;
           }
           b.phase = 'back';
-          b.path = [...this.toAisle(b.home), { ...b.home }];
+          b.path = this.nav.path('back', b, b.home);
           return;
         }
         case 'toStore':
@@ -928,7 +993,7 @@ export class CustomerCrowd {
           b.timer -= dt;
           if (b.timer > 0) return;
           b.phase = 'fromStore';
-          b.path = [{ ...b.home }];
+          b.path = this.nav.path('back', b, b.home);
           return;
         case 'back':
         case 'fromStore':
@@ -938,12 +1003,6 @@ export class CustomerCrowd {
           return;
       }
     });
-  }
-
-  /** Punkt auf dem Personal-Gang vor einem Arbeitsplatz abseits des Gangs (sonst kein Umweg). */
-  private toAisle(home: GridPos): GridPos[] {
-    const y = this.layout.pickup.aisleY;
-    return Math.abs(home.y - y) < 1e-6 ? [] : [{ x: home.x, y }];
   }
 
   private startWork(b: Barista, prepSec: number): void {
@@ -985,25 +1044,20 @@ export function pickLook(type: CustomerTypeId, roll: number): string {
 }
 
 /**
- * Typischer Weg eines neuen Gasts vom Gehweg bis an die Kasse in Sekunden (mittlere Streuung beim Auftauchen,
- * Abbiegen zur Tür, Weg zur Schlange, seitlich heran an den ersten Platz).
+ * Typischer Weg eines neuen Gasts vom Gehweg bis an die Kasse in Sekunden: Mittel der Wege aus beiden Richtungen
+ * des Gehwegs (mittlere Streuung beim Auftauchen) bis zum ersten Schlangenplatz.
  */
-export function walkInSec(layout: CafeLayout): number {
-  const { street, entrance, order } = layout;
-  const spread = (street.spreadMin + street.spreadMax) / 2;
-  const first = order.queue[0] ?? order.access;
-  const pts = [
-    street.curb,
-    entrance,
-    ...order.path,
-    { x: first.x + order.lane.x, y: first.y + order.lane.y },
-    first,
-  ];
-  let tiles = spread;
-  for (let i = 1; i < pts.length; i++) {
-    const a = pts[i - 1];
-    const b = pts[i];
-    if (a && b) tiles += Math.hypot(b.x - a.x, b.y - a.y);
+export function walkInSec(layout: CafeLayout, nav: CafeNav = new CafeNav(layout)): number {
+  const { curb, axis, spreadMin, spreadMax } = layout.street;
+  const spread = (spreadMin + spreadMax) / 2;
+  const first = layout.order.queue[0] ?? layout.order.access;
+  let tiles = 0;
+  for (const side of [-1, 1]) {
+    const start =
+      axis === 'u'
+        ? { x: curb.x + side * spread, y: curb.y }
+        : { x: curb.x, y: curb.y + side * spread };
+    tiles += pathLength(start, nav.path('guest', start, first)) / 2;
   }
   return tiles / CROWD.walkTilesPerSec;
 }

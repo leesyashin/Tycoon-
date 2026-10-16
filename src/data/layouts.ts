@@ -7,7 +7,8 @@
  * quer zur Tür (x = 9). Die Tür liegt in der rechten Fassade (11, 6): Gäste stehen nach zwei, drei Kacheln in der
  * Schlange entlang des kurzen Schenkels, bestellen an der Ecke, holen um die Ecke an der Ausgabe ab und gehen
  * hinter der Schlange vorbei wieder hinaus. Gastraum vorn mit acht Tischen, Wintergarten vorn links.
- * Kunden-Wege sind feste Waypoints, kein A*. Alle Standorte nutzen denselben Grundriss (eigene Böden/Wände kommen
+ * Wege sucht `scenes/agents/nav.ts` (Raster mit A*, Abkürzen auf Sicht, gerundete Kurven) aus diesen Hindernissen
+ * und Zonen; hier stehen nur Plätze und Ziele. Alle Standorte nutzen denselben Grundriss (eigene Böden/Wände kommen
  * aus dem Themen-Atlas).
  */
 import { BALANCE } from './balance';
@@ -76,15 +77,6 @@ export interface OrderArea {
   /** Sichtbare Schlangenplätze, `queue[0]` = `access`; dahinter wartet ein Grüppchen um `crowd`. */
   queue: GridPos[];
   crowd: GridPos;
-  /**
-   * Gäste laufen neben der Schlange heran: Zielpunkt = Platz + `lane` (Versatz), erst dann auf den Platz. So
-   * läuft niemand durch Wartende.
-   */
-  lane: GridPos;
-  /** Weg von der Tür bis vor die Schlange (ohne Tür, ohne Schlangenplätze). */
-  path: GridPos[];
-  /** Weg nach dem Bestellen um die Ecke (vor Abholung bzw. Tischweg). */
-  exit: GridPos[];
   /** Plätze der Verkäufer hinter der Kasse (Reihenfolge = Sichtbarkeit). */
   cashierSpots: GridPos[];
 }
@@ -94,12 +86,8 @@ export interface PickupArea {
   spots: GridPos[];
   /** Plätze der Bedienungen hinter der Ausgabe (Reihenfolge = Sichtbarkeit). */
   waiterHomes: GridPos[];
-  /** Weg vom Personal-Bereich in den Gastraum (Durchgang in der Theke). */
-  exit: GridPos[];
   /** Hier stellen Baristas das Fertige auf die Ausgabe (Personal-Bereich, neben den Bedienungen). */
   baristaDrop: GridPos;
-  /** Zeile des Personal-Gangs: wer nicht an ihm arbeitet (Gerät an der Seitenwand), geht erst auf den Gang. */
-  aisleY: number;
 }
 
 /** Teil des Lagers: Eckregal, Wandregal oder Ware auf der Palette. */
@@ -118,13 +106,17 @@ export interface StorageArea {
   fetchSpot: GridPos;
 }
 
-/**
- * Barhocker vor dem linken Thekenstück: Abholer setzen sich mit ihrem Getränk dorthin und trinken mit Blick zur
- * Theke. `row` = Laufzeile davor (Hin- und Rückweg, eine halbe Kachel vor den Abholplätzen).
- */
+/** Barhocker vor dem linken Thekenstück: Abholer setzen sich mit ihrem Getränk dorthin und trinken mit Blick zur Theke. */
 export interface BarArea {
   stools: GridPos[];
-  row: number;
+}
+
+/** Rechteck in Agenten-Koordinaten (Kachelmitte = ganze Zahl), [x0, x1) × [y0, y1). */
+export interface AreaRect {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
 }
 
 export interface AmbiencePlacement {
@@ -155,18 +147,24 @@ export interface CafeLayout {
   /** Fassade der Tür: `u` = vorn (y = gridSize), `v` = rechts (x = gridSize). */
   entranceSide: 'u' | 'v';
   /**
-   * Gehweg vor der Tür (Stadtviertel, `data/city.ts`): Gäste kommen den Gehweg entlang (`axis` = Richtung des
-   * Gehwegs), biegen bei `curb` zur Tür ab und gehen nachher zur Seite weg. `spread` = wie weit sie seitlich
-   * auftauchen (Kacheln).
+   * Gehweg vor der Tür (Stadtviertel, `data/city.ts`): Gäste tauchen auf der Linie durch `curb` entlang des Gehwegs
+   * (`axis`) `spread` Kacheln neben der Tür auf und gehen dort wieder weg; wer vorn auf der Terrasse saß, geht auf
+   * dem vorderen Gehweg (`frontWalk`) weg.
    */
-  street: { curb: GridPos; axis: 'u' | 'v'; spreadMin: number; spreadMax: number };
+  street: {
+    curb: GridPos;
+    axis: 'u' | 'v';
+    spreadMin: number;
+    spreadMax: number;
+    frontWalk: number;
+  };
+  /** Begehbare Flächen draußen (Gehweg mit Terrasse), Agenten-Koordinaten; die Fassaden trennen sie vom Raum. */
+  sidewalk: AreaRect[];
   /**
-   * Laufspuren draußen: Spalte `col` vor der rechten Fassade, Zeile `row` vor der vorderen; Terrassen-Gäste vorn
-   * gehen auf `frontWalk` (Gehweg vorn) weg.
+   * Personal-Bereich hinter der Theke (Kacheln inklusive beider Ecken) und sein Durchgang in den Gastraum: Gäste und
+   * Putzkräfte kommen nicht hinein, Baristas nicht heraus, Bedienungen überall hin.
    */
-  outside: { col: number; row: number; frontWalk: number };
-  /** Laufzeilen im Gastraum: `top` vor der Theke (Bestellen → Tisch, Bedienungen), `bottom` vorn am Fenster. */
-  walkRows: { top: number; bottom: number };
+  staffArea: { from: GridPos; to: GridPos; door: GridPos };
   /** Thekenmodule ohne Gerät, entlang der Theke (Reihenfolge = `COUNTER_PROPS`). */
   counter: CounterPlacement[];
   stations: StationPlacement[];
@@ -199,6 +197,10 @@ export const CROWD = {
   maxQueueOverflow: 14,
   walkTilesPerSec: 2.4,
   staffTilesPerSec: 3.2,
+  /** Gäste gehen je eigenem Tempo (±8 %), damit nicht alle im Gleichschritt laufen. */
+  paceSpread: 0.08,
+  /** Auf so vielen Kacheln blenden Gäste auf dem Gehweg ein bzw. am Ende ihres Wegs aus. */
+  fadeTiles: 1.2,
   /** Sichtbare Bestellzeit = 1 / Bestell-Kapazität, begrenzt auf diesen Bereich. */
   minServeSec: 0.4,
   maxServeSec: 3,
@@ -234,6 +236,9 @@ export const CROWD = {
   /** Boden wischen, wenn kein Tisch dreckig ist: so lange je Stelle, dazwischen Pause am Startplatz. */
   mopMinSec: 3,
   mopMaxSec: 6,
+  /** Nach dem Wischen gleich die nächste Stelle (sonst Pause am Startplatz); gewählt wird unter den nächsten. */
+  mopAgainChance: 0.5,
+  mopNearest: 3,
   restMinSec: 2,
   restMaxSec: 6,
   /**
@@ -253,6 +258,40 @@ export const CROWD = {
   passItemsMax: 4,
   /** Schätzung für die Verweildauer, aus der „+N“ berechnet wird. */
   avgVisitSec: 14,
+} as const;
+
+/**
+ * Wegsuche der Figuren (`scenes/agents/nav.ts`, nur Optik): Raster über Raum, Terrasse und Gehweg, harte Hindernisse
+ * (Wände, Theke, Geräte, Tische, Deko, Stadt-Objekte) und weiche (Stühle, Hocker, Schlange, stehende Figuren), die
+ * man nur nahe Start und Ziel oder gegen Umweg-Kosten streift.
+ */
+export const NAV = {
+  /** Kantenlänge einer Zelle (Kacheln); Zellmitten liegen auf Vielfachen davon, also auch auf jeder Kachelmitte. */
+  cell: 0.25,
+  /** Ausdehnung des Rasters in Agenten-Koordinaten. */
+  bounds: { x0: -1, y0: -4, x1: 14.5, y1: 14.5 },
+  /** So nah kommt eine Figur einem harten Hindernis höchstens (Körper). */
+  body: 0.1,
+  /** Wohlfühlabstand: so weit bleiben Wege von Hindernissen und Wartenden weg, wenn es geht. */
+  clearance: 0.3,
+  /** Kosten je Strecke im Wohlfühlabstand (statt 1): lieber ein kleiner Umweg als durch eine Schlange. */
+  softCost: 5,
+  /** Um Start und Ziel gilt nur der Körper (vom Stuhl aufstehen, in die Schlange treten, an den Tisch treten). */
+  endRadius: 0.7,
+  /** Kurvenradius an Ecken (höchstens die halbe angrenzende Strecke). */
+  cornerRadius: 0.65,
+  /** Abstand der Prüfpunkte entlang eines Wegs. */
+  sampleStep: 0.08,
+  /** Hindernis-Maße (Radien bzw. halbe Wandstärke, Kacheln). */
+  tableR: 0.28,
+  chairR: 0.16,
+  decorR: 0.36,
+  queueR: 0.18,
+  personR: 0.2,
+  wallHalf: 0.04,
+  /** Hier steht eine Bedienung neben dem Gast bzw. eine Putzkraft neben der Tischmitte. */
+  serveDist: 0.62,
+  wipeDist: 0.8,
 } as const;
 
 /** Kamera-Grenzen. */
@@ -279,9 +318,8 @@ const LEG_X = 9;
 const SEAT_OFFSET = 0.42;
 /** Barhocker vor dem langen Thekenschenkel links vom Durchgang (dort läuft niemand). */
 const BAR_STOOLS: GridPos[] = [1.05, 2, 2.95].map((x) => ({ x, y: COUNTER_Y + 0.85 }));
-/** Laufzeile vor der Theke bzw. vorn am Fenster. */
-const TOP_ROW = 7;
-const BOTTOM_ROW = 11;
+/** Startplatz der Putzkräfte: Zeile vor den Tischen, an der linken Wand. */
+const CLEANER_ROW = 7;
 
 function backWall(stationId: string, x: number): StationPlacement {
   return {
@@ -443,9 +481,23 @@ const DEFAULT_LAYOUT: CafeLayout = {
   entrance: ENTRANCE,
   entranceSide: 'v',
   // Gehweg rechts (Laufspur der Passanten), Gäste tauchen oberhalb und unterhalb der Tür auf.
-  street: { curb: { x: 13.8, y: ENTRANCE.y }, axis: 'v', spreadMin: 2, spreadMax: 5 },
-  outside: { col: OUT_COL, row: OUT_ROW, frontWalk: 13.6 },
-  walkRows: { top: TOP_ROW, bottom: BOTTOM_ROW },
+  street: {
+    curb: { x: 13.8, y: ENTRANCE.y },
+    axis: 'v',
+    spreadMin: 2,
+    spreadMax: 5,
+    frontWalk: 13.95,
+  },
+  // Gehwege rechts und vorn bis an die Fahrbahnen (Grid 15 → Agenten 14,5), rechts auch hinter dem Café entlang.
+  sidewalk: [
+    { x0: FRONT - 0.5, y0: -4, x1: 14.5, y1: 14.5 },
+    { x0: -1, y0: FRONT - 0.5, x1: 14.5, y1: 14.5 },
+  ],
+  staffArea: {
+    from: { x: ORIGIN.x, y: DEVICE_Y },
+    to: { x: LEG_X - 1, y: STAFF_Y },
+    door: { x: 4, y: COUNTER_Y },
+  },
   counter: COUNTER,
   stations: STATIONS,
   order: {
@@ -457,13 +509,6 @@ const DEFAULT_LAYOUT: CafeLayout = {
       { x: 10, y: 2 },
     ],
     crowd: { x: 11, y: 2.55 },
-    lane: { x: 1, y: 0 },
-    path: [{ x: 11, y: 5 }],
-    // Um die Ecke: erst vor die Ecke, dann auf die Zeile vor der Ausgabe.
-    exit: [
-      { x: 10, y: 5 },
-      { x: 9.5, y: 6 },
-    ],
     cashierSpots: [
       { x: 8, y: 4 },
       { x: 8, y: 3 },
@@ -481,14 +526,7 @@ const DEFAULT_LAYOUT: CafeLayout = {
       { x: 6, y: 4 },
       { x: 5, y: 4 },
     ],
-    // Durchgang in der Theke links von der Ausgabe
-    exit: [
-      { x: 4, y: 4 },
-      { x: 4, y: 5 },
-      { x: 4, y: 6 },
-    ],
     baristaDrop: { x: 7.45, y: 3.62 },
-    aisleY: AISLE_Y,
   },
   storage: {
     pieces: [
@@ -498,7 +536,7 @@ const DEFAULT_LAYOUT: CafeLayout = {
     ],
     fetchSpot: { x: 1.95, y: 3.45 },
   },
-  bar: { stools: BAR_STOOLS, row: 6.5 },
+  bar: { stools: BAR_STOOLS },
   tables: TABLES,
   ambience: [
     { id: 'decor', tile: { x: 6, y: 9 }, minLevel: 0 },
@@ -507,7 +545,7 @@ const DEFAULT_LAYOUT: CafeLayout = {
     { id: 'wifi', tile: { x: 1, y: 9 }, minLevel: 1 },
   ],
   decor: DECOR,
-  cleanerHome: { x: 1, y: TOP_ROW },
+  cleanerHome: { x: 1, y: CLEANER_ROW },
   // Auf den Gängen zwischen den Tischen und vorn am Fenster (nicht vor Tür, Deko, Musik/WLAN)
   mopSpots: [
     { x: 2, y: 9 },
@@ -577,126 +615,4 @@ export function visibleTables(
   return layout.tables.filter((t) =>
     t.outside ? terraceLevel >= t.outside.minTerrace : seatsLevel >= t.minLevel,
   );
-}
-
-/** Weg zur Tür über die obere Laufzeile (von dort aus geht es hinaus bzw. auf die Terrasse). */
-function toDoor(layout: CafeLayout, x: number): GridPos[] {
-  const e = layout.entrance;
-  const row = layout.walkRows.top;
-  return [{ x, y: row }, { x: e.x, y: row }, { ...e }];
-}
-
-/** Von der Tür auf die Laufspur vor der Fassade bis vor einen Terrassen-Tisch (vorn um die Ecke herum). */
-function outPath(layout: CafeLayout, table: TablePlacement): GridPos[] {
-  const out = table.outside;
-  if (!out) return [];
-  const e = layout.entrance;
-  const { col, row } = layout.outside;
-  const start = layout.entranceSide === 'v' ? { x: col, y: e.y } : { x: e.x, y: row };
-  if (out.side === 'right') return [start, { x: col, y: table.side.y }];
-  return layout.entranceSide === 'v'
-    ? [start, { x: col, y: row }, { x: table.side.x, y: row }]
-    : [start, { x: table.side.x, y: row }];
-}
-
-/** Weg vom Ende des Bestellwegs zu einem Tisch: über die obere Laufzeile und die Seitenkachel (draußen: durch die Tür). */
-export function pathToTable(layout: CafeLayout, from: GridPos, table: TablePlacement): GridPos[] {
-  const row = layout.walkRows.top;
-  if (table.outside)
-    return [...toDoor(layout, from.x), ...outPath(layout, table), { ...table.side }];
-  return [{ x: from.x, y: row }, { x: table.side.x, y: row }, { ...table.side }];
-}
-
-/**
- * Weg vom Tisch zur Tür: Seitenkachel hoch auf die obere Laufzeile, dann zur Tür. Terrassen-Gäste gehen nur bis an
- * den Gehweg (den Rest ergänzt die Figuren-Simulation).
- */
-export function pathFromTable(layout: CafeLayout, table: TablePlacement): GridPos[] {
-  if (table.outside) {
-    const s = table.side;
-    return table.outside.side === 'right'
-      ? [{ ...s }, { x: layout.street.curb.x, y: s.y }]
-      : [{ ...s }, { x: s.x, y: layout.outside.frontWalk }];
-  }
-  return [{ ...table.side }, ...toDoor(layout, table.side.x)];
-}
-
-/** Weg vom Ende des Bestellwegs zu einem Warteplatz der Ausgabe (auf der Zeile vor der Theke). */
-export function pathToPickup(_layout: CafeLayout, from: GridPos, spot: GridPos): GridPos[] {
-  if (Math.abs(from.y - spot.y) < 1e-6) return [{ ...spot }];
-  return [{ x: from.x, y: spot.y }, { ...spot }];
-}
-
-/** Weg von der Ausgabe zur Tür: eine halbe Kachel vor den Abholplätzen entlang, an Ankommenden vorbei. */
-export function pathFromPickup(layout: CafeLayout, spot: GridPos): GridPos[] {
-  const e = layout.entrance;
-  const y = spot.y + 0.5;
-  return [{ x: spot.x, y }, { x: e.x - 0.6, y }, { ...e }];
-}
-
-/** Weg von einem Abholplatz zum Barhocker: eine halbe Kachel vor der Ausgabe entlang, dann auf den Hocker. */
-export function pathToStool(layout: CafeLayout, from: GridPos, stool: GridPos): GridPos[] {
-  const y = layout.bar.row;
-  return [{ x: from.x, y }, { x: stool.x, y }, { ...stool }];
-}
-
-/** Weg vom Barhocker zur Tür: zurück auf die Zeile davor, an den Abholplätzen vorbei hinaus. */
-export function pathFromStool(layout: CafeLayout, stool: GridPos): GridPos[] {
-  const e = layout.entrance;
-  const y = layout.bar.row;
-  return [{ x: stool.x, y }, { x: e.x - 0.6, y }, { ...e }];
-}
-
-/** Weg einer Bedienung von ihrem Platz hinter der Ausgabe zur Seitenkachel eines Tischs (auch nach draußen). */
-export function waiterPathToTable(layout: CafeLayout, table: TablePlacement): GridPos[] {
-  const row = layout.walkRows.top;
-  const exit = layout.pickup.exit;
-  const last = exit[exit.length - 1] ?? layout.entrance;
-  if (table.outside)
-    return [
-      ...exit.map((p) => ({ ...p })),
-      ...toDoor(layout, last.x),
-      ...outPath(layout, table),
-      { ...table.side },
-    ];
-  return [
-    ...exit.map((p) => ({ ...p })),
-    { x: last.x, y: row },
-    { x: table.side.x, y: row },
-    { ...table.side },
-  ];
-}
-
-/** Weg einer Putzkraft von `from` zur Seitenkachel eines Tischs: über die obere Laufzeile, raus durch die Tür. */
-export function cleanerPathToTable(
-  layout: CafeLayout,
-  from: GridPos,
-  table: TablePlacement,
-): GridPos[] {
-  const row = layout.walkRows.top;
-  if (table.outside)
-    return [...toDoor(layout, from.x), ...outPath(layout, table), { ...table.side }];
-  return [{ x: from.x, y: row }, { x: table.side.x, y: row }, { ...table.side }];
-}
-
-/** Weg einer Putzkraft zu einer Wischstelle: über die obere Laufzeile und den nächsten Gang zwischen den Tischen. */
-export function cleanerPathToSpot(layout: CafeLayout, from: GridPos, spot: GridPos): GridPos[] {
-  const row = layout.walkRows.top;
-  const aisle = nearestAisle(layout, spot.x);
-  return [{ x: from.x, y: row }, { x: aisle, y: row }, { x: aisle, y: spot.y }, { ...spot }];
-}
-
-/** Gang (Spalte der Seitenkacheln) mit dem geringsten Abstand zu `x`. */
-function nearestAisle(layout: CafeLayout, x: number): number {
-  let best = x;
-  let dist = Infinity;
-  for (const t of layout.tables) {
-    if (t.outside) continue;
-    const d = Math.abs(t.side.x - x);
-    if (d < dist) {
-      dist = d;
-      best = t.side.x;
-    }
-  }
-  return best;
 }
