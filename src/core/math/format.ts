@@ -93,3 +93,41 @@ export function formatDuration(totalSec: number, lang: FormatLang = 'en'): strin
   if (h === 0 && (sec > 0 || parts.length === 0)) parts.push(`${String(sec)}${us}`);
   return parts.join(' ');
 }
+
+const moneyFormats = new Map<string, Intl.NumberFormat>();
+
+function moneyFormat(lang: FormatLang, kind: 'cents' | 'whole' | 'compact'): Intl.NumberFormat {
+  const key = `${lang}|${kind}`;
+  let f = moneyFormats.get(key);
+  if (!f) {
+    const base = { style: 'currency', currency: 'EUR' } as const;
+    f = new Intl.NumberFormat(
+      LOCALES[lang],
+      kind === 'cents'
+        ? { ...base, minimumFractionDigits: 2, maximumFractionDigits: 2 }
+        : kind === 'whole'
+          ? { ...base, maximumFractionDigits: 0 }
+          : { ...base, notation: 'compact', maximumFractionDigits: 2 },
+    );
+    moneyFormats.set(key, f);
+  }
+  return f;
+}
+
+/**
+ * Euro-Betrag im Format der Sprache (Phase 3, realistische Preise): unter 10 000 mit Cent („5,20 €“ / „€5.20“),
+ * bis 1 Mio. ganze Euro („12.345 €“), darüber kompakt („1,23 Mio. €“ / „€1.23M“). Riesige Werte (nur aus alten
+ * Spielständen denkbar) fallen auf das Kurzformat mit Suffix zurück.
+ */
+export function formatMoney(value: DecimalSource, lang: FormatLang = 'en'): string {
+  const d = D(value);
+  if (isDecimalNaN(d)) return moneyFormat(lang, 'cents').format(0);
+  const n = d.toNumber();
+  if (!Number.isFinite(n) || Math.abs(n) >= 1e15) return `${formatNumber(d, lang)} €`;
+  const abs = Math.abs(n);
+  // −0,00 € vermeiden
+  const v = Math.abs(n) < 0.005 ? 0 : n;
+  if (abs < 10_000) return moneyFormat(lang, 'cents').format(v);
+  if (abs < 1_000_000) return moneyFormat(lang, 'whole').format(v);
+  return moneyFormat(lang, 'compact').format(v);
+}

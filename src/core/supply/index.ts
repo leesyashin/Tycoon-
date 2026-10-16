@@ -1,2 +1,2 @@
-export * from './effects';
+export * from './stock';
 export * from './actions';

@@ -1,6 +1,12 @@
 /** Daily Quests nach GAME_DESIGN § 13.2. Fortschritt zählt ab dem Ziehen der Quest (Basiswert). */
 export type QuestKind =
-  'customersServed' | 'levelsBought' | 'satisfaction' | 'campaigns' | 'events' | 'taps';
+  | 'customersServed'
+  | 'levelsBought'
+  | 'satisfaction'
+  | 'videos'
+  | 'matchaOrders'
+  | 'events'
+  | 'taps';
 
 export interface QuestDef {
   id: string;
@@ -20,7 +26,8 @@ export const QUESTS: readonly QuestDef[] = [
   { id: 'serve500', kind: 'customersServed', target: 500, enabled: true },
   { id: 'buy20', kind: 'levelsBought', target: 20, enabled: true },
   { id: 'satisfaction80', kind: 'satisfaction', target: 80, enabled: true },
-  { id: 'campaign1', kind: 'campaigns', target: 1, enabled: true },
+  { id: 'video2', kind: 'videos', target: 2, enabled: true },
+  { id: 'order1', kind: 'matchaOrders', target: 1, enabled: true },
   { id: 'event1', kind: 'events', target: 1, enabled: true },
   { id: 'tap100', kind: 'taps', target: 100, enabled: true },
 ];

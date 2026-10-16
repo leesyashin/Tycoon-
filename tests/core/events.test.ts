@@ -1,16 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
   createInitialState,
+  createLocationState,
+  createSupply,
   getLocation,
   withLocation,
-  createLocationState,
   type ActiveEvent,
   type GameState,
   type LocationState,
 } from '@core/GameState';
 import { tick } from '@core/GameLoop';
 import { D } from '@core/math';
-import { computeLocationRates } from '@core/customers';
+import { computeLocationRates, peakIncomePerHour, type LocationRates } from '@core/customers';
 import { applyOffline, collectModifiers } from '@core/economy';
 import {
   addBoost,
@@ -30,15 +31,45 @@ import {
   stepEvents,
 } from '@core/events';
 import { progressionStep } from '@core/progression';
-import { EVENT_CONFIG, RANDOM_EVENTS, getRandomEventDef } from '@data/events';
+import { BALANCE } from '@data/balance';
+import {
+  CALENDAR_EVENTS,
+  EVENT_CONFIG,
+  RANDOM_EVENTS,
+  getCalendarEventDef,
+  getRandomEventDef,
+  type CalendarEventDef,
+  type RandomEventDef,
+} from '@data/events';
 import { BOOSTS, BOOST_RULES } from '@data/leaves';
+import { MATCHA_GRADES, MAX_GRADE, getGradeDef } from '@data/matcha';
 import { FREE_BOOST } from '@data/monetization';
+import { OPENING_HOURS } from '@data/time';
 
 const LOC = 'berlin';
+/** Eine Stunde nach der Standard-Öffnung: das Café hat geöffnet, Gäste kommen. */
+const MORNING = OPENING_HOURS.default.open + 1;
+/** Event-Wirkungen am Rate-Modell ohne den nichtlinearen Influencer-Hype messen. */
+const NO_HYPE = { influencerHype: false } as const;
 
-/** Café mit laufender Ausstattung (inkl. Eisfach und Ofen) und Personal, damit Event-Wirkungen messbar sind. */
+const randomDef = (id: string): RandomEventDef => {
+  const def = getRandomEventDef(id);
+  if (!def) throw new Error(`Unbekanntes Event: ${id}`);
+  return def;
+};
+const calendarDef = (id: string): CalendarEventDef => {
+  const def = getCalendarEventDef(id);
+  if (!def) throw new Error(`Unbekanntes Kalender-Event: ${id}`);
+  return def;
+};
+
+/**
+ * Geöffnetes Café am Vormittag mit laufender Ausstattung (inkl. Eisfach, Ofen, Vitrine) und Personal, damit
+ * Event-Wirkungen messbar sind.
+ */
 const make = (patch: Partial<LocationState> = {}): GameState => {
-  const s = createInitialState(0);
+  const s0 = createInitialState(0);
+  const s: GameState = { ...s0, clock: MORNING * 60, hourMark: MORNING };
   const base = getLocation(s, LOC);
   const stations = { ...base.stations };
   for (const id of [
@@ -47,6 +78,7 @@ const make = (patch: Partial<LocationState> = {}): GameState => {
     'coffeeMachine',
     'iceBox',
     'oven',
+    'displayCase',
     'ceremonySet',
   ]) {
     stations[id] = { level: 10, unlocked: true };
@@ -70,6 +102,11 @@ const withEvent = (s: GameState, ev: Partial<ActiveEvent> & { id: string }): Gam
     { locationId: LOC, startedAt: s.playtimeSec, until: s.playtimeSec + 300, ...ev },
   ],
 });
+const withKyoto = (s: GameState): GameState => ({
+  ...s,
+  meta: { ...s.meta, unlockedLocations: [LOC, 'kyoto'] },
+  locations: { ...s.locations, kyoto: createLocationState('kyoto') },
+});
 
 describe('Event-Scheduler (GAME_DESIGN § 12.1)', () => {
   it('gleicher Seed → gleiche Folge, anderer Seed → andere Folge', () => {
@@ -89,7 +126,7 @@ describe('Event-Scheduler (GAME_DESIGN § 12.1)', () => {
       seen.add(d.def.id);
       expect(d.intervalSec).toBeGreaterThanOrEqual(EVENT_CONFIG.intervalMinSec);
       expect(d.intervalSec).toBeLessThanOrEqual(EVENT_CONFIG.intervalMaxSec);
-      if (d.def.id === 'influencerVisit') expect(d.durationSec).toBe(120);
+      if (d.def.durationSec !== undefined) expect(d.durationSec).toBe(d.def.durationSec);
       else {
         expect(d.durationSec).toBeGreaterThanOrEqual(EVENT_CONFIG.durationMinSec);
         expect(d.durationSec).toBeLessThanOrEqual(EVENT_CONFIG.durationMaxSec);
@@ -133,53 +170,103 @@ describe('Event-Scheduler (GAME_DESIGN § 12.1)', () => {
     const due = { ...s, eventSchedule: { ...s.eventSchedule, nextAt: s.playtimeSec } };
     expect(stepEvents(due).activeEvents).toHaveLength(1);
   });
+
+  it('Influencer und Food-Blogger erwähnen das Café: neue Follower beim Start', () => {
+    expect(RANDOM_EVENTS.some((e) => (e.followers ?? 0) > 0)).toBe(true);
+    const s = make();
+    for (const def of RANDOM_EVENTS) {
+      let count = 0;
+      while (count < 1000 && drawEvent(s.eventSchedule.seed, count).def.id !== def.id) count++;
+      expect(count).toBeLessThan(1000);
+      const started = startNextEvent({ ...s, eventSchedule: { ...s.eventSchedule, count } });
+      expect(started.activeEvents[0]?.id).toBe(def.id);
+      expect(loc(started).social.followers).toBe(loc(s).social.followers + (def.followers ?? 0));
+    }
+  });
 });
 
 describe('Event-Abschluss und Belohnung', () => {
   it('abgelaufenes Event: Blätter, Statistik, Event-Quest-Zähler', () => {
+    const reward = randomDef('heatwave').reward;
     const s = withEvent(make(), { id: 'heatwave', until: 1 });
     const n = tick(s, 2000);
     expect(n.activeEvents).toHaveLength(0);
-    expect(n.meta.goldenLeaves.toNumber()).toBe(5);
+    expect(n.meta.goldenLeaves.toNumber()).toBe(reward);
     expect(n.stats.events).toBe(1);
-    expect(n.stats.leavesEarned).toBe(5);
+    expect(n.stats.leavesEarned).toBe(reward);
   });
 
-  it('Influencer-Besuch: Ansturm ×2.5 nur 2 min, danach Zufriedenheit −10', () => {
-    const s = withEvent(make(), { id: 'influencerVisit', until: 120 });
-    expect(collectModifiers(s).spawnMult).toBeCloseTo(2.5);
-    const settled = settleEvents({ ...s, playtimeSec: 120 });
-    expect(loc(settled).satisfaction).toBeCloseTo(60);
-    expect(settled.meta.goldenLeaves.toNumber()).toBe(8);
-    // Ansturm-Fenster ist an den Start gebunden, nicht an das Ende.
-    const long = withEvent(make(), { id: 'influencerVisit', startedAt: 0, until: 600 });
-    expect(collectModifiers({ ...long, playtimeSec: 200 }).spawnMult).toBeCloseTo(1);
-  });
-
-  it('Lieferengpass: Qualität −1, beheben kostet 5 min Einkommen und bringt 5 🍃', () => {
-    const plain = make({ quality: 2 });
-    const s = withEvent(plain, { id: 'supplyShortage' });
-    expect(collectModifiers(s).priceMult).toBeCloseTo(1.5);
-    expect(collectModifiers(plain).priceMult).toBeCloseTo(2.25);
-    const target = (x: GameState): number => computeLocationRates(x, LOC).satisfaction.target;
-    expect(target(plain) - target(s)).toBeCloseTo(4);
-
-    const cost = getEventResolveCost(s, 0);
-    expect(cost?.toNumber()).toBeCloseTo(
-      computeLocationRates(s, LOC).incomePerSec.toNumber() * 300,
+  it('Influencer-Besuch: Ansturm nur in den ersten Sekunden, danach sinkt die Zufriedenheit', () => {
+    const def = randomDef('influencerVisit');
+    const rush = def.rushSec ?? 0;
+    const s = withEvent(make(), { id: 'influencerVisit', until: rush });
+    expect(collectModifiers(s).spawnMult).toBeCloseTo(def.effect.spawnMult ?? 1, 12);
+    const settled = settleEvents({ ...s, playtimeSec: rush });
+    expect(loc(settled).satisfaction).toBeCloseTo(
+      loc(s).satisfaction + (def.endSatisfaction ?? 0),
+      9,
     );
+    expect(settled.meta.goldenLeaves.toNumber()).toBe(def.reward);
+    // Ansturm-Fenster ist an den Start gebunden, nicht an das Ende.
+    const long = withEvent(make(), { id: 'influencerVisit', startedAt: 0, until: 5 * rush });
+    expect(collectModifiers({ ...long, playtimeSec: rush + 1 }).spawnMult).toBeCloseTo(1, 12);
+  });
+
+  it('Lieferengpass: die Sorte wirkt schlechter – niedrigerer Preis, weniger Nachfrage, weniger Zufriedenheit', () => {
+    const penalty = randomDef('supplyShortage').effect.qualityPenalty ?? 0;
+    expect(penalty).toBeGreaterThan(0);
+    const stock = MATCHA_GRADES.map((g) => (g.grade === MAX_GRADE ? 1e6 : 0));
+    const plain = make({ supply: { ...createSupply(), grade: MAX_GRADE, stock } });
+    const s = withEvent(plain, { id: 'supplyShortage' });
+    expect(collectModifiers(s).qualityPenalty).toBe(penalty);
+
+    const r0 = computeLocationRates(plain, LOC, NO_HYPE);
+    const r1 = computeLocationRates(s, LOC, NO_HYPE);
+    const best = getGradeDef(MAX_GRADE);
+    const worse = getGradeDef(MAX_GRADE - penalty);
+    expect(r0.effectiveGrade).toBe(MAX_GRADE);
+    expect(r1.grade).toBe(MAX_GRADE);
+    expect(r1.effectiveGrade).toBe(MAX_GRADE - penalty);
+    // Preis je Matcha Latte relativ zum Kaffee (Trinkgeld und Boosts kürzen sich heraus).
+    const unit = (r: LocationRates, id: string): number =>
+      (r.perStationIncome[id]?.toNumber() ?? 0) / (r.perStation[id] ?? 1);
+    const rel = (r: LocationRates): number => unit(r, 'matchaStation') / unit(r, 'coffeeMachine');
+    expect(rel(r1) / rel(r0)).toBeCloseTo(worse.priceMult / best.priceMult, 9);
+    expect(r1.demand / r0.demand).toBeCloseTo(worse.demandMult / best.demandMult, 9);
+    expect(r0.satisfaction.quality).toBe(best.satisfaction);
+    expect(r1.satisfaction.quality).toBe(worse.satisfaction);
+    // Schlechter als die einfachste Sorte geht es nicht.
+    const cheap = withEvent(make(), { id: 'supplyShortage' });
+    expect(computeLocationRates(cheap, LOC).grade).toBe(0);
+    expect(computeLocationRates(cheap, LOC).effectiveGrade).toBe(0);
+  });
+
+  it('Lieferengpass beheben: kostet Stunden Umsatz zur Hauptzeit (Tagesbilanz „matcha“) und bringt Blätter', () => {
+    const def = randomDef('supplyShortage');
+    const hours = def.resolve?.incomeHours ?? 0;
+    expect(hours).toBeGreaterThan(0);
+    const s = withEvent(make(), { id: 'supplyShortage' });
+    const cost = getEventResolveCost(s, 0);
+    if (!cost) throw new Error('Lieferengpass muss behebbar sein');
+    expect(cost.toNumber()).toBeCloseTo(peakIncomePerHour(s, LOC).toNumber() * hours, 6);
+    // Unabhängig von der Uhrzeit: nachts kostet es dasselbe.
+    const night = { ...s, clock: OPENING_HOURS.default.close * 60 + 120 };
+    expect(getEventResolveCost(night, 0)?.toNumber()).toBeCloseTo(cost.toNumber(), 6);
+
     const fixed = resolveEvent(s, 0);
     expect(fixed.activeEvents).toHaveLength(0);
-    expect(fixed.meta.goldenLeaves.toNumber()).toBe(5);
+    expect(fixed.meta.goldenLeaves.toNumber()).toBe(def.reward);
     expect(fixed.stats.events).toBe(1);
-    expect(loc(fixed).coins.toNumber()).toBeCloseTo(
-      loc(s)
-        .coins.sub(cost ?? 0)
-        .toNumber(),
-    );
+    expect(loc(fixed).coins.eq(loc(s).coins.sub(cost))).toBe(true);
+    expect(loc(fixed).ledger.today.matcha.toNumber()).toBeCloseTo(cost.toNumber(), 6);
+
+    // Ohne Umsatz (nichts auf der Karte) gilt ein Sockelbetrag.
+    const empty = withEvent(make({ stations: {} }), { id: 'supplyShortage' });
+    expect(peakIncomePerHour(empty, LOC).toNumber()).toBe(0);
+    expect(getEventResolveCost(empty, 0)?.toNumber()).toBe(BALANCE.startCoins / 5);
   });
 
-  it('Lieferengpass ohne Beheben: endet ohne Blätter; zu wenig Münzen → nicht behebbar', () => {
+  it('Lieferengpass ohne Beheben: endet ohne Blätter; zu wenig Geld → nicht behebbar', () => {
     const s = withEvent(make(), { id: 'supplyShortage', until: 1 });
     const n = tick(s, 2000);
     expect(n.activeEvents).toHaveLength(0);
@@ -190,51 +277,59 @@ describe('Event-Abschluss und Belohnung', () => {
     const heat = withEvent(make(), { id: 'heatwave' });
     expect(getEventResolveCost(heat, 0)).toBeNull();
     expect(resolveEvent(heat, 0)).toBe(heat);
+    const over = withEvent(make(), { id: 'supplyShortage', until: 0 });
+    expect(resolveEvent(over, 0)).toBe(over);
   });
 
-  it('Hitzewelle verdreifacht das Eisfach, Food-Blogger den Ofen', () => {
+  it('Hitzewelle und Food-Blogger: mehr Gäste, die mehr Iced Matcha bzw. Gebäck und Kuchen bestellen', () => {
     const base = make();
-    const icedBefore = computeLocationRates(base, LOC).perStationIncome['iceBox'];
-    const heat = withEvent(base, { id: 'heatwave' });
-    const r = computeLocationRates(heat, LOC);
-    // Spawn ×1.3 ändert auch die Kundenzahl; das Verhältnis Iced-Bar ÷ Matcha-Bar zeigt den Preis-Faktor.
-    const ratio = (x: GameState): number => {
-      const p = computeLocationRates(x, LOC).perStationIncome;
-      return (p['iceBox']?.toNumber() ?? 0) / (p['matchaStation']?.toNumber() ?? 1);
-    };
-    expect(ratio(heat) / ratio(base)).toBeCloseTo(3);
-    expect(r.perStationIncome['iceBox']?.gt(icedBefore ?? 0)).toBe(true);
-    const blog = withEvent(base, { id: 'foodBlogger' });
-    const bRatio = (x: GameState): number => {
-      const p = computeLocationRates(x, LOC).perStationIncome;
-      return (p['oven']?.toNumber() ?? 0) / (p['matchaStation']?.toNumber() ?? 1);
-    };
-    expect(bRatio(blog) / bRatio(base)).toBeCloseTo(3);
+    const r0 = computeLocationRates(base, LOC, NO_HYPE);
+    /** Stück je Gast einer Produktlinie. */
+    const perGuest = (r: LocationRates, id: string): number => (r.perStation[id] ?? 0) / r.served;
+    for (const id of ['heatwave', 'foodBlogger']) {
+      const def = randomDef(id);
+      const attach = Object.entries(def.effect.stationAttachMult ?? {});
+      expect(attach.length).toBeGreaterThan(0);
+      const r1 = computeLocationRates(withEvent(base, { id }), LOC, NO_HYPE);
+      expect(r1.demand / r0.demand).toBeCloseTo(def.effect.spawnMult ?? 1, 9);
+      for (const [line, mult] of attach) {
+        expect(r0.perStation[line]).toBeGreaterThan(0);
+        expect(perGuest(r1, line) / perGuest(r0, line)).toBeCloseTo(mult, 9);
+      }
+      // Matcha Latte bestellen die Gäste wie immer; die Preise bleiben (Phase 3).
+      expect(perGuest(r1, 'matchaStation')).toBeCloseTo(perGuest(r0, 'matchaStation'), 9);
+      expect(r1.avgTicket.toNumber()).toBeGreaterThan(r0.avgTicket.toNumber());
+      expect(collectModifiers(withEvent(base, { id })).incomeMult).toBe(def.effect.incomeMult ?? 1);
+    }
   });
 
-  it('Regentag: weniger Kunden, doppeltes Trinkgeld', () => {
-    const base = make({ ambience: { seats: 0 } });
+  it('Regentag: weniger Gäste, mehr Trinkgeld', () => {
+    const def = randomDef('rainyDay');
+    const base = make();
     const rain = withEvent(base, { id: 'rainyDay' });
-    expect(computeLocationRates(rain, LOC).spawnRate).toBeCloseTo(
-      computeLocationRates(base, LOC).spawnRate * 0.7,
+    const r0 = computeLocationRates(base, LOC, NO_HYPE);
+    const r1 = computeLocationRates(rain, LOC, NO_HYPE);
+    expect(r1.spawnRate / r0.spawnRate).toBeCloseTo(def.effect.spawnMult ?? 1, 9);
+    expect(collectModifiers(rain).tipMult).toBe(def.effect.tipMult ?? 1);
+    // Die Trinkgeld-Quote aus Zufriedenheit und Musik zählt × tipMult, der Tischservice-Anteil bleibt.
+    const service = (r: LocationRates): number =>
+      r.tableServiceShare * BALANCE.service.tableServiceTips;
+    expect(r1.tipRate - service(r1)).toBeCloseTo(
+      (r0.tipRate - service(r0)) * (def.effect.tipMult ?? 1),
+      9,
     );
-    expect(computeLocationRates(rain, LOC).tipRate).toBeCloseTo(
-      computeLocationRates(base, LOC).tipRate * 2,
-    );
+    expect(r1.tipRate).toBeGreaterThan(r0.tipRate);
   });
 
   it('wirkt nur am eigenen Standort', () => {
-    let s = make();
-    s = {
-      ...s,
-      meta: { ...s.meta, unlockedLocations: [LOC, 'kyoto'] },
-      locations: { ...s.locations, kyoto: createLocationState('kyoto') },
-    };
-    s = withEvent(s, { id: 'rainyDay', locationId: 'kyoto' });
+    const s = withEvent(withKyoto(make()), { id: 'rainyDay', locationId: 'kyoto' });
     expect(collectModifiers(s, LOC).spawnMult).toBe(1);
-    expect(collectModifiers(s, 'kyoto').spawnMult).toBeCloseTo(0.7);
+    expect(collectModifiers(s, 'kyoto').spawnMult).toBeCloseTo(
+      randomDef('rainyDay').effect.spawnMult ?? 1,
+      12,
+    );
     expect(getEventOverlay(s, LOC)).toBeNull();
-    expect(getEventOverlay(s, 'kyoto')).toEqual(getRandomEventDef('rainyDay')?.overlay);
+    expect(getEventOverlay(s, 'kyoto')).toEqual(randomDef('rainyDay').overlay);
   });
 });
 
@@ -243,7 +338,7 @@ describe('Events offline (Abnahme: laufen weiter bzw. werden beim Laden abgeschl
     const s = withEvent(make(), { id: 'heatwave', until: 300 });
     const r = applyOffline(s, 10 * 60_000);
     expect(r.state.activeEvents).toHaveLength(0);
-    expect(r.state.meta.goldenLeaves.toNumber()).toBe(5);
+    expect(r.state.meta.goldenLeaves.toNumber()).toBe(randomDef('heatwave').reward);
     expect(r.state.stats.events).toBe(1);
   });
 
@@ -289,17 +384,41 @@ describe('Kalender-Events (GAME_DESIGN § 12.2)', () => {
     expect(at('2026-12-30T23:30:00Z', 0)).toEqual([]);
     expect(at('2026-12-30T23:30:00Z', -60)).toEqual(['newYear']);
   });
-  it('Neujahr verdoppelt alle Preise, Hanami hebt die Zufriedenheit an allen Standorten', () => {
-    const s = make();
+  it('wirken an allen Standorten, Bestell-Faktoren wie in den Daten', () => {
+    const s = withKyoto(make());
+    for (const def of CALENDAR_EVENTS) {
+      const on = { ...s, calendarEvents: [def.id] };
+      for (const id of [LOC, 'kyoto']) {
+        const m = collectModifiers(on, id);
+        expect(m.spawnMult).toBeCloseTo(def.effect.spawnMult ?? 1, 12);
+        expect(m.tipMult).toBeCloseTo(def.effect.tipMult ?? 1, 12);
+        expect(m.incomeMult).toBeCloseTo(def.effect.incomeMult ?? 1, 12);
+        expect(m.eventSatisfaction).toBe(def.effect.satisfactionBonus ?? 0);
+        expect(m.stationAttachMult).toEqual(def.effect.stationAttachMult ?? {});
+      }
+      expect(getEventOverlay(on, LOC)).toEqual(def.overlay);
+    }
+  });
+  it('Neujahr: mehr Gäste und Trinkgeld; Hanami hebt die Zufriedenheit an allen Standorten', () => {
+    const s = withKyoto(make());
     const ny = refreshCalendarEvents(s, Date.parse('2027-01-01T12:00:00Z'), 0);
     expect(ny.calendarEvents).toEqual(['newYear']);
-    expect(collectModifiers(ny).incomeMult).toBe(2);
     expect(refreshCalendarEvents(ny, Date.parse('2027-01-01T13:00:00Z'), 0)).toBe(ny);
+    const nyDef = calendarDef('newYear');
+    const r0 = computeLocationRates(s, LOC, NO_HYPE);
+    const r1 = computeLocationRates(ny, LOC, NO_HYPE);
+    expect(r1.demand / r0.demand).toBeCloseTo(nyDef.effect.spawnMult ?? 1, 9);
+    expect(r1.tipRate).toBeGreaterThan(r0.tipRate);
+
     const hanami = progressionStep(s, Date.parse('2026-03-25T12:00:00Z'), 0);
     expect(hanami.calendarEvents).toEqual(['hanami']);
-    const target = (x: GameState): number => computeLocationRates(x, LOC).satisfaction.target;
-    expect(target(hanami) - target(s)).toBeCloseTo(10);
-    expect(collectModifiers(hanami).stationPriceMult['ceremonySet']).toBe(2);
+    const bonus = calendarDef('hanami').effect.satisfactionBonus ?? 0;
+    expect(bonus).toBeGreaterThan(0);
+    const target = (x: GameState, id: string): number =>
+      computeLocationRates(x, id).satisfaction.target;
+    for (const id of [LOC, 'kyoto']) {
+      expect(target(hanami, id) - target(s, id)).toBeCloseTo(bonus, 9);
+    }
     expect(getEventOverlay(hanami, LOC)?.particles).toBe('petals');
   });
 });
@@ -310,7 +429,7 @@ describe('Boost-Stacking (GAME_DESIGN § 12.3)', () => {
     const b = addBoost(a, BOOSTS.leaf);
     expect(b.boosts).toHaveLength(1);
     expect(getBoostRemaining(b, 'leaf')).toBe(2 * BOOSTS.leaf.durationSec);
-    expect(collectModifiers(b).incomeMult).toBe(2);
+    expect(collectModifiers(b).incomeMult).toBe(BOOSTS.leaf.incomeMult);
   });
   it('abgelaufener Boost wird nicht verlängert, sondern neu gestartet', () => {
     const a = addBoost(make(), BOOSTS.leaf);
@@ -319,9 +438,17 @@ describe('Boost-Stacking (GAME_DESIGN § 12.3)', () => {
   });
   it('verschiedene Quellen multiplizieren sich', () => {
     const s = addBoost(addBoost(make(), BOOSTS.leaf), BOOSTS.free);
-    expect(collectModifiers(s).incomeMult).toBe(4);
-    const ny = { ...s, calendarEvents: ['newYear'] };
-    expect(collectModifiers(ny).incomeMult).toBe(8);
+    expect(collectModifiers(s).incomeMult).toBe(BOOSTS.leaf.incomeMult * BOOSTS.free.incomeMult);
+    const rain = randomDef('rainyDay').effect;
+    const ny = calendarDef('newYear').effect;
+    const both = withEvent({ ...s, calendarEvents: ['newYear'] }, { id: 'rainyDay' });
+    const m = collectModifiers(both);
+    expect(m.spawnMult).toBeCloseTo(
+      (rain.spawnMult ?? 1) * (ny.spawnMult ?? 1) * BOOSTS.leaf.spawnMult * BOOSTS.free.spawnMult,
+      12,
+    );
+    expect(m.tipMult).toBeCloseTo((rain.tipMult ?? 1) * (ny.tipMult ?? 1), 12);
+    expect(m.incomeMult).toBe(BOOSTS.leaf.incomeMult * BOOSTS.free.incomeMult);
   });
   it(`Gesamt-Multiplikator je Typ höchstens ×${String(BOOST_RULES.maxMult)}`, () => {
     const s = {

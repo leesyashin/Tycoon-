@@ -24,12 +24,8 @@ export const UI_CONFIG = {
   licensesUrl: 'https://github.com/leesyashin/Tycoon-/blob/main/docs/ASSETS.md',
 } as const;
 
-/** Kosmetischer Tag/Nacht-Zyklus (UI_STYLE § 4). Stunden 0..24. */
+/** Licht im Tag/Nacht-Wechsel der Spieluhr (UI_STYLE § 4, Uhr in `data/time.ts`). Stunden 0..24. */
 export const DAY_CYCLE = {
-  /** 24 min Spielzeit = 1 Café-Tag. */
-  dayLengthSec: 24 * 60,
-  /** Neues Spiel beginnt am Vormittag. */
-  startHour: 9,
   duskFrom: 18,
   nightFrom: 21,
   nightTo: 5,

@@ -1,5 +1,12 @@
 import { BALANCE } from '@data/balance';
-import { SCHEMA_VERSION, createEventSchedule, createStats } from '../GameState';
+import { TIME } from '@data/time';
+import {
+  SCHEMA_VERSION,
+  createEventSchedule,
+  createLocationState,
+  createStats,
+} from '../GameState';
+import { Decimal } from '../math/bignum';
 import { FREE_BOOST } from '@data/monetization';
 import { AUDIO_DEFAULTS } from '@data/audio';
 import { hashString } from '../math/random';
@@ -194,6 +201,44 @@ export const migrations: ((raw: Json) => Json)[] = [
       next[id] = { ...loc, till: { open: '0', progress: 0, paid: 0 } };
     }
     return { ...raw, schemaVersion: 10, locations: next };
+  },
+  // v10 → v11 (Phase 3, realistisches Café): Euro-Preise, Löhne, Matcha-Einkauf, Social Media und Spieluhr passen
+  // nicht zu den Tycoon-Zahlen der alten Cafés. Jedes freigeschaltete Café startet deshalb neu (Startkapital, ein
+  // Tisch, du an der Kasse und ein Barista); Franchise-Resets bleiben (Zen-Faktor), ebenso Zen, Blätter, Erfolge,
+  // Meta-Upgrades, Statistik und Einstellungen. Die Lebenszeit-Einnahmen zählen ab jetzt in Euro neu, das Tutorial
+  // erklärt die neuen Systeme.
+  (raw) => {
+    const locations = (raw['locations'] as Record<string, Json> | undefined) ?? {};
+    const next: Record<string, Json> = {};
+    for (const [id, loc] of Object.entries(locations)) {
+      let fresh: Json;
+      try {
+        const text = JSON.stringify(createLocationState(id), (_k, v: unknown) =>
+          v instanceof Decimal ? v.toString() : v,
+        );
+        fresh = JSON.parse(text) as Json;
+      } catch {
+        continue;
+      }
+      const prestige = typeof loc['prestigeCount'] === 'number' ? loc['prestigeCount'] : 0;
+      next[id] = { ...fresh, prestigeCount: Math.max(0, Math.floor(prestige)) };
+    }
+    const meta = (raw['meta'] as Json | undefined) ?? {};
+    const stats = (raw['stats'] as Json | undefined) ?? {};
+    return {
+      ...raw,
+      schemaVersion: 11,
+      clock: TIME.startMinute,
+      hourMark: Math.floor(TIME.startMinute / 60),
+      locations: next,
+      meta: { ...meta, lifetimeEarned: '0' },
+      stats: { ...stats, campaigns: undefined, videos: 0, matchaOrders: 0 },
+      activeEvents: [],
+      boosts: [],
+      // Tagesaufgaben neu ziehen: alte (Kampagnen) lassen sich nicht mehr erfüllen.
+      quests: { date: '', items: [], bonusClaimed: false },
+      tutorial: { step: 0, done: false },
+    };
   },
 ];
 

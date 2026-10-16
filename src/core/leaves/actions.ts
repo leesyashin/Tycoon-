@@ -1,10 +1,11 @@
 import { BOOSTS, LEAF_PRICES, SKINS, TIME_SKIPS, getSkinDef, type TimeSkipId } from '@data/leaves';
 import { QUESTS } from '@data/quests';
-import { spendLeaves, type GameState } from '../GameState';
-import type { Decimal } from '../math/bignum';
-import { creditIncome } from '../economy/offline';
+import { getLocation, spendLeaves, type GameState } from '../GameState';
+import { D, Decimal } from '../math/bignum';
+import { simulateAway } from '../economy/offline';
 import { addBoost } from '../events/boosts';
 import { isQuestComplete, questStat } from '../progression/quests';
+import { realSecondsPerDay } from '../time/clock';
 
 function timeSkipDef(id: TimeSkipId): (typeof TIME_SKIPS)[number] {
   const def = TIME_SKIPS.find((x) => x.id === id);
@@ -12,20 +13,59 @@ function timeSkipDef(id: TimeSkipId): (typeof TIME_SKIPS)[number] {
   return def;
 }
 
-/** Was ein Zeitsprung jetzt bringen würde (alle Standorte, 100 %, ohne zeitlich begrenzte Boosts). */
+const profitCache = new WeakMap<GameState, Record<string, Decimal>>();
+
+/**
+ * Gewinn je echter Sekunde Café-Betrieb je Standort, gemessen an einem ganzen Spieltag ab jetzt (alle Kosten,
+ * Matcha-Verbrauch, ohne zeitlich begrenzte Boosts); nie negativ.
+ */
+export function profitPerRealSecond(state: GameState): Record<string, Decimal> {
+  const cached = profitCache.get(state);
+  if (cached) return cached;
+  const daySec = realSecondsPerDay(getLocation(state, state.activeLocationId).hours);
+  const after = simulateAway(state, daySec);
+  const out: Record<string, Decimal> = {};
+  for (const id of Object.keys(state.locations)) {
+    const delta = getLocation(after, id).coins.sub(getLocation(state, id).coins);
+    out[id] = Decimal.max(delta, 0).div(daySec);
+  }
+  profitCache.set(state, out);
+  return out;
+}
+
+/** Was ein Zeitsprung jetzt bringen würde (Gewinn aller Cafés, 100 %, ohne zeitlich begrenzte Boosts). */
 export function previewTimeSkip(state: GameState, id: TimeSkipId): Decimal {
-  return creditIncome(state, timeSkipDef(id).hours * 3600).earned;
+  const sec = timeSkipDef(id).hours * 3600;
+  return Object.values(profitPerRealSecond(state)).reduce((a, v) => a.add(v.mul(sec)), D(0));
 }
 
 /**
- * Zeitsprung (GAME_DESIGN § 10): Einkommen der Zeit sofort zu 100 %, nicht zur Offline-Effizienz.
- * Spielzeit, Event- und Boost-Timer laufen nicht mit – es ist Geld, keine Zeitreise.
+ * Zeitsprung (GAME_DESIGN § 10): der Gewinn der Zeit sofort zu 100 %, nicht zur Offline-Effizienz. Uhr, Lager,
+ * Event- und Boost-Timer laufen nicht mit – es ist Geld, keine Zeitreise.
  */
 export function buyTimeSkip(state: GameState, id: TimeSkipId): GameState {
   const def = timeSkipDef(id);
+  const per = profitPerRealSecond(state);
   const paid = spendLeaves(state, def.cost);
   if (!paid) return state;
-  return creditIncome(paid, def.hours * 3600).state;
+  const sec = def.hours * 3600;
+  const locations = { ...paid.locations };
+  let total = D(0);
+  for (const [locId, rate] of Object.entries(per)) {
+    const loc = getLocation(paid, locId);
+    const gain = rate.mul(sec);
+    total = total.add(gain);
+    locations[locId] = {
+      ...loc,
+      coins: loc.coins.add(gain),
+      earnedThisRun: loc.earnedThisRun.add(gain),
+    };
+  }
+  return {
+    ...paid,
+    locations,
+    meta: { ...paid.meta, lifetimeEarned: paid.meta.lifetimeEarned.add(total) },
+  };
 }
 
 /** Boost ×2 Einkommen 30 min; erneuter Kauf verlängert. */

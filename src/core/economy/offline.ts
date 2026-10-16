@@ -1,18 +1,27 @@
 import { BALANCE } from '@data/balance';
+import { OPENING_HOURS } from '@data/time';
 import { getMetaUpgradeDef } from '@data/prestige';
 import { Decimal, D } from '../math/bignum';
-import { getLocation, type GameState } from '../GameState';
-import { computeLocationRates } from '../customers/rates';
+import type { GameState } from '../GameState';
 import { advanceEventsOffline } from '../events/schedule';
+import { advanceRealSeconds } from './simulate';
+import { dayOf, realSecondsPerDay } from '../time/clock';
 
-export function getOfflineCapMs(state: GameState): number {
+/** Höchstens so viele Spieltage läuft das Café ohne dich (bester Filialleiter aller Standorte). */
+export function getOfflineCapDays(state: GameState): number {
   const o = BALANCE.offline;
   const manager = Object.values(state.locations).reduce(
     (m, l) => Math.max(m, l.staff['manager'] ?? 0),
     0,
   );
-  const hours = Math.min(o.maxCapHours, o.baseCapHours + manager * o.perManagerHours);
-  return hours * 3_600_000;
+  return Math.min(o.maxCapDays, o.baseCapDays + manager * o.perManagerDays);
+}
+
+/** Deckel der Abwesenheit in echter Zeit: so lange dauern diese Spieltage mit den Öffnungszeiten des aktiven Cafés. */
+export function getOfflineCapMs(state: GameState): number {
+  const loc = state.locations[state.activeLocationId];
+  const hours = loc?.hours ?? OPENING_HOURS.default;
+  return getOfflineCapDays(state) * realSecondsPerDay(hours) * 1000;
 }
 
 export function getOfflineEfficiency(state: GameState): number {
@@ -27,80 +36,55 @@ export function getOfflineEfficiency(state: GameState): number {
 export interface OfflineResult {
   state: GameState;
   elapsedMs: number;
+  /** Abwesenheit bis zum Deckel (Filialleiter). */
   creditedMs: number;
+  /** Netto-Änderung des Geldes aller Cafés (Umsatz − Kosten; kann negativ sein). */
   earned: Decimal;
+  /** Umsatz inklusive Trinkgeld. */
+  revenue: Decimal;
+  /** Gäste, die in der Zeit bedient wurden. */
+  guests: number;
+  /** Vergangene Spieltage. */
+  days: number;
+}
+
+function totalCoins(state: GameState): Decimal {
+  return Object.values(state.locations).reduce((a, l) => a.add(l.coins), D(0));
 }
 
 /**
- * Zustand ohne zeitlich begrenzte Multiplikatoren (Boosts, Events, aktive Kampagne; den Influencer-Hype
- * schaltet `creditIncome` in den Raten ab). Ihre Timer laufen
- * in Spielzeit und stehen offline still; ohne das Abziehen würde ein 10-min-Boost für bis zu 14 h zählen.
+ * Café-Betrieb ohne zeitlich begrenzte Multiplikatoren (Boosts, Events): Ihre Timer laufen in aktiver Spielzeit
+ * und stehen offline still; ohne das Abziehen würde ein 10-min-Boost für Stunden zählen.
  */
-export function withoutTemporaryBoosts(state: GameState): GameState {
-  const locations = { ...state.locations };
-  for (const [id, loc] of Object.entries(state.locations)) {
-    locations[id] = { ...loc, marketing: { ...loc.marketing, campaignUntil: undefined } };
-  }
-  return { ...state, boosts: [], activeEvents: [], locations };
-}
-
-export interface CreditResult {
-  state: GameState;
-  earned: Decimal;
+export function simulateAway(state: GameState, realSec: number): GameState {
+  const plain = { ...state, boosts: [], activeEvents: [] };
+  const run = advanceRealSeconds(plain, realSec, { direct: true });
+  return { ...run, boosts: state.boosts, activeEvents: state.activeEvents };
 }
 
 /**
- * Schreibt `seconds` Einkommen aller Standorte gut, mit der Rate ohne zeitlich begrenzte Multiplikatoren.
- * Gemeinsame Grundlage für Offline-Einnahmen und den Zeitsprung.
- */
-export function creditIncome(state: GameState, seconds: number): CreditResult {
-  if (!(seconds > 0)) return { state, earned: D(0) };
-  const rateState = withoutTemporaryBoosts(state);
-  let total = D(0);
-  let served = 0;
-  const locations = { ...state.locations };
-  for (const id of Object.keys(state.locations)) {
-    const loc = getLocation(state, id);
-    const rates = computeLocationRates(rateState, id, { influencerHype: false });
-    const gain = rates.incomePerSec.mul(seconds);
-    served += rates.served * seconds;
-    total = total.add(gain);
-    locations[id] = {
-      ...loc,
-      coins: loc.coins.add(gain),
-      earnedThisRun: loc.earnedThisRun.add(gain),
-    };
-  }
-  return {
-    state: {
-      ...state,
-      locations,
-      meta: { ...state.meta, lifetimeEarned: state.meta.lifetimeEarned.add(total) },
-      stats: { ...state.stats, customersServed: state.stats.customersServed + served },
-    },
-    earned: total,
-  };
-}
-
-/**
- * Schreibt Offline-Einnahmen gut. Negative Deltas (Uhr zurückgestellt) zählen als 0.
- * Die Rate wird aus dem Zustand beim Speichern genommen und bleibt konstant. Events laufen in
- * Echtzeit weiter und werden abgeschlossen, wenn sie in der Abwesenheit geendet hätten.
+ * Abwesenheit (GAME_DESIGN § 14): Das Café läuft weiter – mit Gästen, Löhnen, Miete, Matcha-Verbrauch und
+ * Lieferungen –, bis zum Deckel und zu dem Anteil der Offline-Effizienz (so viel der Zeit wird gespielt). Negative
+ * Deltas (Uhr zurückgestellt) zählen als 0. Events laufen in Echtzeit weiter und werden abgeschlossen, wenn sie in
+ * der Abwesenheit geendet hätten.
  */
 export function applyOffline(state: GameState, elapsedMs: number): OfflineResult {
   const elapsed = Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs) : 0;
   const credited = Math.min(elapsed, getOfflineCapMs(state));
   const seconds = (credited / 1000) * getOfflineEfficiency(state);
-  const { state: paid, earned } = creditIncome(state, seconds);
+  const run = seconds > 0 ? simulateAway(state, seconds) : state;
   return {
-    state: advanceEventsOffline(paid, elapsed / 1000),
+    state: advanceEventsOffline(run, elapsed / 1000),
     elapsedMs: elapsed,
     creditedMs: credited,
-    earned,
+    earned: totalCoins(run).sub(totalCoins(state)),
+    revenue: run.meta.lifetimeEarned.sub(state.meta.lifetimeEarned),
+    guests: run.stats.customersServed - state.stats.customersServed,
+    days: dayOf(run.clock) - dayOf(state.clock),
   };
 }
 
 /** Beim Laden: Differenz zwischen `now` und dem letzten Speichern. */
 export function catchUpOffline(state: GameState, now: number): OfflineResult {
-  return applyOffline({ ...state, lastSavedAt: state.lastSavedAt }, now - state.lastSavedAt);
+  return applyOffline(state, now - state.lastSavedAt);
 }

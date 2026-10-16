@@ -1,4 +1,5 @@
 import { BALANCE } from '@data/balance';
+import { getLocationDef } from '@data/locations';
 import { EVENT_CONFIG, RANDOM_EVENTS, getRandomEventDef, type RandomEventDef } from '@data/events';
 import {
   getLocation,
@@ -9,7 +10,8 @@ import {
 } from '../GameState';
 import { rng } from '../math/random';
 import { D, type Decimal } from '../math/bignum';
-import { computeLocationRates } from '../customers/rates';
+import { peakIncomePerHour } from '../customers/rates';
+import { payCost } from '../economy/ledger';
 
 export interface EventDraw {
   def: RandomEventDef;
@@ -37,7 +39,7 @@ export function drawEvent(seed: number, count: number): EventDraw {
   return { def, durationSec: def.durationSec ?? randomDuration, intervalSec };
 }
 
-/** Startet das nächste geplante Event am aktiven Standort. */
+/** Startet das nächste geplante Event am aktiven Standort (manche bringen gleich Follower, GAME_DESIGN § 12.1). */
 export function startNextEvent(state: GameState): GameState {
   const sch = state.eventSchedule;
   const draw = drawEvent(sch.seed, sch.count);
@@ -47,11 +49,20 @@ export function startNextEvent(state: GameState): GameState {
     startedAt: state.playtimeSec,
     until: state.playtimeSec + draw.durationSec,
   };
-  return {
+  let s: GameState = {
     ...state,
     activeEvents: [...state.activeEvents, ev],
     eventSchedule: { ...sch, count: sch.count + 1, nextAt: state.playtimeSec + draw.intervalSec },
   };
+  const followers = draw.def.followers ?? 0;
+  if (followers > 0 && s.locations[ev.locationId]) {
+    const loc = getLocation(s, ev.locationId);
+    s = withLocation(s, ev.locationId, {
+      ...loc,
+      social: { ...loc.social, followers: loc.social.followers + followers },
+    });
+  }
+  return s;
 }
 
 /** Beendet ein Event: Zähler, Belohnung (wenn verdient), Nachwirkung am Standort. */
@@ -107,24 +118,29 @@ export function advanceEventsOffline(state: GameState, elapsedSec: number): Game
   return settleEvents({ ...state, activeEvents });
 }
 
-/** Kosten, um ein behebbares Event sofort zu beenden; `null`, wenn es nicht behebbar ist. */
+/**
+ * Kosten, um ein behebbares Event sofort zu beenden (Ersatzlieferant): so viele Stunden Umsatz zur Hauptzeit,
+ * mindestens ein Fünftel des Startkapitals; `null`, wenn es nicht behebbar ist.
+ */
 export function getEventResolveCost(state: GameState, index: number): Decimal | null {
   const ev = state.activeEvents[index];
   const def = ev && getRandomEventDef(ev.id);
   if (!ev || !def?.resolve || !state.locations[ev.locationId]) return null;
-  const income = computeLocationRates(state, ev.locationId).incomePerSec;
-  const floor = D(BALANCE.startCoins);
-  const cost = income.mul(def.resolve.incomeSec);
+  const income = peakIncomePerHour(state, ev.locationId);
+  const floor = D(BALANCE.startCoins)
+    .mul(getLocationDef(ev.locationId).scale)
+    .mul(EVENT_CONFIG.resolveMinStartShare);
+  const cost = income.mul(def.resolve.incomeHours);
   return cost.lt(floor) ? floor : cost;
 }
 
-/** Lieferengpass beheben: Münzen des Standorts zahlen, Event endet sofort mit Belohnung. */
+/** Lieferengpass beheben: Geld des Standorts zahlen, Event endet sofort mit Belohnung. */
 export function resolveEvent(state: GameState, index: number): GameState {
   const cost = getEventResolveCost(state, index);
   const ev = state.activeEvents[index];
   if (!cost || !ev || ev.until <= state.playtimeSec) return state;
   const loc = getLocation(state, ev.locationId);
   if (loc.coins.lt(cost)) return state;
-  const paid = withLocation(state, ev.locationId, { ...loc, coins: loc.coins.sub(cost) });
+  const paid = withLocation(state, ev.locationId, payCost(loc, 'matcha', cost));
   return finishEvent(paid, index, true);
 }

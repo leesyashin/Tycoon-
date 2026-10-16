@@ -47,8 +47,8 @@ export function regularTipMult(regularShare: number): number {
 }
 
 /**
- * Erwarteter Spawn-Faktor durch Influencer-Hype: Influencer kommen als Poisson-Strom mit `rate`/s, jeder
- * hält 5 s Hype. Anteil der Zeit mit Hype = 1 − e^(−rate·5 s); überlappende Hypes stapeln nicht.
+ * Erwarteter Spawn-Faktor durch Influencer-Hype: Influencer kommen als Poisson-Strom mit `rate` je echter Sekunde,
+ * jeder hält 5 s Hype. Anteil der Zeit mit Hype = 1 − e^(−rate·5 s); überlappende Hypes stapeln nicht.
  */
 export function influencerHypeMult(influencerRate: number): number {
   const h = CUSTOMER_EFFECTS.influencerHype;
@@ -56,11 +56,9 @@ export function influencerHypeMult(influencerRate: number): number {
   return 1 + (h.spawnMult - 1) * (1 - Math.exp(-influencerRate * h.durationSec));
 }
 
-/** Anteil der Gäste, die das Produkt der Linie bestellen; Touristen greifen eher zur Kuchenvitrine. */
-export function attachRate(def: StationDef, touristShare: number): number {
-  const bonus =
-    def.id === CUSTOMER_EFFECTS.touristStationId
-      ? 1 + CUSTOMER_EFFECTS.touristAttachBonus * touristShare
-      : 1;
-  return def.attachRate * bonus;
+/** Faktor auf die Bestellungen einer Linie durch die Kundentypen: Touristen greifen eher zur Kuchenvitrine. */
+export function attachMult(def: StationDef, touristShare: number): number {
+  return def.id === CUSTOMER_EFFECTS.touristStationId
+    ? 1 + CUSTOMER_EFFECTS.touristAttachBonus * touristShare
+    : 1;
 }

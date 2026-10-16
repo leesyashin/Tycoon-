@@ -63,20 +63,24 @@ describe('i18n-Abdeckung der Spieldaten', () => {
     expect(missing).toEqual([]);
   });
 
-  it('Qualitätsstufen, Produkte, Erfolge und Tagesaufgaben haben Texte', async () => {
-    const { MAX_QUALITY } = await import('../src/data/quality');
+  it('Matcha-Sorten, Speisekarte, Video-Formate, Bilanz, Erfolge und Tagesaufgaben haben Texte', async () => {
+    const { MATCHA_GRADES } = await import('../src/data/matcha');
     const { STATIONS } = await import('../src/data/stations');
+    const { VIDEO_FORMATS } = await import('../src/data/social');
     const { ACHIEVEMENTS } = await import('../src/data/achievements');
     const { QUESTS } = await import('../src/data/quests');
     const missing: string[] = [];
     const need = (k: string): void => {
       if (!keys.has(k)) missing.push(k);
     };
-    for (let q = 0; q <= MAX_QUALITY; q++) {
-      need(`quality.tier.${String(q)}.name`);
-      need(`quality.tier.${String(q)}.prefix`);
+    for (const g of MATCHA_GRADES) need(`quality.tier.${String(g.grade)}.name`);
+    for (const s of STATIONS) s.menu.forEach((_, i) => need(`menu.${s.id}.${String(i + 1)}`));
+    for (const f of VIDEO_FORMATS) {
+      need(`social.format.${f.id}.name`);
+      need(`social.format.${f.id}.desc`);
     }
-    for (const s of STATIONS) if (s.basePrice > 0) need(`product.${s.id}`);
+    for (const k of ['revenue', 'tips', 'wages', 'goods', 'matcha', 'rent', 'marketing', 'hiring'])
+      need(`ledger.${k}`);
     for (const a of ACHIEVEMENTS) {
       need(`achievement.${a.kind}.name`);
       need(`achievement.${a.kind}.desc`);

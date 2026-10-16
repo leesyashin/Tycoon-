@@ -10,7 +10,7 @@ import type { ActiveEvent, GameState } from '../GameState';
 export interface EventModifiers {
   spawnMult: number;
   incomeMult: number;
-  stationPriceMult: Record<string, number>;
+  stationAttachMult: Record<string, number>;
   tipMult: number;
   satisfactionBonus: number;
   qualityPenalty: number;
@@ -20,7 +20,7 @@ export function neutralEventModifiers(): EventModifiers {
   return {
     spawnMult: 1,
     incomeMult: 1,
-    stationPriceMult: {},
+    stationAttachMult: {},
     tipMult: 1,
     satisfactionBonus: 0,
     qualityPenalty: 0,
@@ -33,8 +33,8 @@ function apply(m: EventModifiers, e: EventEffect, withSpawn: boolean): void {
   m.tipMult *= e.tipMult ?? 1;
   m.satisfactionBonus += e.satisfactionBonus ?? 0;
   m.qualityPenalty += e.qualityPenalty ?? 0;
-  for (const [id, mult] of Object.entries(e.stationPriceMult ?? {})) {
-    m.stationPriceMult[id] = (m.stationPriceMult[id] ?? 1) * mult;
+  for (const [id, mult] of Object.entries(e.stationAttachMult ?? {})) {
+    m.stationAttachMult[id] = (m.stationAttachMult[id] ?? 1) * mult;
   }
 }
 

@@ -1,7 +1,8 @@
 import { CAFE_LEVEL_REWARD, cafeLevelLeaves } from '@data/unlocks';
 import { getLocation, grantLeaves, withLocation, type GameState } from '../GameState';
-import { computeLocationRates } from '../customers/rates';
+import { peakIncomePerHour } from '../customers/rates';
 import { D, type Decimal } from '../math/bignum';
+import { addToLedger } from '../economy/ledger';
 
 export interface CafeLevelReward {
   coins: Decimal;
@@ -9,7 +10,7 @@ export interface CafeLevelReward {
 }
 
 /**
- * Belohnung für die Level `fromLevel+1 … toLevel` (GAME_DESIGN § 5.3); Münzen aus dem aktuellen Einkommen.
+ * Belohnung für die Level `fromLevel+1 … toLevel` (GAME_DESIGN § 5.3); Geld aus dem Umsatz zur Hauptzeit.
  * Blätter gibt es nur für Level über `leavesAbove` (bisheriger Bestwert des Standorts), damit ein
  * Franchise-Reset sie nicht erneut ausschüttet; die Münzen helfen dagegen beim Neustart jedes Runs.
  */
@@ -22,11 +23,11 @@ export function getCafeLevelReward(
 ): CafeLevelReward {
   const gained = Math.max(0, toLevel - fromLevel);
   if (gained === 0) return { coins: D(0), leaves: 0 };
-  const income = computeLocationRates(state, locationId).incomePerSec;
+  const income = peakIncomePerHour(state, locationId);
   let leaves = 0;
   for (let l = Math.max(fromLevel, leavesAbove) + 1; l <= toLevel; l++)
     leaves += cafeLevelLeaves(l);
-  return { coins: income.mul(CAFE_LEVEL_REWARD.incomeSeconds * gained), leaves };
+  return { coins: income.mul(CAFE_LEVEL_REWARD.incomeHours * gained), leaves };
 }
 
 /** Schreibt die Belohnung gut, wenn das Café-Level seit `fromLevel` gestiegen ist, und pflegt den Bestwert. */
@@ -43,6 +44,7 @@ export function applyCafeLevelUp(
     bestLevel: Math.max(loc.bestLevel, loc.level),
     coins: loc.coins.add(r.coins),
     earnedThisRun: loc.earnedThisRun.add(r.coins),
+    ledger: addToLedger(loc.ledger, { bonus: r.coins }),
   });
   return grantLeaves(
     { ...next, meta: { ...next.meta, lifetimeEarned: next.meta.lifetimeEarned.add(r.coins) } },

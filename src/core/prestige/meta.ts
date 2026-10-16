@@ -57,8 +57,8 @@ export interface MetaEffects {
   incomeMult: number;
   discount: number;
   satisfactionBonus: number;
-  /** Sekunden Vor-Run-Einkommen als Start-Münzen nach einem Reset. */
-  startCapitalSec: number;
+  /** Spielstunden Umsatz des Vor-Runs (zur Hauptzeit) als Startkapital nach einem Reset. */
+  startCapitalHours: number;
   /** Anzahl Stationen, die nach einem Reset auf `fastStartLevel` starten. */
   fastStartStations: number;
   fastStartLevel: number;
@@ -71,7 +71,7 @@ export function getMetaEffects(state: GameState): MetaEffects {
     incomeMult: 1 + lvl('globalIncome') * per('globalIncome'),
     discount: Math.min(BALANCE.maxDiscount, lvl('discount') * per('discount')),
     satisfactionBonus: lvl('satisfactionBase') * per('satisfactionBase'),
-    startCapitalSec: lvl('startCapital') * per('startCapital'),
+    startCapitalHours: lvl('startCapital') * per('startCapital'),
     fastStartStations: lvl('fastStart'),
     fastStartLevel: per('fastStart'),
   };

@@ -1,6 +1,9 @@
 /**
- * Personal-Rollen nach GAME_DESIGN § 6 (Phase 2): die vier Service-Rollen zählen als Köpfe, die parallel
- * arbeiten; Filialleiter und Social-Media-Manager bleiben Stufen. Kosten für Berlin (×1), Wachstum 1.7 je Kopf (Stufen-Rollen 1.5).
+ * Personal (GAME_DESIGN § 6; Phase 3): Jede Kraft kostet einen **Stundenlohn**, bezahlt nur, solange das Café
+ * geöffnet ist (Vorgabe Vincent: „Personal wieder feuern können und sehen, wie viel sie kosten“). Einstellen kostet
+ * einmalig eine kleine Gebühr (Anzeige, Einarbeitung), Entlassen ist jederzeit möglich. Die vier Service-Rollen
+ * zählen als Köpfe, Filialleitung und Social-Media-Management als Stufen (jede Stufe eine erfahrenere Kraft mit
+ * mehr Lohn). Euro-Werte für Berlin, andere Standorte × Preisniveau.
  */
 export type StaffRoleId = 'cashier' | 'barista' | 'waiter' | 'cleaner' | 'manager' | 'socialMedia';
 
@@ -10,75 +13,101 @@ export type StaffStage = 'order' | 'production' | 'service' | 'cleaning';
 export interface StaffRoleDef {
   id: StaffRoleId;
   unlockCafeLevel: number;
-  baseCost: number;
-  growth: number;
   /** Höchste Anzahl (Köpfe) bzw. Stufe. */
   maxLevel: number;
   /** `true`: `loc.staff[id]` sind Köpfe, jeder arbeitet parallel; `false`: Stufe mit Bonus. */
   headcount: boolean;
   stage?: StaffStage;
-  /** Gründungsteam: so viele gibt es gratis beim Start eines Standorts und nach jedem Reset. */
+  /** Gründungsteam: so viele gibt es beim Start eines Standorts und nach jedem Reset. */
   founding: number;
+  /** Davon ohne Lohn und nicht kündbar: du selbst als Inhaber/in an der Kasse. */
+  owner: number;
+  /** So viele bleiben mindestens (ohne Barista bereitet niemand etwas zu); kündbar ist nur, was darüber liegt. */
+  minimum: number;
+  /** Stundenlohn je Kraft bzw. für Stufe 1. */
+  wage: number;
+  /** Stufen-Rollen: Lohn-Zuschlag je weitere Stufe. */
+  wagePerLevel: number;
+  /** Einmalig je Einstellung (bzw. je Stufe). */
+  hireFee: number;
 }
 
 export const STAFF_ROLES: readonly StaffRoleDef[] = [
   {
     id: 'cashier',
     unlockCafeLevel: 1,
-    baseCost: 100,
-    growth: 1.7,
-    maxLevel: 20,
+    maxLevel: 4,
     headcount: true,
     stage: 'order',
     founding: 1,
+    owner: 1,
+    minimum: 1,
+    wage: 13.9,
+    wagePerLevel: 0,
+    hireFee: 40,
   },
   {
     id: 'barista',
     unlockCafeLevel: 1,
-    baseCost: 100,
-    growth: 1.7,
-    maxLevel: 20,
+    maxLevel: 7,
     headcount: true,
     stage: 'production',
     founding: 1,
+    owner: 0,
+    minimum: 1,
+    wage: 14.8,
+    wagePerLevel: 0,
+    hireFee: 60,
   },
   {
     id: 'waiter',
     unlockCafeLevel: 1,
-    baseCost: 150,
-    growth: 1.7,
-    maxLevel: 20,
+    maxLevel: 4,
     headcount: true,
     stage: 'service',
-    founding: 1,
+    founding: 0,
+    owner: 0,
+    minimum: 0,
+    wage: 13.9,
+    wagePerLevel: 0,
+    hireFee: 40,
   },
   {
     id: 'cleaner',
     unlockCafeLevel: 2,
-    baseCost: 3_500,
-    growth: 1.7,
-    maxLevel: 20,
+    maxLevel: 3,
     headcount: true,
     stage: 'cleaning',
     founding: 0,
-  },
-  {
-    id: 'manager',
-    unlockCafeLevel: 4,
-    baseCost: 10_000,
-    growth: 1.5,
-    maxLevel: 5,
-    headcount: false,
-    founding: 0,
+    owner: 0,
+    minimum: 0,
+    wage: 14.2,
+    wagePerLevel: 0,
+    hireFee: 40,
   },
   {
     id: 'socialMedia',
-    unlockCafeLevel: 6,
-    baseCost: 20_000,
-    growth: 1.5,
-    maxLevel: 15,
+    unlockCafeLevel: 3,
+    maxLevel: 3,
     headcount: false,
     founding: 0,
+    owner: 0,
+    minimum: 0,
+    wage: 17,
+    wagePerLevel: 4,
+    hireFee: 120,
+  },
+  {
+    id: 'manager',
+    unlockCafeLevel: 5,
+    maxLevel: 3,
+    headcount: false,
+    founding: 0,
+    owner: 0,
+    minimum: 0,
+    wage: 24,
+    wagePerLevel: 5,
+    hireFee: 250,
   },
 ];
 

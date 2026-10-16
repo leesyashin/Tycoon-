@@ -14,16 +14,16 @@ export type AchievementKind =
   | 'hypeFills'
   | 'events'
   | 'playtime'
-  | 'campaigns'
+  | 'videos'
   | 'quests'
-  | 'marketingLevel'
+  | 'followers'
   | 'nightShift'
   | 'spotless';
 
 export interface AchievementDef {
   id: string;
   kind: AchievementKind;
-  /** Zielwert in der Einheit der Art (Münzen, Kunden, Sekunden …). */
+  /** Zielwert in der Einheit der Art (Euro, Gäste, Sekunden …). */
   target: number;
   reward: number;
   /** Geheime Achievements zeigen Name und Bedingung erst nach dem Freischalten. */
@@ -46,11 +46,11 @@ const tiers = (
 
 export const ACHIEVEMENTS: readonly AchievementDef[] = [
   ...tiers('lifetimeEarned', 'earned', [
-    [1e3, 2],
-    [1e6, 5],
-    [1e9, 10],
-    [1e12, 15],
-    [1e15, 25],
+    [1_000, 2],
+    [25_000, 5],
+    [250_000, 10],
+    [2_500_000, 15],
+    [25_000_000, 25],
   ]),
   ...tiers('customersServed', 'served', [
     [100, 2],
@@ -60,17 +60,17 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
     [1_000_000, 20],
   ]),
   ...tiers('stationLevel', 'stationLevel', [
-    [25, 3],
-    [50, 6],
-    [100, 12],
-    [200, 20],
+    [5, 3],
+    [10, 6],
+    [15, 12],
+    [20, 20],
   ]),
   ...tiers('cafeLevel', 'cafeLevel', [
     [3, 2],
     [5, 4],
     [10, 8],
     [15, 12],
-    [25, 20],
+    [20, 20],
   ]),
   { id: 'allStations', kind: 'allStations', target: 1, reward: 10 },
   ...tiers('quality', 'quality', [
@@ -103,14 +103,18 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
     [36_000, 10],
     [360_000, 25],
   ]),
-  ...tiers('campaigns', 'campaigns', [
+  ...tiers('videos', 'videos', [
     [1, 2],
-    [10, 6],
+    [25, 6],
+    [200, 12],
   ]),
   { id: 'quests1', kind: 'quests', target: 10, reward: 8 },
   { id: 'nightShift', kind: 'nightShift', target: 1, reward: 5, secret: true },
   { id: 'spotless', kind: 'spotless', target: 1, reward: 5, secret: true },
-  { id: 'marketingMax', kind: 'marketingLevel', target: 30, reward: 10, secret: true },
+  ...tiers('followers', 'followers', [
+    [10_000, 8],
+    [100_000, 20],
+  ]),
 ];
 
 export function getAchievementDef(id: string): AchievementDef {

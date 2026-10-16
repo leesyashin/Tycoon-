@@ -8,10 +8,13 @@ export function getAmbienceLevel(state: GameState, locationId: string, id: strin
   return getLocation(state, locationId).ambience[id] ?? 0;
 }
 
-/** cost(level→level+1) = base × g^level × locationScale × (1 − discount). */
+/**
+ * cost(level→level+1) = base × g^(level − Startstufe) × Preisniveau × (1 − discount): Was das Café schon beim Start
+ * hat (der erste Tisch), kostet nichts, der nächste kostet den Grundpreis.
+ */
 export function getAmbienceCost(def: AmbienceDef, level: number, locationId: string, discount = 0) {
   return D(def.growth)
-    .pow(level)
+    .pow(Math.max(0, level - def.startLevel))
     .mul(def.baseCost * getLocationDef(locationId).scale * (1 - discount));
 }
 

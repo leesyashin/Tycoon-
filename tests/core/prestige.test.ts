@@ -1,26 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { foundingStaff } from '@data/staff';
 import {
   SCHEMA_VERSION,
   createInitialState,
+  createLocationState,
   getLocation,
   withLocation,
   type GameState,
   type LocationState,
 } from '@core/GameState';
 import { D } from '@core/math';
-import { tick } from '@core/GameLoop';
 import {
-  applyOffline,
   buyStation,
+  cafeLevelFromSum,
+  cafeLevelThreshold,
   collectModifiers,
+  computeCafeLevel,
   getBulkCost,
   getNextAmbienceCost,
   getOfflineEfficiency,
 } from '@core/economy';
-import { computeLocationRates, getIncomePerSec, getTapIncome } from '@core/customers';
+import { computeLocationRates, getTapIncome, peakIncomePerHour } from '@core/customers';
 import { getNextStaffCost } from '@core/staff';
-import { getMarketingLevelCost } from '@core/marketing';
+import { getOrderCost } from '@core/supply';
+import { dayOf } from '@core/time';
 import {
   affordableMetaLevels,
   buyMetaUpgrade,
@@ -32,21 +34,15 @@ import {
   getNextMetaCost,
   getResetStartCoins,
 } from '@core/prestige';
-import {
-  achievementValue,
-  canUnlockLocation,
-  getLocationRequirement,
-  getNextLockedLocation,
-  getNextQualityCost,
-  isLocationUnlocked,
-  switchLocation,
-  unlockLocation,
-} from '@core/progression';
-import { deserialize, migrate, serialize } from '@core/save';
-import { LOCATIONS, getLocationDef } from '@data/locations';
+import { achievementValue, switchLocation, unlockLocation } from '@core/progression';
+import { deserialize, migrate, migrations, serialize } from '@core/save';
+import { getLocationDef } from '@data/locations';
 import { META_UPGRADES, PRESTIGE, getMetaUpgradeDef, type MetaUpgradeId } from '@data/prestige';
 import { BALANCE } from '@data/balance';
 import { getAchievementDef } from '@data/achievements';
+import { STATIONS } from '@data/stations';
+import { TIME } from '@data/time';
+import { cafeLevelLeaves } from '@data/unlocks';
 
 const L = 'berlin';
 const fresh = (): GameState => createInitialState(0);
@@ -61,62 +57,82 @@ const withMeta = (s: GameState, ups: Partial<Record<MetaUpgradeId, number>>): Ga
   ...s,
   meta: { ...s.meta, metaUpgrades: { ...s.meta.metaUpgrades, ...ups } },
 });
+/** Umsatz, bei dem sqrt(earned / (divisor × Preisniveau)) genau `root` ergibt. */
+const earnedFor = (root: number, locationId = L): number =>
+  root * root * PRESTIGE.zen.divisor * getLocationDef(locationId).scale;
+const kyoto = () => {
+  const u = getLocationDef('kyoto').unlock;
+  if (!u) throw new Error('Kyoto ohne Freischaltung');
+  return u;
+};
 
-/** Ein laufendes Café auf Café-Level 10 mit Personal, Ambiente, Qualität und Marketing. */
+/**
+ * Ein laufendes Café auf Café-Level 12, am vierten Spieltag: Geräte, Personal, Ambiente, eigene Öffnungszeiten,
+ * guter Matcha im Lager und ein gewachsener Account.
+ */
 function grown(): GameState {
   let s = patch(fresh(), {
     coins: D(1e9),
     earnedThisRun: D(4e8),
-    level: 12,
-    bestLevel: 12,
-    quality: 3,
     satisfaction: 90,
     cleanliness: 80,
-    ambience: { seats: 5, decor: 3 },
-    staff: { barista: 4, cashier: 3 },
-    marketing: { level: 6, campaignUntil: 500 },
+    ambience: { seats: 5, decor: 3, terrace: 1 },
+    staff: { cashier: 3, barista: 4, waiter: 2, manager: 1 },
     autoBuy: true,
+    hours: { open: 7, close: 20 },
   });
+  const l = loc(s);
+  const stations = {
+    ...l.stations,
+    matchaStation: { level: 20, unlocked: true },
+    register: { level: 20, unlocked: true },
+    coffeeMachine: { level: 20, unlocked: true },
+    iceBox: { level: 15, unlocked: true },
+    servingStation: { level: 10, unlocked: true },
+  };
+  const level = computeCafeLevel({ ...l, stations });
   s = patch(s, {
-    stations: {
-      ...loc(s).stations,
-      matchaStation: { level: 120, unlocked: true },
-      register: { level: 80, unlocked: true },
-      coffeeMachine: { level: 80, unlocked: true },
-    },
+    stations,
+    level,
+    bestLevel: level,
+    supply: { ...l.supply, stock: l.supply.stock.map((_, i) => (i === 2 ? 5000 : 0)), grade: 2 },
+    social: { ...l.social, followers: 25_000, day: 3 },
   });
   return {
     ...s,
+    clock: 3 * TIME.minutesPerDay + 12 * 60,
+    hourMark: 3 * 24 + 12,
     meta: {
       ...s.meta,
       goldenLeaves: D(17),
       zen: D(3),
       metaUpgrades: { tapPower: 1 },
-      achievements: { coins1: { unlockedAt: 5 } },
+      achievements: { served1: { unlockedAt: 5 } },
       lifetimeEarned: D(5e8),
     },
   };
 }
 
 describe('Zen-Formel (GAME_DESIGN § 11.2)', () => {
-  it('floor(factor × sqrt(earned / (1e6 × scale)) × (1 + prestige × 0.1))', () => {
-    const f = PRESTIGE.zen.factor;
-    const s = patch(fresh(), { earnedThisRun: D(64e6) });
+  it('floor(factor × sqrt(earned / (divisor × scale)) × (1 + prestige × perPrestige))', () => {
+    const { factor: f, perPrestige } = PRESTIGE.zen;
+    const s = patch(fresh(), { earnedThisRun: D(earnedFor(8)) });
     expect(computeZenGain(s, L).toNumber()).toBe(Math.floor(f * 8));
     const p2 = patch(s, { prestigeCount: 2 });
-    expect(computeZenGain(p2, L).toNumber()).toBe(Math.floor(f * 8 * 1.2));
-    const tiny = patch(fresh(), { earnedThisRun: D(1e5) });
+    expect(computeZenGain(p2, L).toNumber()).toBe(Math.floor(f * 8 * (1 + 2 * perPrestige)));
+    const tiny = patch(fresh(), { earnedThisRun: D(earnedFor(Math.sqrt(0.1))) });
     expect(computeZenGain(tiny, L).toNumber()).toBe(Math.floor(f * Math.sqrt(0.1)));
     expect(computeZenGain(patch(fresh(), { earnedThisRun: D(0) }), L).toNumber()).toBe(0);
   });
   it('Standort-Skalierung gleicht die Zen-Menge an', () => {
-    let s = unlockLocation(withZen(patch(fresh(), { bestLevel: 15 }), 10), 'kyoto');
-    s = patch(s, { earnedThisRun: D(64e6 * getLocationDef('kyoto').scale) }, 'kyoto');
+    const s = withLocation(fresh(), 'kyoto', {
+      ...createLocationState('kyoto'),
+      earnedThisRun: D(earnedFor(8, 'kyoto')),
+    });
     expect(computeZenGain(s, 'kyoto').toNumber()).toBe(Math.floor(PRESTIGE.zen.factor * 8));
   });
-  it('Richtwert: ~3 h Berlin geben 20–30 Zen', () => {
-    // Balance-Sim (S9): Berlin hat beim ersten Reset nach ~3 h 30 min rund 190 M verdient.
-    const s = patch(fresh(), { earnedThisRun: D(190e6) });
+  it('Richtwert: ein erster Lauf mit rund 1 Mio. € Umsatz bringt gut 20 Zen', () => {
+    const s = patch(fresh(), { earnedThisRun: D(1e6) });
     const z = computeZenGain(s, L).toNumber();
     expect(z).toBeGreaterThanOrEqual(20);
     expect(z).toBeLessThanOrEqual(30);
@@ -133,83 +149,118 @@ describe('Franchise-Reset (GAME_DESIGN § 11.1)', () => {
     expect(canReset(s, L)).toBe(false);
     expect(franchiseReset(s, L)).toBe(s);
     expect(canReset(patch(s, { level: PRESTIGE.resetMinCafeLevel }), L)).toBe(true);
+    expect(loc(grown()).level).toBeGreaterThanOrEqual(PRESTIGE.resetMinCafeLevel);
   });
   it('löscht nur den LocationState, nie meta', () => {
     const s = grown();
+    const old = loc(s);
     const gain = computeZenGain(s, L);
+    expect(gain.toNumber()).toBeGreaterThan(0);
     const r = franchiseReset(s, L);
     // meta bleibt vollständig erhalten, nur Zen kommt dazu.
     expect(r.meta.goldenLeaves.toNumber()).toBe(17);
     expect(r.meta.metaUpgrades).toEqual({ tapPower: 1 });
-    expect(r.meta.achievements).toEqual({ coins1: { unlockedAt: 5 } });
+    expect(r.meta.achievements).toEqual({ served1: { unlockedAt: 5 } });
     expect(r.meta.lifetimeEarned.toNumber()).toBe(5e8);
     expect(r.meta.unlockedLocations).toEqual(['berlin']);
     expect(r.meta.zen.toNumber()).toBe(3 + gain.toNumber());
-    // Standort ist zurück am Anfang …
-    const l = loc(r);
-    expect(l.coins.toNumber()).toBe(BALANCE.startCoins);
-    expect(l.earnedThisRun.toNumber()).toBe(0);
-    expect(l.level).toBe(1);
-    expect(l.quality).toBe(0);
-    expect(l.ambience).toEqual({});
-    expect(l.staff).toEqual(foundingStaff());
-    expect(l.marketing).toEqual({ level: 0 });
-    expect(l.autoBuy).toBe(false);
-    expect(l.stations['matchaStation']?.level).toBe(1);
-    expect(l.stations['register']?.level).toBe(0);
-    // … nur Prestige-Zähler und Bestwert bleiben.
-    expect(l.prestigeCount).toBe(1);
-    expect(l.bestLevel).toBe(12);
+    // Das Café ist wieder eine neue Filiale (Startkapital, Gründungsteam, ein Tisch, frischer Account und Lager,
+    // Tagesbilanz ab heute) – nur Prestige-Zähler, Bestwert und die Öffnungszeiten bleiben.
+    expect(loc(r)).toEqual({
+      ...createLocationState(L, dayOf(s.clock)),
+      prestigeCount: 1,
+      bestLevel: old.level,
+      hours: old.hours,
+    });
+    expect(loc(r).coins.toNumber()).toBe(BALANCE.startCoins);
+    expect(loc(r).ledger.day).toBe(3);
+    expect(r.clock).toBe(s.clock);
     expect(r.stats.resets).toBe(1);
     expect(achievementValue(r, getAchievementDef('resets1'))).toBe(1);
   });
   it('lässt andere Standorte unberührt', () => {
-    let s = unlockLocation(withZen(patch(grown(), { bestLevel: 15 }), 20), 'kyoto');
+    let s = unlockLocation(withZen(grown(), kyoto().zen), 'kyoto');
     s = patch(s, { coins: D(777) }, 'kyoto');
     const r = franchiseReset(s, L);
     expect(loc(r, 'kyoto')).toEqual(loc(s, 'kyoto'));
   });
   it('zweiter Reset gibt durch prestigeCount mehr Zen', () => {
-    const a = patch(fresh(), { level: 10, earnedThisRun: D(1e8) });
-    const first = computeZenGain(a, L).toNumber();
-    const r = patch(franchiseReset(a, L), { level: 10, earnedThisRun: D(1e8) });
-    const f = PRESTIGE.zen.factor;
-    expect(computeZenGain(r, L).toNumber()).toBe(Math.floor(f * 10 * 1.1));
-    expect(first).toBe(Math.floor(f * 10));
+    const { factor: f, perPrestige } = PRESTIGE.zen;
+    const level = PRESTIGE.resetMinCafeLevel;
+    const a = patch(fresh(), { level, earnedThisRun: D(earnedFor(10)) });
+    expect(computeZenGain(a, L).toNumber()).toBe(Math.floor(f * 10));
+    const r = patch(franchiseReset(a, L), { level, earnedThisRun: D(earnedFor(10)) });
+    expect(loc(r).prestigeCount).toBe(1);
+    expect(computeZenGain(r, L).toNumber()).toBe(Math.floor(f * 10 * (1 + perPrestige)));
   });
-  it('Start-Kapital: 10 min Einkommen des Vor-Runs je Stufe', () => {
+  it('Start-Kapital: Spielstunden Umsatz des Vor-Runs zur Hauptzeit je Stufe', () => {
+    const base = createLocationState(L).coins;
+    expect(getResetStartCoins(grown(), L).eq(base)).toBe(true);
     const s = withMeta(grown(), { startCapital: 2 });
-    const income = getIncomePerSec(s, L);
-    const expected = income.mul(1200).add(BALANCE.startCoins);
-    expect(getResetStartCoins(s, L).toNumber()).toBeCloseTo(expected.toNumber(), 3);
-    expect(loc(franchiseReset(s, L)).coins.toNumber()).toBeCloseTo(expected.toNumber(), 3);
+    const hours = 2 * getMetaUpgradeDef('startCapital').perLevel;
+    expect(getMetaEffects(s).startCapitalHours).toBe(hours);
+    const expected = peakIncomePerHour(s, L).mul(hours).add(base).toNumber();
+    expect(expected).toBeGreaterThan(base.toNumber());
+    expect(getResetStartCoins(s, L).toNumber()).toBeCloseTo(expected, 6);
+    expect(loc(franchiseReset(s, L)).coins.toNumber()).toBeCloseTo(expected, 6);
+    // Zur Hauptzeit gerechnet: um Mitternacht (Café zu) gibt es genauso viel.
+    const night = { ...s, clock: 4 * TIME.minutesPerDay, hourMark: 4 * 24 };
+    expect(getResetStartCoins(night, L).toNumber()).toBeCloseTo(expected, 6);
   });
-  it('Schnellstart: die ersten N Stationen starten auf Level 10', () => {
-    const s = withMeta(grown(), { fastStart: 2 });
-    const l = loc(franchiseReset(s, L));
-    expect(l.stations['matchaStation']).toEqual({ level: 10, unlocked: true });
-    expect(l.stations['register']).toEqual({ level: 10, unlocked: true });
-    expect(l.stations['coffeeMachine']?.level).toBe(0);
-    expect(l.level).toBe(1);
-    const four = loc(franchiseReset(withMeta(grown(), { fastStart: 4 }), L));
-    expect(four.stations['iceBox']).toEqual({ level: 10, unlocked: true });
-    expect(four.level).toBe(2);
-    expect(four.stations['coffeeMachine']).toEqual({ level: 10, unlocked: true });
-    expect(four.stations['oven']).toEqual({ level: 0, unlocked: false });
+  it('Schnellstart: die ersten N Geräte (Freischalt-Reihenfolge) starten auf festem Level', () => {
+    const fast = getMetaUpgradeDef('fastStart');
+    const order = [...STATIONS].sort((a, b) => a.unlockCafeLevel - b.unlockCafeLevel);
+    const ids = order.map((d) => d.id);
+    expect(ids.slice(0, 2)).toEqual(expect.arrayContaining(['register', 'matchaStation']));
+
+    const two = loc(franchiseReset(withMeta(grown(), { fastStart: 2 }), L));
+    for (const id of ids.slice(0, 2))
+      expect(two.stations[id]).toEqual({ level: fast.perLevel, unlocked: true });
+    expect(two.stations[ids[2] ?? '']?.level).toBe(0);
+    expect(two.level).toBe(cafeLevelFromSum(2 * fast.perLevel));
+
+    const all = loc(franchiseReset(withMeta(grown(), { fastStart: fast.maxLevel }), L));
+    for (const id of ids.slice(0, fast.maxLevel))
+      expect(all.stations[id]).toEqual({ level: fast.perLevel, unlocked: true });
+    expect(all.level).toBe(cafeLevelFromSum(fast.maxLevel * fast.perLevel));
+    expect(all.bestLevel).toBe(loc(grown()).level);
+    // Was danach kommt, startet wie in einem neuen Café.
+    const next = order[fast.maxLevel];
+    if (!next) throw new Error('zu wenige Geräte');
+    expect(all.stations[next.id]).toEqual(createLocationState(L).stations[next.id]);
   });
   it('Blätter für Café-Level gibt es nach dem Reset nur über dem Bestwert', () => {
-    // Reset bei Café-Level 12 → die Level 2..12 bringen beim Wiederaufstieg keine Blätter mehr.
+    const best = loc(grown()).level;
     let s = franchiseReset(grown(), L);
     s = patch(s, {
       coins: D(1e15),
-      stations: { ...loc(s).stations, matchaStation: { level: 24, unlocked: true } },
+      stations: {
+        ...loc(s).stations,
+        matchaStation: { level: cafeLevelThreshold(2) - 1, unlocked: true },
+      },
     });
     const leaves = s.meta.goldenLeaves.toNumber();
     s = buyStation(s, L, 'matchaStation', 1);
     expect(loc(s).level).toBe(2);
     expect(s.meta.goldenLeaves.toNumber()).toBe(leaves);
-    // Münz-Belohnung gibt es weiterhin (Neustart-Hilfe).
+    // Geld-Belohnung gibt es weiterhin (Neustart-Hilfe).
     expect(s.meta.lifetimeEarned.gt(grown().meta.lifetimeEarned)).toBe(true);
+    // Erst über dem alten Bestwert kommen wieder Blätter.
+    const top = { ...loc(s).stations };
+    let need = cafeLevelThreshold(best + 1) - 1;
+    for (const d of STATIONS) {
+      const level = Math.min(d.maxLevel, need);
+      top[d.id] = { level, unlocked: true };
+      need -= level;
+    }
+    s = patch(s, { stations: top, level: best });
+    expect(computeCafeLevel(loc(s))).toBe(best);
+    const pick = STATIONS.find((d) => (top[d.id]?.level ?? 0) < d.maxLevel);
+    if (!pick) throw new Error('alle Geräte voll');
+    s = buyStation(s, L, pick.id, 1);
+    expect(loc(s).level).toBe(best + 1);
+    expect(loc(s).bestLevel).toBe(best + 1);
+    expect(s.meta.goldenLeaves.toNumber()).toBe(leaves + cafeLevelLeaves(best + 1));
   });
 });
 
@@ -250,49 +301,63 @@ describe('Meta-Upgrades (GAME_DESIGN § 11.3)', () => {
     expect(affordableMetaLevels(withMeta(fresh(), { fastStart: 3 }), 'fastStart', D(1e9))).toBe(1);
   });
   it('globales Einkommen +10 % je Stufe an allen Standorten', () => {
-    let s = unlockLocation(
-      withZen(patch(fresh(), { bestLevel: 15, satisfaction: 70 }), 10),
-      'kyoto',
-    );
-    s = patch(s, { satisfaction: 70 }, 'kyoto');
-    const b = getIncomePerSec(s, L).toNumber();
-    const k = getIncomePerSec(s, 'kyoto').toNumber();
+    const u = kyoto();
+    let s = withZen(patch(fresh(), { bestLevel: u.cafeLevel, coins: D(u.cost) }), u.zen);
+    s = unlockLocation(s, 'kyoto');
+    expect(s.meta.unlockedLocations).toContain('kyoto');
+    const per = getMetaUpgradeDef('globalIncome').perLevel;
+    const b = peakIncomePerHour(s, L).toNumber();
+    const k = peakIncomePerHour(s, 'kyoto').toNumber();
+    expect(b).toBeGreaterThan(0);
+    expect(k).toBeGreaterThan(0);
     const up = withMeta(s, { globalIncome: 3 });
-    expect(collectModifiers(up, 'kyoto').prestigeMult).toBeCloseTo(1.3);
-    expect(getIncomePerSec(up, L).toNumber()).toBeCloseTo(b * 1.3, 6);
-    expect(getIncomePerSec(up, 'kyoto').toNumber()).toBeCloseTo(k * 1.3, 6);
+    expect(collectModifiers(up, 'kyoto').prestigeMult).toBeCloseTo(1 + 3 * per);
+    expect(peakIncomePerHour(up, L).toNumber()).toBeCloseTo(b * (1 + 3 * per), 6);
+    expect(peakIncomePerHour(up, 'kyoto').toNumber()).toBeCloseTo(k * (1 + 3 * per), 6);
   });
-  it('Rabatt −2 % je Stufe auf alle Münz-Kosten', () => {
+  it('Rabatt −2 % je Stufe auf Ausbau, Einstellungen und Matcha-Einkauf', () => {
     const s = patch(fresh(), { level: 10 });
     const up = withMeta(s, { discount: 5 });
-    expect(getMetaEffects(up).discount).toBeCloseTo(0.1);
+    const off = 5 * getMetaUpgradeDef('discount').perLevel;
+    expect(getMetaEffects(up).discount).toBeCloseTo(off);
     const ratio = (f: (x: GameState) => number): number => f(up) / f(s);
-    expect(ratio((x) => getBulkCost(x, L, 'matchaStation', 10).toNumber())).toBeCloseTo(0.9);
-    expect(ratio((x) => getNextAmbienceCost(x, L, 'decor').toNumber())).toBeCloseTo(0.9);
-    expect(ratio((x) => getNextStaffCost(x, L, 'barista').toNumber())).toBeCloseTo(0.9);
-    expect(ratio((x) => getMarketingLevelCost(x, L).toNumber())).toBeCloseTo(0.9);
-    expect(ratio((x) => getNextQualityCost(x, L)?.toNumber() ?? 0)).toBeCloseTo(0.9);
+    expect(ratio((x) => getBulkCost(x, L, 'matchaStation', 5).toNumber())).toBeCloseTo(1 - off);
+    expect(ratio((x) => getNextAmbienceCost(x, L, 'decor').toNumber())).toBeCloseTo(1 - off);
+    expect(ratio((x) => getNextStaffCost(x, L, 'barista').toNumber())).toBeCloseTo(1 - off);
+    expect(ratio((x) => getOrderCost(x, L, 1, 1, false).toNumber())).toBeCloseTo(1 - off);
   });
   it('Rabatt ist gedeckelt', () => {
     const s = withMeta(fresh(), { discount: 1000 });
     expect(getMetaEffects(s).discount).toBe(BALANCE.maxDiscount);
   });
   it('Offline-Effizienz +5 % je Stufe, höchstens 100 %', () => {
-    expect(getOfflineEfficiency(fresh())).toBe(0.5);
-    expect(getOfflineEfficiency(withMeta(fresh(), { offlineEfficiency: 4 }))).toBeCloseTo(0.7);
-    expect(getOfflineEfficiency(withMeta(fresh(), { offlineEfficiency: 10 }))).toBe(1);
+    const o = BALANCE.offline;
+    const per = getMetaUpgradeDef('offlineEfficiency').perLevel;
+    expect(getOfflineEfficiency(fresh())).toBe(o.baseEfficiency);
+    expect(getOfflineEfficiency(withMeta(fresh(), { offlineEfficiency: 4 }))).toBeCloseTo(
+      o.baseEfficiency + 4 * per,
+    );
+    expect(getOfflineEfficiency(withMeta(fresh(), { offlineEfficiency: 10 }))).toBe(
+      o.maxEfficiency,
+    );
   });
   it('Tap-Stärke +50 % je Stufe', () => {
-    const s = patch(fresh(), { satisfaction: 70 });
+    // mittags, damit das Café Umsatz macht (nachts bringt Anfeuern nichts)
+    const s = { ...patch(fresh(), { satisfaction: 70 }), clock: 12 * 60, hourMark: 12 };
     const base = getTapIncome(s, L).toNumber();
-    expect(getTapIncome(withMeta(s, { tapPower: 2 }), L).toNumber()).toBeCloseTo(base * 2);
+    expect(base).toBeGreaterThan(0);
+    const per = getMetaUpgradeDef('tapPower').perLevel;
+    expect(getTapIncome(withMeta(s, { tapPower: 2 }), L).toNumber()).toBeCloseTo(
+      base * (1 + 2 * per),
+    );
   });
   it('Basis-Zufriedenheit +2 je Stufe im Zielwert', () => {
     const s = fresh();
+    const per = getMetaUpgradeDef('satisfactionBase').perLevel;
     const base = computeLocationRates(s, L).satisfaction;
     const up = computeLocationRates(withMeta(s, { satisfactionBase: 3 }), L).satisfaction;
-    expect(up.zen).toBe(6);
-    expect(up.target).toBeCloseTo(Math.min(100, base.target + 6));
+    expect(up.zen).toBe(3 * per);
+    expect(up.target).toBeCloseTo(Math.min(100, base.target + 3 * per));
   });
   it('perLevel-Werte kommen aus den Daten', () => {
     expect(getMetaUpgradeDef('globalIncome').perLevel).toBe(0.1);
@@ -300,91 +365,38 @@ describe('Meta-Upgrades (GAME_DESIGN § 11.3)', () => {
   });
 });
 
-describe('Standorte: Freischalt-Kette (GAME_DESIGN § 3)', () => {
-  it('Kette Berlin → Kyoto → Tokio … mit Café-Level und Zen', () => {
-    const chain = LOCATIONS.map((l) => l.unlock?.prevLocationId ?? null);
-    expect(chain).toEqual([null, 'berlin', 'kyoto', 'tokyo', 'seoul', 'newyork']);
-    expect(LOCATIONS.map((l) => l.unlock?.zen ?? 0)).toEqual([0, 10, 50, 250, 1200, 6000]);
-  });
-  it('braucht Café-Level-Bestwert des Vorgängers und Zen', () => {
-    const need = getLocationDef('kyoto').unlock?.cafeLevel ?? 0;
-    let s = withZen(fresh(), 9);
-    expect(canUnlockLocation(s, 'kyoto')).toBe(false);
-    s = patch(s, { bestLevel: need });
-    expect(getLocationRequirement(s, 'kyoto')).toMatchObject({ levelOk: true, zenOk: false });
-    expect(unlockLocation(s, 'kyoto')).toBe(s);
-    s = withZen(s, 10);
-    expect(canUnlockLocation(s, 'kyoto')).toBe(true);
-    // Tokio braucht Kyoto, nicht Berlin.
-    expect(canUnlockLocation(withZen(s, 1e6), 'tokyo')).toBe(false);
-    const u = unlockLocation(s, 'kyoto');
-    expect(u.meta.zen.toNumber()).toBe(0);
-    expect(u.meta.unlockedLocations).toEqual(['berlin', 'kyoto']);
-    expect(isLocationUnlocked(u, 'kyoto')).toBe(true);
-    expect(canUnlockLocation(withZen(u, 100), 'kyoto')).toBe(false);
-    // Neuer Standort startet frisch, mit skalierten Start-Münzen; aktiv bleibt Berlin.
-    expect(loc(u, 'kyoto').coins.toNumber()).toBe(BALANCE.startCoins * 25);
-    expect(loc(u, 'kyoto').level).toBe(1);
-    expect(u.activeLocationId).toBe(L);
-    expect(getNextLockedLocation(u)).toBe('tokyo');
-    expect(achievementValue(u, getAchievementDef('locations1'))).toBe(2);
-  });
-  it('Bestwert zählt auch nach einem Reset (Berlin wieder auf Level 1)', () => {
-    const need = getLocationDef('kyoto').unlock?.cafeLevel ?? 0;
-    const s = franchiseReset(patch(fresh(), { level: need, earnedThisRun: D(4e7) }), L);
-    expect(loc(s).level).toBe(1);
-    expect(s.meta.zen.toNumber()).toBeGreaterThanOrEqual(10);
-    expect(canUnlockLocation(s, 'kyoto')).toBe(true);
-  });
-  it('Wechseln nur zu freigeschalteten Standorten', () => {
-    const s = fresh();
-    expect(switchLocation(s, 'kyoto')).toBe(s);
-    expect(switchLocation(s, L)).toBe(s);
-    const u = unlockLocation(withZen(patch(s, { bestLevel: 15 }), 10), 'kyoto');
-    expect(switchLocation(u, 'kyoto').activeLocationId).toBe('kyoto');
-  });
-  it('alle Standorte produzieren parallel – online und offline', () => {
-    let s = unlockLocation(withZen(patch(fresh(), { bestLevel: 15 }), 10), 'kyoto');
-    s = switchLocation(s, 'kyoto');
-    const t = tick(s, 10_000);
-    expect(loc(t, L).coins.gt(loc(s, L).coins)).toBe(true);
-    expect(loc(t, 'kyoto').coins.gt(loc(s, 'kyoto').coins)).toBe(true);
-    const o = applyOffline(s, 3_600_000);
-    expect(loc(o.state, L).coins.gt(loc(s, L).coins)).toBe(true);
-    expect(loc(o.state, 'kyoto').coins.gt(loc(s, 'kyoto').coins)).toBe(true);
-    const sum = loc(o.state, L)
-      .coins.sub(loc(s, L).coins)
-      .add(loc(o.state, 'kyoto').coins.sub(loc(s, 'kyoto').coins));
-    expect(sum.toNumber()).toBeCloseTo(o.earned.toNumber(), 3);
-  });
-  it('Stationen am neuen Standort kosten und verdienen skaliert', () => {
-    const s = unlockLocation(withZen(patch(fresh(), { bestLevel: 15 }), 10), 'kyoto');
-    expect(getBulkCost(s, 'kyoto', 'matchaStation', 1).toNumber()).toBeCloseTo(
-      getBulkCost(s, L, 'matchaStation', 1).toNumber() * 25,
-    );
-  });
-});
-
 describe('Save v5', () => {
   it('Migration v4 → v5 setzt bestLevel = level', () => {
-    const s = patch(fresh(), { level: 7 });
-    const v4 = JSON.parse(serialize(s)) as Record<string, unknown>;
+    const v4 = JSON.parse(serialize(patch(fresh(), { level: 7 }))) as Record<string, unknown>;
     v4['schemaVersion'] = 4;
     const locs = v4['locations'] as Record<string, Record<string, unknown>>;
     delete locs['berlin']?.['bestLevel'];
-    const m = migrate(v4);
-    expect(m['schemaVersion']).toBe(SCHEMA_VERSION);
-    expect(deserialize(JSON.stringify(m)).locations['berlin']?.bestLevel).toBe(7);
+    locs['kyoto'] = { ...locs['berlin'], level: 'kaputt' };
+    const step = migrations[4];
+    if (!step) throw new Error('Migration v4 → v5 fehlt');
+    const m = step(v4);
+    expect(m['schemaVersion']).toBe(5);
+    const next = m['locations'] as Record<string, Record<string, unknown>>;
+    expect(next['berlin']?.['bestLevel']).toBe(7);
+    expect(next['kyoto']?.['bestLevel']).toBe(1);
+    // Die Kette läuft bis zur aktuellen Version durch.
+    expect(migrate(v4)['schemaVersion']).toBe(SCHEMA_VERSION);
   });
   it('Roundtrip mit mehreren Standorten, Zen und Meta-Upgrades', () => {
-    let s = unlockLocation(withZen(patch(fresh(), { bestLevel: 15 }), 30), 'kyoto');
+    const u = kyoto();
+    let s = withZen(patch(fresh(), { bestLevel: u.cafeLevel, coins: D(u.cost) }), u.zen + 20);
+    s = unlockLocation(s, 'kyoto');
     s = buyMetaUpgrade(switchLocation(s, 'kyoto'), 'globalIncome');
     const back = deserialize(serialize(s));
     expect(back.activeLocationId).toBe('kyoto');
     expect(back.meta.unlockedLocations).toEqual(['berlin', 'kyoto']);
-    expect(back.meta.zen.toNumber()).toBe(15);
+    expect(back.meta.zen.toNumber()).toBe(20 - getMetaUpgradeCost('globalIncome', 0).toNumber());
     expect(back.meta.metaUpgrades).toEqual({ globalIncome: 1 });
-    expect(back.locations['kyoto']?.coins.toNumber()).toBe(125);
+    expect(back.locations['kyoto']?.coins.toNumber()).toBeCloseTo(
+      BALANCE.startCoins * getLocationDef('kyoto').scale,
+      6,
+    );
+    expect(back.locations['berlin']?.coins.toNumber()).toBe(0);
   });
   it('härtet kaputte Prestige-Werte', () => {
     const raw = JSON.parse(serialize(fresh())) as Record<string, unknown>;

@@ -2,14 +2,18 @@ import { Decimal, D } from './math/bignum';
 import { BALANCE } from '@data/balance';
 import { STATIONS } from '@data/stations';
 import { foundingStaff } from '@data/staff';
+import { startAmbience } from '@data/ambience';
 import { START_LOCATION_ID, getLocationDef } from '@data/locations';
 import { EVENT_CONFIG } from '@data/events';
 import { FREE_BOOST } from '@data/monetization';
 import { AUDIO_DEFAULTS } from '@data/audio';
+import { DELIVERY, MATCHA_GRADES } from '@data/matcha';
+import { SOCIAL } from '@data/social';
+import { OPENING_HOURS, TIME } from '@data/time';
 import { hashString, rng } from './math/random';
 import { createTill } from './economy/till';
 
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 export interface Settings {
   lang: 'de' | 'en';
@@ -88,7 +92,10 @@ export interface Stats {
   levelsBought: number;
   taps: number;
   hypeFills: number;
-  campaigns: number;
+  /** Gepostete Videos (Social Media). */
+  videos: number;
+  /** Matcha-Bestellungen beim Lieferanten. */
+  matchaOrders: number;
   resets: number;
   events: number;
   questsCompleted: number;
@@ -126,32 +133,118 @@ export interface TillState {
   paid: number;
 }
 
+/** Öffnungszeiten eines Cafés in vollen Stunden (`close` 24 = Mitternacht). */
+export interface OpeningHours {
+  open: number;
+  close: number;
+}
+
+/** Matcha-Bestellung beim Lieferanten, unterwegs bis `arriveAt` (Spielminute). */
+export interface SupplyOrder {
+  grade: number;
+  grams: number;
+  arriveAt: number;
+  express: boolean;
+}
+
+/** Matcha-Lager eines Cafés (GAME_DESIGN § 8). */
+export interface SupplyState {
+  /** Vorrat je Sorte in Gramm (Index = Sorte). */
+  stock: number[];
+  /** Sorte im Ausschank; ist sie leer, nimmt die Bar die beste vorrätige. */
+  grade: number;
+  orders: SupplyOrder[];
+  /** Automatisch nachbestellen, wenn der Vorrat knapp wird (Sorte im Ausschank, normale Lieferung). */
+  autoReorder: boolean;
+  /** Packung der automatischen Nachbestellung (Index in `MATCHA_PACKAGES`). */
+  autoPackage: number;
+  /** Die letzte automatische Nachbestellung scheiterte am Kontostand (Hinweis in der UI). */
+  reorderFailed: boolean;
+  /** Angekommene Lieferungen seit Beginn des Laufs (die Szene zeigt je Lieferung den Kurier). */
+  delivered: number;
+  /** Beste je bestellte Sorte (Erfolge). */
+  bestGrade: number;
+}
+
+/** Ein gepostetes Video (für die Anzeige im Account). */
+export interface SocialPost {
+  format: string;
+  /** Spielminute des Posts. */
+  minute: number;
+  views: number;
+  followers: number;
+  viral: boolean;
+}
+
+/** Social-Media-Account eines Cafés (GAME_DESIGN § 9, Phase 3). */
+export interface SocialState {
+  followers: number;
+  /** Kurzer Nachfrage-Schub aus frischen Videos, klingt mit der Zeit ab. */
+  buzz: number;
+  /** Spieltag, auf den sich die Tageszähler beziehen. */
+  day: number;
+  postsToday: number;
+  bonusToday: number;
+  /** Fortlaufende Nummer aller Videos dieses Accounts (Seed für Reichweite und Viralität). */
+  count: number;
+  /** Neueste zuerst, höchstens `SOCIAL.recentMax`. */
+  recent: SocialPost[];
+}
+
+/** Geld eines Tages, aufgeteilt (Tagesbilanz in der Verwaltung). Einnahmen positiv, Kosten als Beträge ≥ 0. */
+export interface DayLedger {
+  guests: number;
+  revenue: Decimal;
+  tips: Decimal;
+  wages: Decimal;
+  goods: Decimal;
+  matcha: Decimal;
+  rent: Decimal;
+  marketing: Decimal;
+  hiring: Decimal;
+  /** Boni außerhalb des Verkaufs: Anfeuern (Tap), Belohnung für ein neues Café-Level. */
+  bonus: Decimal;
+}
+
+export interface LedgerState {
+  /** Spieltag von `today`. */
+  day: number;
+  today: DayLedger;
+  yesterday: DayLedger | null;
+}
+
+/**
+ * Laufende Kosten (Löhne, Wareneinsatz, Miete, Strom) sammeln sich in `pending` und werden zu jeder vollen
+ * Spielstunde vom Konto abgebucht; `count`/`last` zeigen die letzte Abbuchung (Szene und HUD).
+ */
+export interface BillsState {
+  pending: Decimal;
+  last: Decimal;
+  count: number;
+}
+
 export interface LocationState {
-  /** Geld des Standorts (im Spiel als Geldscheine gezeigt; der Name stammt aus Phase 1). */
+  /** Geld des Standorts in Euro (im Spiel als Geldscheine gezeigt; der Name stammt aus Phase 1). Kann ins Minus gehen. */
   coins: Decimal;
   earnedThisRun: Decimal;
   level: number;
   stations: Record<string, StationState>;
   ambience: Record<string, number>;
   staff: Record<string, number>;
-  quality: number;
   satisfaction: number;
   /** Sauberkeit 0..100 (GAME_DESIGN § 7.3). */
   cleanliness: number;
-  marketing: MarketingState;
-  /** Auto-Kauf „günstigste Station upgraden“; wirkt nur mit Filialleiter (GAME_DESIGN § 6). */
+  /** Auto-Kauf „günstigstes Gerät upgraden“; wirkt nur mit Filialleiter (GAME_DESIGN § 6). */
   autoBuy: boolean;
   prestigeCount: number;
   /** Höchstes je erreichtes Café-Level; überlebt den Franchise-Reset (Freischaltung, Blätter-Belohnung). */
   bestLevel: number;
   till: TillState;
-}
-
-/** Zeiten in `playtimeSec`; die Abklingzeit beginnt erst nach dem Ende der Kampagne. */
-export interface MarketingState {
-  level: number;
-  campaignUntil?: number;
-  cooldownUntil?: number;
+  hours: OpeningHours;
+  supply: SupplyState;
+  social: SocialState;
+  ledger: LedgerState;
+  bills: BillsState;
 }
 
 export interface MetaState {
@@ -171,6 +264,13 @@ export interface GameState {
   playtimeSec: number;
   settings: Settings;
   meta: MetaState;
+  /**
+   * Spieluhr in Spielminuten seit Spielbeginn (Tag 0, 00:00). Eine Spielstunde dauert eine echte Minute, solange das
+   * aktive Café geöffnet ist; geschlossen spult die Nacht vor (`data/time.ts`).
+   */
+  clock: number;
+  /** Zuletzt abgerechnete volle Spielstunde (Kosten, Lieferungen, Tageswechsel). */
+  hourMark: number;
   activeLocationId: string;
   locations: Record<string, LocationState>;
   activeEvents: ActiveEvent[];
@@ -187,8 +287,57 @@ export interface GameState {
   tutorial: TutorialState;
 }
 
-/** Neuer Standort im Startzustand; Start-Münzen skalieren wie alle Preise mit dem Standort. */
-export function createLocationState(locationId: string = START_LOCATION_ID): LocationState {
+export function createDayLedger(): DayLedger {
+  return {
+    guests: 0,
+    revenue: D(0),
+    tips: D(0),
+    wages: D(0),
+    goods: D(0),
+    matcha: D(0),
+    rent: D(0),
+    marketing: D(0),
+    hiring: D(0),
+    bonus: D(0),
+  };
+}
+
+export function createSupply(): SupplyState {
+  const stock = MATCHA_GRADES.map(() => 0);
+  stock[0] = DELIVERY.startStockGrams;
+  return {
+    stock,
+    grade: 0,
+    orders: [],
+    // Standard an: sonst geht der Matcha nach gut einem Tag aus (auch in der Abwesenheit).
+    autoReorder: true,
+    autoPackage: 1,
+    reorderFailed: false,
+    delivered: 0,
+    bestGrade: 0,
+  };
+}
+
+export function createSocial(day = 0): SocialState {
+  return {
+    followers: SOCIAL.startFollowers,
+    buzz: 0,
+    day,
+    postsToday: 0,
+    bonusToday: 0,
+    count: 0,
+    recent: [],
+  };
+}
+
+/**
+ * Neuer Standort im Startzustand: kleines Café mit einem Tisch, Matcha-Station, dir an der Kasse und einem
+ * Barista; Startkapital und Preise skalieren mit dem Preisniveau des Standorts. `day` = aktueller Spieltag.
+ */
+export function createLocationState(
+  locationId: string = START_LOCATION_ID,
+  day = 0,
+): LocationState {
   const stations: Record<string, StationState> = {};
   for (const s of STATIONS) {
     stations[s.id] = { level: s.startLevel, unlocked: s.unlockCafeLevel <= 1 };
@@ -198,17 +347,20 @@ export function createLocationState(locationId: string = START_LOCATION_ID): Loc
     earnedThisRun: D(0),
     level: 1,
     stations,
-    ambience: {},
-    // Gründungsteam (GAME_DESIGN § 6): je ein Verkäufer, Barista und Bedienung, damit die Pipeline läuft.
+    ambience: startAmbience(),
+    // Gründungsteam (GAME_DESIGN § 6): du an der Kasse und ein Barista.
     staff: foundingStaff(),
-    quality: 0,
     satisfaction: BALANCE.startSatisfaction,
     cleanliness: BALANCE.cleanliness.start,
-    marketing: { level: 0 },
     autoBuy: false,
     prestigeCount: 0,
     bestLevel: 1,
     till: createTill(),
+    hours: { ...OPENING_HOURS.default },
+    supply: createSupply(),
+    social: createSocial(day),
+    ledger: { day, today: createDayLedger(), yesterday: null },
+    bills: { pending: D(0), last: D(0), count: 0 },
   };
 }
 
@@ -218,7 +370,8 @@ export function createStats(): Stats {
     levelsBought: 0,
     taps: 0,
     hypeFills: 0,
-    campaigns: 0,
+    videos: 0,
+    matchaOrders: 0,
     resets: 0,
     events: 0,
     questsCompleted: 0,
@@ -262,6 +415,8 @@ export function createInitialState(now: number, lang: 'de' | 'en' = 'en'): GameS
       unlockedLocations: [START_LOCATION_ID],
       skins: { owned: [], equipped: [] },
     },
+    clock: TIME.startMinute,
+    hourMark: Math.floor(TIME.startMinute / 60),
     activeLocationId: START_LOCATION_ID,
     locations: { [START_LOCATION_ID]: createLocationState() },
     activeEvents: [],

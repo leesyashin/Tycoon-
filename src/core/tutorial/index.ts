@@ -17,6 +17,12 @@ export function isTutorialStepComplete(state: GameState, def: TutorialStepDef): 
       return (loc.stations[def.check.stationId]?.level ?? 0) >= def.check.level;
     case 'staffTotal':
       return Object.values(loc.staff).reduce((a, b) => a + b, 0) >= def.check.count;
+    case 'ambience':
+      return (loc.ambience[def.check.id] ?? 0) >= def.check.level;
+    case 'matchaOrders':
+      return state.stats.matchaOrders >= def.check.count;
+    case 'videos':
+      return state.stats.videos >= def.check.count;
   }
 }
 
