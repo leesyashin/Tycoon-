@@ -56,6 +56,7 @@ import { Decimal } from '@core/math/bignum';
 import { getLang, t } from '@i18n/index';
 import { CustomerCrowd, type Agent, type BaristaPost } from './agents/crowd';
 import { CameraControls } from './cameraControls';
+import { TAP_TARGET_KEY, ambienceTarget, pickTapTarget, tableTarget } from './tapTarget';
 import { CityView } from './city/CityView';
 import { TILE_H, TILE_W, isoDepth, toGrid, toScreen } from './iso/iso';
 import { ART_SCALE, ATLAS, CHAR_FOOT_ORIGIN_Y, CHAR_OVERLAY_Y, FRAME, atlasUrls } from './art';
@@ -88,8 +89,12 @@ const ITEM_ORIGIN_Y = 16 / 22;
 const STOOL_ITEM_BACK = 0.55;
 /** Getragene Ware aus dem Lager: so hoch über den Füßen (Hände) und so weit vor dem Körper (Pixel). */
 const SUPPLY_HAND = { z: 15, ahead: 4 } as const;
-/** Tisch-Objekt-ID für das Antippen (öffnet das Ambiente-Panel „Tische“). */
-const TABLE_OBJECT = 'ambience:seats';
+/** Deko, Musik und WLAN sind nur dort antippbar, wo sie sichtbar sind (Pixel-Test, ohne weiche Schatten). */
+const TAP_PIXEL = {
+  pixelPerfect: true,
+  alphaTolerance: SCENE_FX.tapAlpha,
+  useHandCursor: true,
+} as const;
 
 interface StationView {
   id: string;
@@ -100,8 +105,8 @@ interface StationView {
   labelY: number;
   stagger: boolean;
   shownLevel: number;
-  /** Gezeigter Sperrzustand: frei, Café-Level fehlt oder Terrasse fehlt. */
-  shownLock: 'open' | 'level' | 'terrace' | '';
+  /** Gezeigter Hinweis am Bauplatz: kaufbar, Terrasse fehlt oder keiner (Level stehen nur im Panel). */
+  shownLock: 'open' | 'terrace' | '';
   /** Gezeigte Skin-Tönung (0xffffff = keine). */
   shownTint: number;
   /** Ruhelage (die Mühle rüttelt bei der Arbeit). */
@@ -430,6 +435,8 @@ export class CafeScene extends Phaser.Scene {
     const onResize = (): void => this.fitCamera();
     this.scale.on('resize', onResize);
 
+    // Alle Objekte unter dem Finger melden, nicht nur das oberste: `onPointerUp` wählt das sichtbar getroffene.
+    this.input.topOnly = false;
     this.input.on('pointerup', (p: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) =>
       this.onPointerUp(p, over),
     );
@@ -685,7 +692,7 @@ export class CafeScene extends Phaser.Scene {
   /**
    * Gästetheke als L in der Optik-Stufe des Cafés: gerade Module, quer gestellte (Front nach +x) und das Eckmodul.
    * Unter Kasse und Ausgabe liegt ein leeres Modul, auf dem das Gerät steht; Antippen öffnet die Kasse bzw. das
-   * Gerät darauf.
+   * Gerät darauf (die freien Module gehören zur Kasse).
    */
   private createCounter(): void {
     const modules = [
@@ -715,7 +722,7 @@ export class CafeScene extends Phaser.Scene {
         .setOrigin(0.5, 1)
         .setDepth(isoDepth(m.tile.x, m.tile.y, 5))
         .setInteractive({ useHandCursor: true, pixelPerfect: false })
-        .setData('stationId', m.stationId);
+        .setData(TAP_TARGET_KEY, m.stationId);
       this.counters.push({ order: w.x, sprite, variant: m.variant, kind: m.kind });
     }
     this.counters.sort((a, b) => a.order - b.order);
@@ -783,7 +790,7 @@ export class CafeScene extends Phaser.Scene {
         .setOrigin(0.5, 1)
         .setDepth(isoDepth(p.tile.x, p.tile.y, onCounter ? 5.5 : 5))
         .setInteractive({ useHandCursor: true, pixelPerfect: false });
-      sprite.setData('stationId', p.stationId);
+      sprite.setData(TAP_TARGET_KEY, p.stationId);
       const labelY = w.y - STATION_TOP + TILE_H / 2;
       const label = this.makeText(13, UI_THEME.textCss)
         .setPosition(w.x, labelY)
@@ -813,7 +820,7 @@ export class CafeScene extends Phaser.Scene {
         .setDepth(isoDepth(p.tile.x, p.tile.y, 5))
         .setVisible(false)
         .setInteractive({ useHandCursor: true, pixelPerfect: false })
-        .setData('stationId', TABLE_OBJECT);
+        .setData(TAP_TARGET_KEY, tableTarget(p));
       const dirt = this.sprite(w.x, w.y + TILE_H, FRAME.dirt, ATLAS.furniture)
         .setOrigin(0.5, 1)
         .setDepth(isoDepth(p.tile.x, p.tile.y, 5.5))
@@ -869,16 +876,20 @@ export class CafeScene extends Phaser.Scene {
       const w = this.world(a.tile);
       const img = this.sprite(w.x, w.y + TILE_H, FRAME.ambience(a.id), ATLAS.furniture)
         .setOrigin(0.5, 1)
-        .setDepth(isoDepth(a.tile.x, a.tile.y, 5));
+        .setDepth(isoDepth(a.tile.x, a.tile.y, 5))
+        .setInteractive(TAP_PIXEL)
+        .setData(TAP_TARGET_KEY, ambienceTarget(a.id));
       this.ambienceImages.push(img);
     }
-    // Deko nach Level: Bilder, Neon und Regale an den Wänden, Pflanzen, Leuchten und Teppich im Raum.
+    // Deko nach Level: Bilder, Neon und Regale an den Wänden, Pflanzen, Leuchten und Teppich im Raum. Teppiche
+    // (und die Terrassen-Fliesen) bleiben Boden: Antippen dort füllt wie überall auf dem Boden den Hype.
     const decor = loc.ambience['decor'] ?? 0;
     for (const p of this.lightPools) p.destroy();
     this.lightPools = [];
     for (const d of this.layout.decor) {
       if (decor < d.minLevel) continue;
       const img = this.decorSprite({ ...d, frame: decorFrame(d.frame, decor) });
+      if (!d.floor) img.setInteractive(TAP_PIXEL).setData(TAP_TARGET_KEY, ambienceTarget('decor'));
       this.ambienceImages.push(img);
       if (d.frame === 'deco-pendant') this.lightPools.push(this.lightPool(d.tile));
     }
@@ -991,11 +1002,14 @@ export class CafeScene extends Phaser.Scene {
     this.refreshStations(this.store.getState(), false);
   }
 
-  /** Gekauft = Sprite der Ausbaustufe + Level-Badge, sonst Bauplatz mit „Kaufen“ oder Freischalt-Level. */
+  /**
+   * Gekauft = Sprite der Ausbaustufe ohne Schild (das Level steht im Panel, das Antippen öffnet), sonst Bauplatz
+   * mit „Kaufen“ bzw. „Terrasse nötig“; gesperrte Bauplätze stehen stumm.
+   */
   private refreshStations(state: GameState, animate: boolean): void {
     const loc = getLocation(state, this.locationId);
     const tints = equippedSkinTints(state);
-    // Von den gesperrten Geräten bekommt nur das nächste ein Schild; die anderen stehen stumm als Bauplatz.
+    // Fehlt nur noch die Terrasse, bekommt das nächste gesperrte Gerät ein Schild; die anderen stehen stumm.
     const nextLocked = this.stations
       .filter(
         (v) =>
@@ -1012,14 +1026,13 @@ export class CafeScene extends Phaser.Scene {
       }
       const level = loc.stations[v.id]?.level ?? 0;
       const unlocked = isStationUnlocked(state, this.locationId, v.id);
-      const lock = unlocked
+      const shownLock = unlocked
         ? 'open'
-        : needsTerrace(state, this.locationId, v.id) &&
+        : v.id === nextLocked &&
+            needsTerrace(state, this.locationId, v.id) &&
             loc.level >= getStationDef(v.id).unlockCafeLevel
           ? 'terrace'
-          : 'level';
-      const silent = lock !== 'open' && v.id !== nextLocked;
-      const shownLock = silent ? '' : lock;
+          : '';
       if (level === v.shownLevel && shownLock === v.shownLock) continue;
       const before = v.shownLevel;
       v.shownLevel = level;
@@ -1030,7 +1043,7 @@ export class CafeScene extends Phaser.Scene {
           .setFrame(FRAME.station(v.id, level, v.placement.facesX))
           .setAlpha(1)
           .setVisible(true);
-        v.label.setText(t('scene.station.level', { level }));
+        v.label.setText('');
         if (animate && before >= 0 && level > before) {
           // Maße vor dem Plopp nehmen: währenddessen ist das Sprite auf 0 skaliert.
           const bounds = this.restBounds(v.sprite);
@@ -1046,13 +1059,11 @@ export class CafeScene extends Phaser.Scene {
           .setVisible(!onCounter)
           .setAlpha(unlocked ? 1 : 0.45);
         v.label.setText(
-          silent
-            ? ''
-            : lock === 'open'
-              ? t('scene.station.buy')
-              : lock === 'terrace'
-                ? t('scene.station.needsTerrace')
-                : t('scene.station.locked', { level: getStationDef(v.id).unlockCafeLevel }),
+          shownLock === 'open'
+            ? t('scene.station.buy')
+            : shownLock === 'terrace'
+              ? t('scene.station.needsTerrace')
+              : '',
         );
       }
       if (v.id === REGISTER_ID) this.drawerShown = false;
@@ -1136,6 +1147,12 @@ export class CafeScene extends Phaser.Scene {
     const bg = this.add.graphics().setDepth(DEPTH.label);
     bg.fillStyle(UI_THEME.navy900, 0.92);
     bg.fillRoundedRect(x - 16, y - 18, 32, 18, 4);
+    // Die Tafel hängt über der Kasse: Antippen öffnet die Kasse.
+    bg.setInteractive({
+      hitArea: new Phaser.Geom.Rectangle(x - 16, y - 18, 32, 18),
+      hitAreaCallback: (r: Phaser.Geom.Rectangle, px: number, py: number) => r.contains(px, py),
+      useHandCursor: true,
+    }).setData(TAP_TARGET_KEY, REGISTER_ID);
     const text = this.add
       .text(x, y - 1, '0', {
         fontFamily: 'monospace',
@@ -2026,11 +2043,20 @@ export class CafeScene extends Phaser.Scene {
     });
   }
 
+  /**
+   * Antippen eines Objekts öffnet direkt sein Upgrade-Panel (`pickTapTarget`), Antippen des Bodens füllt den Hype.
+   * `over` enthält alle Objekte unter dem Finger, oberstes zuerst (`input.topOnly = false`).
+   */
   private onPointerUp(p: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]): void {
     if (this.controls.isDrag()) return;
-    const stationObj = over.find((o) => typeof o.getData('stationId') === 'string');
-    if (stationObj) {
-      this.game.events.emit(UI_EVENTS.openStation, stationObj.getData('stationId') as string);
+    const target = pickTapTarget(
+      over.flatMap((o) => {
+        const id: unknown = o.getData(TAP_TARGET_KEY);
+        return typeof id === 'string' ? [{ target: id, solid: this.solidAt(o, p) }] : [];
+      }),
+    );
+    if (target) {
+      this.game.events.emit(UI_EVENTS.openStation, target);
       return;
     }
     const g = toGrid(p.worldX, p.worldY);
@@ -2046,6 +2072,15 @@ export class CafeScene extends Phaser.Scene {
       this.leaves.explode(8, p.worldX, p.worldY);
       this.game.events.emit(UI_EVENTS.sfx, 'tap');
     }
+  }
+
+  /** Liegt unter dem Zeiger ein sichtbares Pixel des Sprites? Die Warteschlangen-Tafel (Graphics) zählt ganz. */
+  private solidAt(o: Phaser.GameObjects.GameObject, p: Phaser.Input.Pointer): boolean {
+    if (!(o instanceof Phaser.GameObjects.Image)) return true;
+    const local = o.getLocalPoint(p.worldX, p.worldY);
+    const alpha = this.textures.getPixelAlpha(local.x, local.y, o.texture.key, o.frame.name);
+    // Außerhalb des beschnittenen Bilds liefert Phaser `null` (die Typen sagen `number`).
+    return ((alpha as number | null) ?? 0) >= SCENE_FX.tapAlpha;
   }
 
   /** Debug-Taste B (nur im Dev-Server): günstigste kaufbare Ausstattung um 1 Level erhöhen. */

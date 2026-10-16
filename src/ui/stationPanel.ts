@@ -225,8 +225,9 @@ function chipsFor(): { el: HTMLElement; set(a: string, b: string): void } {
 }
 
 /**
- * Stations-Panel (GAME_DESIGN § 16.2, UI_STYLE § 3.8): Detailkarte der Ausstattung (Bereich, Produkt, Preis,
- * Arbeitszeit, Einkommen, Auslastung der Stufe), Kauf ×1/×10/×100/Max, Icon-Grid.
+ * Stations-Panel (GAME_DESIGN § 16.2, UI_STYLE § 3.8): Detailkarte der Ausstattung mit Level und gleich darunter
+ * Kauf ×1/×10/×100/Max (Antippen in der Szene führt direkt zum Verbessern, auch auf kleinen Handys ohne
+ * Scrollen), dann Bereich, Produkt, Preis, Arbeitszeit, Einkommen, Auslastung der Stufe; darunter das Icon-Grid.
  */
 export function createStationPanel(
   store: Store,
@@ -287,6 +288,7 @@ export function createStationPanel(
       h('span', { class: 'station-area', text: areaName(def.area) }),
       level,
     ),
+    h('div', { class: 'buy-row' }, ...buttons.map((b) => b.btn)),
     h(
       'div',
       { class: 'station-extra' },
@@ -309,13 +311,7 @@ export function createStationPanel(
       locked,
     ),
   );
-  const el = h(
-    'div',
-    { class: 'station-panel' },
-    card,
-    h('div', { class: 'buy-row' }, ...buttons.map((b) => b.btn)),
-    grid.el,
-  );
+  const el = h('div', { class: 'station-panel' }, card, grid.el);
 
   const update = (s: GameState): void => {
     const loc = getLocation(s, locId);
@@ -416,7 +412,7 @@ export function createStationPanel(
   };
 }
 
-/** Ambiente-Element im selben Bottom-Sheet: Detailkarte mit Kauf, darunter dasselbe Icon-Grid. */
+/** Ambiente-Element im selben Bottom-Sheet: Detailkarte mit Kauf gleich unter dem Level, dann das Icon-Grid. */
 export function createAmbienceObjectPanel(
   store: Store,
   ambienceId: string,
@@ -446,6 +442,7 @@ export function createAmbienceObjectPanel(
       { class: 'card station-card' },
       img,
       h('div', {}, h('h3', { text: name }), level),
+      h('div', { class: 'buy-row buy-row--single' }, btn),
       h(
         'div',
         { class: 'station-extra' },
@@ -454,7 +451,6 @@ export function createAmbienceObjectPanel(
         locked,
       ),
     ),
-    h('div', { class: 'buy-row buy-row--single' }, btn),
     grid.el,
   );
   return {

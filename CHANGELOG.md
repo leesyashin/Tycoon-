@@ -14,6 +14,15 @@ statt immer erst zurück zu ihrem Startpunkt, Gäste sollen direkt zur Kasse geh
 - Gäste kommen in einem Bogen durch die Tür und gehen schräg direkt zur Kasse, um die Thekenecke zur Ausgabe und von der freien Seite an ihren Stuhl (vorher liefen sie zum linken Stuhl quer durch den Tisch). Jeder Gast hat sein eigenes Tempo; auf dem Gehweg blenden Gäste beim Kommen ein und beim Gehen aus.
 - Auf schrägen Wegen flackern die Figuren nicht mehr zwischen zwei Ansichten.
 
+### Objekte antippen statt Level-Schilder (2026-10-16)
+
+Vorgabe Vincent: Keine Level-Symbole mehr über Kasse und Co. – das Level soll man erst sehen, wenn man das Objekt
+antippt, und das Antippen soll direkt ins Upgrade-Menü führen, für alle Objekte.
+
+- Über Geräten stehen keine „Lv …“-Schilder mehr, über gesperrten Bauplätzen kein „ab Café-Lv …“. Das Level steht im Panel.
+- Jedes Objekt im Café öffnet beim Antippen sein Upgrade-Panel: Geräte, Theke und die Warteschlangen-Tafel (Kasse), Tische, Terrassen-Tische (Terrasse), Pflanzen, Leuchten, Barhocker und Wand-Deko (Deko), Musik-Anlage und WLAN. Getroffen wird, was man sieht – ein Tisch davor verdeckt die Theke nicht mehr. Boden antippen füllt weiter den Hype.
+- Im Panel stehen die Kauf-Buttons (×1, ×10, ×100, Max) gleich unter Name und Level, auch auf kleinen Handys ohne Scrollen.
+
 ### Geldscheine, Bezahlen an der Kasse, Barhocker (2026-10-15)
 
 Vorgabe Vincent: Die Währung soll aus normalen Geldscheinen bestehen, das Geld erst reinkommen, wenn der Kunde

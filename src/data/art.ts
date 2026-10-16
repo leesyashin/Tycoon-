@@ -154,6 +154,11 @@ export const SCENE_FX = {
   ringLift: 1,
   /** Kassenlade bleibt nach dem Kassieren so lange offen. */
   drawerOpenMs: 650,
+  /**
+   * Antippen: Ab diesem Alpha (0–255) zählt ein Pixel als Teil des Objekts. Darunter liegen Kontaktschatten
+   * (~24 %) und Lichtscheine, die sonst Theke oder Tisch darunter verdecken würden.
+   */
+  tapAlpha: 96,
 } as const;
 
 /**
