@@ -368,7 +368,7 @@
   "tutorial.offline.title": "Auch wenn du weg bist",
   "tutorial.offline.text": "Dein Café läuft weiter, während das Spiel zu ist: bis zu {days}, für {pct} % der Zeit – mit allen Gästen und Kosten. Ein Filialleiter verlängert das; die automatische Nachbestellung sorgt für Matcha.",
   "tutorial.locations.title": "Die Welt wartet",
-  "tutorial.locations.text": "Ab Café-Level {level} kannst du dein Café als Franchise neu starten, bekommst Zen und eröffnest weitere Filialen – Kyoto, Tokio, Seoul, New York, Bali.",
+  "tutorial.locations.text": "Ab Café-Level {branchLevel} eröffnest du mit dem Geld aus Berlin deine erste Filiale in Kyoto. Ab Café-Level {level} kannst du ein Café als Franchise neu starten und bekommst Zen – für dauerhafte Upgrades und die Filialen in Tokio, Seoul, New York und Bali.",
   "settings.tutorial": "Tutorial wiederholen",
   "settings.install": "App installieren",
   "settings.backups": "Sicherungen",

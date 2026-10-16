@@ -368,7 +368,7 @@
   "tutorial.offline.title": "Even while you’re away",
   "tutorial.offline.text": "Your café keeps running while the game is closed: up to {days}, for {pct} % of the time – with all guests and costs. A manager extends this; automatic reordering keeps the matcha coming.",
   "tutorial.locations.title": "The world is waiting",
-  "tutorial.locations.text": "From café level {level} you can restart your café as a franchise, earn zen and open more branches – Kyoto, Tokyo, Seoul, New York, Bali.",
+  "tutorial.locations.text": "From café level {branchLevel} you open your first branch in Kyoto with Berlin's money. From café level {level} you can restart a café as a franchise and earn zen – for permanent upgrades and the branches in Tokyo, Seoul, New York and Bali.",
   "settings.tutorial": "Replay tutorial",
   "settings.install": "Install app",
   "settings.backups": "Backups",
