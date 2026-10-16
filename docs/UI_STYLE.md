@@ -103,7 +103,8 @@ identisch aussehen. Kein Hex-Wert außerhalb dieser beiden Stellen.
 | `--c-gold` | `#ffb929` | Sterne, Auslastungsbalken | Sterne/Qualitätsgrad, Auslastung, Goldene Blätter-Rahmen. |
 | `--c-energy` | `#f07a2a` | ⚡-Zahl | **Kapazität** (bei uns: Theken-Plätze/Durchsatz, § 5), Energiekosten-Zahl, „+“‑Shop-Kreis. |
 | `--c-danger` | `#f33838` | Alarm-Icon, „!“-Badge | Handlungsbedarf, Verlust, Löschen. |
-| `--c-danger-soft` | `#f76464` | Schließen-X | Schließen-Button Vollbild. |
+| `--c-danger-soft` | `#f76464` | Schließen-X | Schließen-Button Vollbild; Geld im HUD, solange das Konto im Minus ist (Phase 3). |
+| `--c-danger-ink` | `#c42727` | – (eigene, tiefere Stufe) | Rote Flächen mit weißer Schrift (Löschen, Chip „Konto im Minus“) und rote Schrift auf Hell (Entlassen-Knopf): Weiß auf `--c-danger` hätte nur 3.9:1, hier 5.7:1. |
 | `--c-cash` | `#3fb950` | grüner Geldschein | Geldschein-Icon im HUD und fliegender Schein (§ 5). |
 | `--c-gem` | `#ffd23f` | gelber Diamant | Icon „Goldenes Blatt“. |
 | `--c-surface` | `#ffffff` | Karten | Karten, aktive Reiter, runde Buttons. |
@@ -121,6 +122,8 @@ Kontrast-Regel (unverändert aus S3): Text/Hintergrund ≥ 4.5:1. Gemessen:
 auf Grün 2.3:1 → **grüne Buttons bekommen `--c-ink`-Text (6.8:1), nie Weiß**; grüner Text nur auf Dunkel.
 `--c-energy` auf Weiß 2.8:1, `--c-gold` auf Weiß 1.7:1 → beide nur als Icon-/Balkenfarbe, Zahlen daneben in
 `--c-ink`. `--c-ink-muted` auf Weiß 4.6:1 (ok). Abweichung vom Vorbild (dort weiße Schrift auf Grün) ist bewusst.
+Fette Hinweise: auf Karten `.locked-hint` (`--c-ink`), direkt auf dem dunklen Bottom-Sheet `.sheet-hint` (`--c-text`) –
+`--c-ink` auf dem Sheet hatte nur 1.6:1 (Hinweis im Zufriedenheits-Detail, korrigiert in Phase 3).
 
 ### 2.2 Typografie
 
@@ -162,7 +165,7 @@ Google-Fonts-Request zur Laufzeit (PWA offline, Datenschutz). `font-display: swa
 | Ebene | z-index | Inhalt |
 |---|---|---|
 | Szene | 0 | Phaser-Canvas |
-| Szene-Overlay | 1 | Fortschrittsringe, Smileys, Beträge und Geldscheine beim Bezahlen (Phaser) |
+| Szene-Overlay | 1 | Fortschrittsringe, Smileys, Beträge und Geldscheine beim Bezahlen, Kosten-Popups, Tür-Schild, „Matcha leer!“ (Phaser) |
 | HUD | 10 | Pillen, runde Buttons, Bottom-Bar, Avatar |
 | Panel | 20 | Bottom-Sheet |
 | Screen | 30 | Vollbild (Verwaltung, Standorte, Settings) |
@@ -179,24 +182,27 @@ Jede Komponente: Aussehen im Vorbild → unsere Fassung → CSS-Klasse (Ziel) �
 
 - Vorbild: dunkle Pille oben links, drei Währungen mit Icon, orangener „+“‑Kreis am Ende.
 - Unsere Fassung: `💵 Geld` (Geldschein-Icon `banknote`) · `⚡ Kapazität` (frei/gesamt, § 5) · `🍃 Goldene Blätter` · `+` (öffnet Blätter-Shop, ab S7; vorher ausgeblendet). Bezahlt ein Gast an der Kasse, springt der Geld-Betrag kurz an (`.hud-cash-in`, höchstens einmal je Animation).
+- Phase 3: Geld als Euro-Betrag (`fmtMoney`: „8.122,49 €“ / „€8,122.49“, ab 10 000 € ohne Cent, ab 1 Mio. € kompakt). Steht das Konto im Minus, wird der Betrag `--c-danger-soft` (`.hud-currency.is-negative`) und in der Zustandszeile erscheint der Chip „Konto im Minus“ (§ 3.2).
 - Klasse `.hud-pill`; Kinder `.hud-currency` (Icon 20 px, Zahl 18 px/700, weiß). Einkommen/s wird **nicht** in die Pille gequetscht, sondern in die zweite Zeile (Status-Pille) – wie im Vorbild die Uhr.
 - Ersetzt den heutigen 420-px-HUD-Block.
 
 ### 3.2 Status-Pille (Zeit + Zustand)
 
 - Vorbild: `🕒 11:50 PM 🍹 ⬇` und darunter `📱 Aktiv`.
-- Unsere Fassung: Zeile 1 `🕒 Tageszeit · +12,3 K/s`; Zeile 2 Zustandspille: `😊 Zufriedenheit 78` (antippbar → Detail) und bei Bedarf `🧹 62` (Sauberkeit, nur wenn < 70). Boost-Timer als weitere Pille (S7).
+- Unsere Fassung (Phase 3): Zeile 1 ist ein Knopf (`.hud-clock-btn`, öffnet Verwaltung → Betrieb, § 3.16; 44 px hohes Touch-Ziel, ein negativer Rand von 6 px oben und unten hält die Zeile so niedrig wie vorher): `🕒 Tag 1 · 10:40` (nachts Mond statt Uhr) und die Pille `.hud-open` „Geöffnet“ (`--c-success`, Schrift `--c-ink`) bzw. „Geschlossen bis 8:00“ (`.is-closed`, `--c-navy-900`, Schrift `--c-text`); dahinter geöffnet der Umsatz `+259,70 €/h`, geschlossen der Gewinn des Tages `Heute −5,11 €`, dann Standort und Café-Level. Zeile 2 Zustands-Chips: `😊 76 %` (antippbar → Detail), bei Bedarf `🧹 62 %` (Sauberkeit, nur unter 70), `Engpass: …` (nur wenn Gäste warten), `📦 Matcha für 0,4 Tage` bzw. `Matcha aus!` (antippbar → Einkauf, sobald der Vorrat für weniger als einen Öffnungstag reicht) und `Konto im Minus` (`.chip-danger`, Fläche `--c-danger-ink`). Boost-Timer als weitere Pille (S7).
 - Service-Symbole (🍹🍴) entsprechen bei uns **freigeschalteten Stationen** als kleine Glyphen in der Zeile.
 
 ### 3.3 Sterne-Pille → Qualitätsgrad
 
 - Vorbild: 5 goldene Sterne auf dunkler Pille mit goldener Unterkante.
 - Unsere Fassung: 4 Stufen (Culinary → Premium → Ceremonial → Meister, GAME_DESIGN § 8) als **4 Blatt-Symbole** 🍃 in `--c-gold`, erreichte gefüllt, offene als Umriss 30 % Weiß. Antippen → Shop-Tab „Qualität“.
+- Phase 3: **sechs Blätter** für die Matcha-Sorte im Ausschank (Café Grade … Uji First Flush; Culinary Grade = keins gefüllt), Name als Tooltip. Antippen → Verwaltung → Einkauf (§ 3.13); den Shop-Tab „Qualität“ gibt es nicht mehr.
 
 ### 3.4 Runde Icon-Buttons (rechte Spalte)
 
 - Vorbild: weiße Kreise 56 px, blaues gefülltes Icon, 12 px Abstand, rotes Alarm-Icon als drittes.
 - Unsere Fassung: `👥 Personal` · `📊 Statistik` · `❗ Aufgaben` (Quests/Achievements, S5; Icon rot, sobald etwas abholbar ist) · `⚙️` unten rechts separat (wie Vorbild, dunkle Pille mit weißem Zahnrad).
+- Phase 3: `👥 Personal` · `📦 Einkauf` (Icon `package`) · `📊 Betrieb & Bilanz` · `🏆 Erfolge`.
 - Klasse `.btn-round`; Modifier `.btn-round--white` (Standard), `.btn-round--primary` (blau mit weißem Icon), `.btn-round--glass`. Badge-Slot `.badge` oben links (rot, weiße Ziffer oder „!“).
 - Mindestziel 44 px bleibt, visuell 56 px.
 
@@ -205,7 +211,7 @@ Jede Komponente: Aussehen im Vorbild → unsere Fassung → CSS-Klasse (Ziel) �
 - Vorbild: links großer blauer Shop-Kreis (72 px) mit „!“, rechts Boost-Pille `💵 ×2 UNBEGRENZT` (grün, mit Ladering) + drei Kreise (Geld, Karte, Hammer).
 - Unsere Fassung (ersetzt `.nav` mit 6 Text-Buttons):
   - links: `🛒 Shop` (72 px, `--c-primary`), Badge wenn etwas leistbar ist (ersetzt heutige `affordable`-Markierung).
-  - rechts: Boost-Pille (S7; bis dahin Hype-Balken als grüne Pille mit Füllstand), dann `📣 Marketing`, `🗺️ Standorte`, `🔨 Bauen` (= Shop-Tab Ambiente/Erweiterung).
+  - rechts: Boost-Pille (S7; bis dahin Hype-Balken als grüne Pille mit Füllstand), dann `📣 Marketing`, `🗺️ Standorte`, `🔨 Bauen` (= Shop-Tab Ambiente/Erweiterung). Phase 3: `🎥 Social Media` (Icon `video-camera`) statt Marketing.
 - Labels: **unsichtbar** (nur `aria-label` + Tooltip auf Desktop) – das Vorbild hat keine Beschriftung. Onboarding-Tooltip in S9 erklärt sie einmal.
 - Klasse `.actionbar`, Kinder `.btn-round`, `.boost-pill`.
 
@@ -218,6 +224,7 @@ Jede Komponente: Aussehen im Vorbild → unsere Fassung → CSS-Klasse (Ziel) �
 
 - Vorbild: weiße Karte mit Portrait des „Investors“, erscheint zeitweise, antippbar → Angebot.
 - Unsere Fassung: **Influencer-Besuch / Event-Karte** (S7, GAME_DESIGN § 12). Weiße Karte 96×72 px, `--shadow-float`, leichtes Wippen (`@keyframes bob`, 1.6 s, ±3 px), Portrait als Platzhalter-Sprite.
+- Phase 3: Die Karte (`.event-slot`) sitzt unter allen **vier** Knöpfen der rechten Spalte (`top` = `--safe-top` + `--edge` + 56 px + 4 × (`--size-btn-round` + 12 px)); mit dem Einkaufs-Knopf lag sie sonst unter dem Pokal. „Beheben für …“ nennt den Preis in Euro.
 
 ### 3.8 Bottom-Sheet: Stations-Panel
 
@@ -234,6 +241,7 @@ Jede Komponente: Aussehen im Vorbild → unsere Fassung → CSS-Klasse (Ziel) �
     Im Vorbild sind die Kacheln die Möbel *eines* Zimmers; bei uns ist das Café das Zimmer und die Stationen
     sind die Möbel (§ 5).
   - Pfeile `‹ ›` am Szenenrand wechseln zur nächsten Station (ersetzt Antippen im Raum nicht, ergänzt es).
+  - Phase 3: Kauf-Pillen **×1 / ×5 / Max** (Höchstlevel 20, Level-Badge „LEVEL 7/20“, am Ende „MAX“). Werte in Euro und pro Spielstunde: Preis je Stück (Matcha-Produkte mit der Sorte im Ausschank, bei leerem Lager „Matcha ausverkauft“), „Auf der Karte: Matcha-Tonic“, „Bestellungen je 100 Gäste“, Zubereitung bzw. Bestellzeit in Minuten, Umsatz/h, Kapazität der Stufe/h; nachts „Gerade geschlossen.“ statt Auslastung. Neue Zeile „Ab Lv 10 neu auf der Karte: …“ (`station-next-menu`, am Ende „Die ganze Karte ist freigeschaltet.“); die nächste Optik-Stufe fällt mit dem neuen Produkt zusammen (Level 5/10/15/20).
 
 ### 3.9 Vollbild-Screen: Verwaltung
 
@@ -241,6 +249,7 @@ Jede Komponente: Aussehen im Vorbild → unsere Fassung → CSS-Klasse (Ziel) �
 - Unsere Fassung: ein Screen `Verwaltung` mit Tabs `🔧 Stationen` · `📣 Marketing` · `👥 Personal` · `📊 Statistik` (bündelt `shopPanel`, `marketingPanel`, `staffPanel`, Statistik aus GAME_DESIGN § 16 Nr. 9). Die heutigen getrennten Panels werden Tabs dieses Screens; Deep-Links von HUD/Bottom-Bar öffnen den jeweiligen Tab.
 - Statistik-Karte (`.stat-bars`): Balken `Stations-Einnahmen`, `Ambiente-Einnahmen`, `Trinkgeld` (periwinkle); `Auslastung 44/44` als Textzeile; `Gehaltskosten`, `Werbekosten` (vivid blue); **Tagesbilanz** als große grüne/rote Pille mit ▲/▼.
 - Listen-Karte: Tabs `Stationen` · `☕ Ambiente`; je Zeile Icon (blau), Name + Typ-Untertitel, `⚡ 17` orange, `🍵 629` grün, Button `LOS` (grün = kaufbar, grau = nicht), Auslastung als goldener Balken mit Prozent. Gestrichelte Trenner `1px dashed --c-surface-2`.
+- Phase 3: **fünf Reiter** `🏪 Shop` · `📦 Einkauf` · `👥 Personal` · `🎥 Social Media` · `📊 Betrieb` (`manageTabs.ts`, `data-testid` `manage-tab-<id>`). Damit fünf Namen am Handy nicht abgeschnitten werden, steht das Icon über dem Namen (`.manage-tabs .tab`: Spalte, Schrift `--fs-badge`). Der Shop hat nur noch die Tabs Stationen und Ambiente. Die Statistik-Karte mit Stations-Einnahmen und Auslastung ist durch Betrieb ersetzt (Öffnungszeiten § 3.16, Tagesbilanz § 3.17, Pipeline-Karte der aktuellen Stunde). HUD-Uhr, Qualitäts-Pille und Matcha-Chip öffnen ihren Reiter direkt.
 
 ### 3.10 Chips, Badges, Ringe
 
@@ -258,6 +267,50 @@ Jede Komponente: Aussehen im Vorbild → unsere Fassung → CSS-Klasse (Ziel) �
 
 - Dialog: weiße Karte, `--r-card`, Titel Display 22 px, Text `--c-ink`, Aktionen als Pillen (primär blau, sekundär `--c-tile-light`), X oben rechts in `--c-danger-soft`.
 - Toast: weiße Pille mit Icon, Schatten `--shadow-float`, von unten einfliegend. Erfolg = grünes Icon, Fehler = rotes Icon, kein farbiger Rand mehr.
+- Phase 3: Der Abwesenheits-Dialog nennt die vergangenen Spieltage (nur bei einem Tageswechsel, mit richtiger Einzahl über `fmtDays`), Gäste und Umsatz und dann „Gewinn nach allen Kosten“ bzw. „Verlust nach allen Kosten“ mit Tipp (Personal, Öffnungszeiten, Matcha-Vorrat), bei leerem Lager einen Hinweis aufs automatische Nachbestellen. Neue Toasts: Lieferung angekommen, Video online bzw. viral (Erfolg); Matcha ausverkauft, Nachbestellung zu teuer, Konto im Minus (Fehler).
+
+### 3.13 Einkauf (Phase 3)
+
+- Vorbild: Listen-Karte der Verwaltung (§ 3.9) mit Zeilen und grünem „LOS“; ein Lager gibt es dort nicht.
+- Unsere Fassung (`supplyPanel.ts`, Reiter „Einkauf“, rechte Spalte `package`, Qualitäts-Pille und Matcha-Chip im HUD), von oben nach unten:
+  - **Lager-Karte** (`.card.supply-card`): „Im Ausschank: Culinary Grade“ fett, darunter der Vorrat groß („Im Lager: 396 g Matcha“, `.supply-stock`, `--font-display`, `--fs-h2`) und die Reichweite („Reicht für 1,2 Öffnungstage (Verbrauch ≈ 329 g pro Tag)“). Ohne Matcha ein fetter Hinweis (`.locked-hint`) mit dem Express-Tipp.
+  - **Sorten**: je Sorte eine Listen-Zeile (`.shop-row.grade-row`) mit Name, Wirkung und Einkaufspreis („Preise ×1,30 · Nachfrage ×1,22 · Zufriedenheit +8 · 247,00 €/kg“) und Vorrat. Zwei Knöpfe: „Bestellen“ wählt die Sorte für die Bestellung (gewählt: „Ausgewählt“, Zeile kaufbar markiert), „Ausschenken“ stellt die Bar um (dann „Im Ausschank“, Zeile mit Kante `inset 4px` in `--c-success`, `.is-serving`). Gesperrte Sorten: „ab Café-Lv 6“, Zeile gedimmt.
+  - **Bestellen: <Sorte>** (`.card.supply-order`): drei Kauf-Pillen 250 g · 1 kg · 5 kg mit Preis (`.btn-buy`, Menge ohne Großbuchstaben), Häkchen „Express (in 2 Std., Aufpreis)“, darunter der Liefertermin („Lieferung morgen um 7:00.“ bzw. „in 2 Spielstunden“); bei vier offenen Bestellungen gesperrt mit Hinweis.
+  - **Unterwegs**: Liste der Lieferungen („1 kg Culinary Grade · kommt Tag 2, 7:00“) oder „Keine Lieferung unterwegs.“
+  - **Automatisch nachbestellen** (`.card.supply-auto`): Häkchen, Packungsgröße als `select` (mind. 44 px hoch, Radius `--r-tile`, Rand `--c-tile-light`), ein Satz, wann bestellt wird, und ein fetter Hinweis, wenn das Geld nicht reichte.
+- Testids: `supply-stock`, `supply-days`, `supply-grade-<n>`, `supply-serve-<n>`, `supply-order-<0..2>`, `supply-express`, `supply-orders`, `supply-auto`, `supply-auto-package`, `supply-auto-failed`.
+
+### 3.14 Social Media (Phase 3)
+
+- Vorbild: Werbung (Flyer → Radio/TV → Social Media) als Liste mit „LOS“.
+- Unsere Fassung (`socialPanel.ts`, Reiter „Social Media“, Kreis `video-camera` in der Bottom-Bar):
+  - **Account-Karte** (`.card.social-account`): Kamera-Icon in `--c-primary`, Follower groß (`.social-followers`, `--font-display`, `--fs-h2`), daneben der Chip „0/3 Videos heute“ (`.chip.social-posts`, Fläche `--c-primary-deep`); darunter die Wirkung („Bringt +12 % Gäste“) und nach frischen Videos „Frische Videos: +8 % Gäste gerade“.
+  - **Video posten**: je Format eine Listen-Zeile mit Beschreibung und Erwartung („≈ 233 Views · +8 Follower · 3 % viral“), grüner Knopf „Posten“ bzw. „Posten · 8,00 €“; am Tageslimit „Morgen wieder“, gesperrt „ab Café-Lv 6“ bzw. „Braucht einen Barista im Team.“
+  - **Bonus-Video** (`.card.social-bonus`): Format-Auswahl (`select` wie im Einkauf) und Knopf „Bonus-Video · 3 🍃“, darunter „Heute gehen noch 2 Videos ohne Blätter.“ bzw. „1/2 Bonus-Videos heute“.
+  - **Letzte Videos** (`.social-recent`): weiße Karten (`.social-post`, `--r-card`, `--shadow-card`) mit Format und „Tag 3, 10:00 · 1.234 Views · +37 Follower“; virale Videos mit goldener Innenkante (`.is-viral`, 2 px `--c-gold`) und Chip „Viral!“ (`.chip-viral`, Fläche `--c-gold`, Schrift `--c-ink`).
+- Nach dem Posten ein Erfolgs-Toast mit den Views.
+
+### 3.15 Personal mit Lohn und Entlassen (Phase 3)
+
+- Vorbild: Personal mit Tageslohn in der Verwaltung.
+- Unsere Fassung (`staffPanel.ts`, Reiter „Personal“):
+  - **Team-Pille** oben (`.team-cost`, Fläche `--c-glass`, Schrift `--c-text`, Radius `--r-pill`): „Team: 2 Personen · Löhne 14,80 €/h · 148,00 € pro Tag (8–18 Uhr)“.
+  - **Pipeline-Karte zur Hauptzeit** („Service-Pipeline zur Hauptzeit“, damit sie auch nachts zeigt, was das Team schafft): Balken Nachfrage, Bestellung, Zubereitung, Tischservice in Gästen/h, Engpass-Chip, „Bedient: 13 Gäste/h · 0 % mit Bedienung“; darunter Sauberkeit mit Änderung je Stunde.
+  - **Je Rolle eine Listen-Zeile**: Name, Erklärung, „1/4 eingestellt · inkl. dir (Inhaber/in, ohne Lohn)“, die **Lohn-Zeile** fett in `--c-ink` (`.row-wage`: „Lohn: 14,80 €/h · 148,00 € pro Tag · nächste Kraft +14,80 €/h“ bzw. „Lohn der nächsten Kraft: 13,90 €/h (nur geöffnet)“), „Jetzt: …“ und „Nächste Kraft: …“ (Mehrumsatz, Zufriedenheit oder warum gerade nichts). Knöpfe: grün „Einstellen · 40,00 €“ und daneben **„Entlassen“** (Stufen-Rollen „Stufe zurück“) als helle Pille (`.btn-fire`: Fläche `--c-surface-2`, Schrift `--c-danger-ink`, Unterkante wie § 2.3). An der Mindestbesetzung bleibt „Entlassen“ gesperrt, der Tooltip sagt warum („Mindestens 1 × Barista muss bleiben, sonst steht das Café still.“); für dich an der Kasse gibt es keinen Entlassen-Knopf.
+  - Filialleiter-Zeile mit Häkchen „Auto-Kauf“ wie bisher.
+
+### 3.16 Betrieb: Öffnungszeiten (Phase 3)
+
+- Vorbild: Uhr-Pille `🕒 10:56 PM` (§ 1.2); Öffnungszeiten gibt es dort nicht.
+- Unsere Fassung (`statsPanel.ts`, Reiter „Betrieb“, auch über die Uhr im HUD): Karte `.hours-card` mit „Geöffnet 8:00 – 18:00 (10 Std.)“, zwei Zeilen „Öffnet“ und „Schließt“ mit runden −/+-Knöpfen (`.btn-step`, 44 px, `--c-primary` mit Unterkante `--c-primary-deep`; gesperrt `--c-surface-2` mit `--c-ink-muted`) und dem Wert dazwischen (`.hours-value`, Ziffern in fester Breite). Darunter die **Tageskurve**: 24 Säulen (`.hour-chart`, Höhe = erwartete Gäste der Stunde, Tooltip je Säule), geöffnete Stunden `--c-primary` (`.hour-bar.is-open`), geschlossene `--c-tile-light`, Achse 0/6/12/18 Uhr in `--c-ink-muted`. Zwei Sätze rechnen die Entscheidung vor: „Bis 19:00 offen: etwa 16 Gäste mehr, +34,84 € nach Löhnen und Wareneinsatz.“ und „Die letzte Stunde ab 17:00: etwa 21 Gäste, +84,82 € nach Löhnen und Wareneinsatz.“ Grenzen 5–12 Uhr bzw. 13–24 Uhr und mindestens 6 Stunden sperren die Knöpfe.
+- Testids: `hours-text`, `hours-open`, `hours-close`, `hours-open-dec|inc`, `hours-close-dec|inc`, `hour-chart`, `hours-extend`, `hours-shorten`.
+
+### 3.17 Tagesbilanz (Phase 3)
+
+- Vorbild: Statistik-Karte der Verwaltung – Einnahmen-Balken periwinkle, Kosten-Balken kräftig blau, Tagesbilanz als große grüne/rote Pille (§ 1.3, § 3.9).
+- Unsere Fassung (`statsPanel.ts`, `ledgerView`, im Reiter „Betrieb“ unter den Öffnungszeiten): „Tagesbilanz heute (Tag 3)“ und „Gestern“, je eine Kopfzeile („35 Gäste · Einnahmen 382,73 € · Kosten 228,76 € · Ø Bon 9,99 €“) und Balken (`.stat-bars`, Länge relativ zum größten Posten): Einnahmen `Umsatz`, `Trinkgeld`, `Boni (Anfeuern, Café-Level)` in `--c-periwinkle`; Kosten `Löhne`, `Wareneinsatz`, `Matcha-Einkauf`, `Miete & Strom`, `Social Media`, `Einstellungen` in `--c-blue-vivid` (`.stat-bar--cost`) mit „−“ vor dem Betrag; Kosten und Boni ohne Betrag bleiben weg. Darunter die Pille „Tagesbilanz ▸ +153,97 €“ (`.balance-pill`: `--c-success` mit Schrift `--c-ink`, im Minus `.neg`: `--c-danger-ink` mit `--c-text`). Vor dem ersten ganzen Tag steht bei „Gestern“ „Noch kein ganzer Tag vorbei.“
+- Darunter die Pipeline-Karte der aktuellen Stunde (nachts „Geschlossen – keine Gäste.“).
+- Testids: `ledger-today-<posten>`, `ledger-today-balance`, `ledger-yesterday-…`, `stats-pipeline`.
 
 ---
 
@@ -269,18 +322,22 @@ Jede Komponente: Aussehen im Vorbild → unsere Fassung → CSS-Klasse (Ziel) �
 | Dollhouse-Schnitt | Rückwände hoch, Vorderwände auf 25 % Höhe gekappt, damit der Blick ins Café frei ist (Vorbild: Lobby/Restaurant). |
 | Palette Welt | Boden warm (`#e8c48a` Holz, `#c8d8e8` Fliese), Wände pastell (Matcha-Grün `#b8d9a8`, Creme `#f4ead8`), Akzente kräftig (Matcha `#6ea84f`, Sakura `#f5b8c8`, Terrakotta `#c86434`). Keine reinen Grautöne. |
 | Figuren | Blockfiguren mit großem Würfelkopf und kurzem Körper (Sprite 32×56, `CHAR_SPRITE`), weicher Bodenschatten, Frames Stehen + 2 Schritte (Zyklus 1-0-2-0) und Sitzpose (Beine vorn, Blick zum Tisch) für Gäste am Tisch. Kundentyp über Accessoires und Silhouette, je Typ mehrere Gen-Z-Matcha-Varianten (`CUSTOMER_LOOKS`: z. B. Student = Jutebeutel/Claw-Clip/Mullet, Tourist = Bucket Hat/Riesenrucksack/Sonnenhut, Influencer = Ringlicht/Selfie-Stick/Fell-Mikro, Kritiker = Notizbuch). Keine Gesichter; Sonnenbrille, Brille, Schnurrbart und Bart gelten als Accessoire. Personal in Schürze `--c-success`, mehrere Looks je Rolle (`STAFF_LOOKS`, Phase 2): Verkäufer mit Tablet, Barista, Bedienung mit **Tablett** (Becher + Kuchen), Putzkraft mit Mopp, Filialleiterin im Blazer, Social Media mit Ringlicht. Smiley, Ring und Emote sitzen über dem Kopf. Katalog: `docs/screenshots/figuren/katalog.png`. |
-| Theken und Ausstattung (Phase 2) | Theken als Module, 1 Kachel tief, Front zur Kundenseite, Nachbarmodule schließen nahtlos an. Die Gästetheke ist ein **L**: gerade Module (Front +y), quer gestellte (Front +x, Variante „b“) und ein Eckmodul, an dem Paneele, Fußstange und Platte um die Ecke laufen; Kasse (auch mit offener Lade) und Ausgabe gibt es in beiden Richtungen. Ausstattung steht an der Rückwand hinter dem Personal-Gang (Arbeitsplatte mit Unterschrank und Wandregal, Maschine, Ofen, Kühl-/Eisfach) oder **auf** der Theke (Kasse, Ausgabe-Station: eigenes Sprite über einem leeren Thekenmodul). **Fünf Ausbaustufen** an den Meilensteinen Level 1/10/25/50/100 (`STATION_LOOK_LEVELS`, gleichzeitig ×2 Tempo bzw. Preis): Jede Stufe ist sichtbar edler – mehr Teile, bessere Geräte und eine durchgehende **Material-Leiter**: (1) Kobalt-Lack mit Edelstahlplatte (Kiez-Café) · (2) gebürsteter Edelstahl, Terrazzo-Platte, blauer Sockel, Chrom · (3) blau glasierte Fliesen, weiße Quarzplatte, Chrom · (4) Nussbaum-Lamellen, Marmor mit Adern, Messing · (5) Nachtblau-Lack mit Gold-Intarsien, Marmor mit Goldkante, Gold, warmes LED-Licht, Plakette mit Blatt-Emblem. Grundfläche und Platz bleiben, die Form darf edler werden (z. B. Siebträger → Hebel-Espressomaschine mit Goldkuppel, Registrierkasse → nostalgische Goldkasse, Ofen → Kuppelofen → Herd mit Haube). Die Gästetheke folgt dem **Café-Level** (`COUNTER_LOOK_CAFE_LEVELS` 1/3/6/10/15) mit wechselnder Deko je Modul (`COUNTER_PROPS`). Katalog: `docs/screenshots/ausstattung/katalog.png`. |
-| Tische (Phase 2) | Runder Tisch auf Säulenfuß mit zwei Stühlen (Sitzplätze links/rechts bleiben in jeder Stufe gleich). Vier Optik-Stufen nach Anzahl der Tische (`TABLE_LOOK_LEVELS` 1/13/25/40): Edelstahl-Bistrotisch mit Kobalt-Bistrostühlen → Tischdecke, gepolsterte Eichenstühle, Blume → Marmor auf Dreifuß, Bugholzstühle, Kerze → Marmor mit Messingkante, Samtsessel, Tischlampe. Dreckige Tische bekommen einen Schmutz-Marker (Krümel + Tasse), den die Putzkraft wegwischt. Sitzende Gäste nutzen die Sitzpose, Blick zur Tischmitte. |
+| Theken und Ausstattung (Phase 2) | Theken als Module, 1 Kachel tief, Front zur Kundenseite, Nachbarmodule schließen nahtlos an. Die Gästetheke ist ein **L**: gerade Module (Front +y), quer gestellte (Front +x, Variante „b“) und ein Eckmodul, an dem Paneele, Fußstange und Platte um die Ecke laufen; Kasse (auch mit offener Lade) und Ausgabe gibt es in beiden Richtungen. Ausstattung steht an der Rückwand hinter dem Personal-Gang (Arbeitsplatte mit Unterschrank und Wandregal, Maschine, Ofen, Kühl-/Eisfach) oder **auf** der Theke (Kasse, Ausgabe-Station: eigenes Sprite über einem leeren Thekenmodul). **Fünf Ausbaustufen** ab Level 1/5/10/15/20 (`STATION_LOOK_LEVELS` = Stufen der Speisekarte, Phase 3: mit jeder Optik kommt ein neues Produkt; bis Phase 2 an den Meilensteinen 1/10/25/50/100 mit ×2 Tempo bzw. Preis): Jede Stufe ist sichtbar edler – mehr Teile, bessere Geräte und eine durchgehende **Material-Leiter**: (1) Kobalt-Lack mit Edelstahlplatte (Kiez-Café) · (2) gebürsteter Edelstahl, Terrazzo-Platte, blauer Sockel, Chrom · (3) blau glasierte Fliesen, weiße Quarzplatte, Chrom · (4) Nussbaum-Lamellen, Marmor mit Adern, Messing · (5) Nachtblau-Lack mit Gold-Intarsien, Marmor mit Goldkante, Gold, warmes LED-Licht, Plakette mit Blatt-Emblem. Grundfläche und Platz bleiben, die Form darf edler werden (z. B. Siebträger → Hebel-Espressomaschine mit Goldkuppel, Registrierkasse → nostalgische Goldkasse, Ofen → Kuppelofen → Herd mit Haube). Die Gästetheke folgt dem **Café-Level** (`COUNTER_LOOK_CAFE_LEVELS` 1/3/6/10/15) mit wechselnder Deko je Modul (`COUNTER_PROPS`). Katalog: `docs/screenshots/ausstattung/katalog.png`. |
+| Tische (Phase 2) | Runder Tisch auf Säulenfuß mit zwei Stühlen (Sitzplätze links/rechts bleiben in jeder Stufe gleich). Vier Optik-Stufen nach Anzahl der Tische (`TABLE_LOOK_LEVELS` 1/4/7/10, Phase 3 bei höchstens 10 Tischen drinnen; vorher 1/13/25/40): Edelstahl-Bistrotisch mit Kobalt-Bistrostühlen → Tischdecke, gepolsterte Eichenstühle, Blume → Marmor auf Dreifuß, Bugholzstühle, Kerze → Marmor mit Messingkante, Samtsessel, Tischlampe. Dreckige Tische bekommen einen Schmutz-Marker (Krümel + Tasse), den die Putzkraft wegwischt. Sitzende Gäste nutzen die Sitzpose, Blick zur Tischmitte. Phase 3: Die Tisch-Sprites haben keine aufgemalten Tassen mehr (Zuckerstreuer, Vase, Kerze bzw. Tischlampe stehen hinten); die Szene stellt je Gast seine Bestellung auf die Tischplatte vor seinen Platz (`TABLE_ITEM_OFFSET`) und danach das benutzte Geschirr (`item-<id>-empty`), bis jemand abräumt. |
 | Kiez-Café (Berlin) | Farb- und Materialsprache der knallblauen Berliner Third-Wave-Cafés (Vorgabe Vincent: LAP Coffee als Vorbild): heller Terrazzo-Boden, weiße Wände mit kobaltblauem Fliesenspiegel (Fugen als helle Flächen) und Edelstahl-Sockel, Leuchtkasten-Menü und Becherregal statt Fenstern, Vorderwände als blaue Fassade mit Edelstahl-Abdeckung, Nasenschild mit Blatt, blaue Pflanzkübel, blaue To-go-Becher. Kein Logo, kein Name, keine Schrift im Bild. |
 | Café-Grundriss | Kompakt und kein Viereck: Raum 11×10 (die Ecke an der Kreuzung bleibt, geschrumpft nach hinten/links; Altbauten füllen den Block) plus verglaster **Wintergarten** vorn links (Holzboden im Fischgrätmuster, Glaswände mit Sprossen in Fassadenfarbe). Tür in der rechten Fassade direkt am Kassen-Schenkel der L-Theke. **Lager** hinten links: Edelstahl-Regale mit kobaltblauen Stehern voller Vorräte (Matcha-Dosen, Bohnensäcke, Milch/Hafermilch, Sirup, Becher, Zucker, Mehl, Croissant-Kisten), füllt sich in drei Stufen mit der Zahl gekaufter Geräte (`STORAGE_LOOK_DEVICES`), zuletzt mit einer Palette. Wände überall dort, wo Raum an Nicht-Raum grenzt (Vorderwände 25 %, Glas höher, aber durchsichtig). **Terrassen-Tische** mit Sonnenschirm wachsen mit der Terrassen-Stufe (vorn, rechts am Gehweg, Ecke). |
 | Café-Deko | Mit dem Deko-Level (0–30) füllt sich das Café: Barhocker, Pflanzen, Teppiche/Läufer unter Tischgruppen, Pendelleuchten, Bilder an der Wand (Rahmen mit Passepartout, Motive ohne Schrift), Neon, Regale, Wandleuchten, Uhr, Schallplatten, am Ende eine goldene Matcha-Skulptur. Wand-Deko liegt bündig auf der Rückwand. |
 | Endausbau | Der Raum wird mit dem Deko-Level edler (`ROOM_LOOK_DECOR_LEVELS`): Boden Terrazzo → Terrazzo mit farbigen Einschlüssen und Messing-Fugen (12) → heller Marmor mit Adern, Messingfugen und kleinen dunklen Ecken-Einlegern (24, kein Schachbrett); Wände mit Riffelpaneelen, Messingleiste und Gesims (20); Vorderwände mit Blumenkästen (16); Pendelleuchten werden Opalglas-Kugeln in Messing (25), Olivenbäume in Messingkübeln (27), Kronleuchter über dem Mittelgang (29); warme Lichtkegel unter den Leuchten. Marmor- und Einschluss-Farben je Standort (`ThemeArt.lux`). |
-| Stadtviertel | Wie im Vorbild steht das Café nicht im Leeren: **Straßenraster** mit Berliner Blöcken (`data/city.ts`). Jeder Block: Eckhäuser mit Walmdach, Häuserzeilen mit Satteldach, Gauben und Schornsteinen, Innenhof mit Bäumen. Häuser aus **Fassaden-Modulen** (eine Achse × ein Geschoss: zehn Ladentypen mit Markise und Auslage, Haustür, Fenster mit Stuck, Balkon, Gesims; Putz oder Klinker), Dächer als Flächen (Rückseite hell, +y 90 %, +x 76 %). Hohe Häuser nur hinter und neben dem Café; vorn Kiezpark, Sportplatz, Wochenmarkt am Kanal, Spree. Kein sichtbarer Rand: Die Stadt reicht über den Ausschnitt hinaus, ferne Blöcke vereinfacht im Dunst, die Kamera bleibt in `CITY.view`. Autos, Radfahrer, Passanten, Tauben (fliegen auf, wenn jemand kommt), Ampeln und Dampfer sind kosmetisch; an der Kreuzung am Café vier **Autoampeln** (schwarzes Gehäuse, weiß umrandete Kontrastblende, Lichter zur Kamera) in deutscher Folge Rot → Rot-Gelb → Grün → Gelb, dazu Fußgängerampeln mit Ampelmännchen; Brunnen im Park sprudelt; nachts Laternen-Glow und erleuchtete Fenster. |
-| Tag/Nacht | Spielzeit → Tageszeit (24 min = 1 Tag). Nachts `--c-night` als Multiply-Overlay 35 %, Fensterlicht und Lampen als additive warme Kreise. Rein kosmetisch, keine Einnahmen-Wirkung (CLAUDE.md). |
+| Stadtviertel | Wie im Vorbild steht das Café nicht im Leeren: **Straßenraster** mit Berliner Blöcken (`data/city.ts`). Jeder Block: Eckhäuser mit Walmdach, Häuserzeilen mit Satteldach, Gauben und Schornsteinen, Innenhof mit Bäumen. Häuser aus **Fassaden-Modulen** (eine Achse × ein Geschoss: zehn Ladentypen mit Markise und Auslage, Haustür, Fenster mit Stuck, Balkon, Gesims; Putz oder Klinker), Dächer als Flächen (Rückseite hell, +y 90 %, +x 76 %). Hohe Häuser nur hinter und neben dem Café; vorn Kiezpark, Sportplatz, Wochenmarkt am Kanal, Spree. Kein sichtbarer Rand: Die Stadt reicht über den Ausschnitt hinaus, ferne Blöcke vereinfacht im Dunst, die Kamera bleibt in `CITY.view`. Autos, Radfahrer, Passanten, Tauben (fliegen auf, wenn jemand kommt), Ampeln und Dampfer sind kosmetisch; an der Kreuzung am Café vier **Autoampeln** (schwarzes Gehäuse, weiß umrandete Kontrastblende, Lichter zur Kamera) in deutscher Folge Rot → Rot-Gelb → Grün → Gelb, dazu Fußgängerampeln mit Ampelmännchen; Brunnen im Park sprudelt; nachts Laternen-Glow und erleuchtete Fenster. Phase 3: Links neben dem Café liegt statt eines Altbaus der Parkplatz (Zeile „Parkplatz“). |
+| Tag/Nacht | Licht nach der Spieluhr aus `core` (Phase 3, GAME_DESIGN § 7.6: geöffnet 1 Spielstunde = 1 Minute, geschlossen Zeitraffer; vorher 24 min = 1 Tag): Dämmerung 18–21 Uhr, hell wird es 5–7 Uhr (`DAY_CYCLE`). Nachts `--c-night` als Multiply-Overlay 35 %, Fensterlicht und Lampen als additive warme Kreise. Das Licht selbst ist kosmetisch; ob Gäste kommen, entscheiden die Öffnungszeiten in `core`. |
+| Öffnungszeiten (Phase 3) | Über der Tür ein **Schild** als Pille (`CafeStreet.setSign`): „Geöffnet · bis 18:00“ in `--c-ink` auf `--c-success` (wie das Badge im HUD) bzw. „Geschlossen · ab 8:00“ in `--c-text` auf `--c-danger-ink` (beides ≥ 4,5:1), feiner Rand `--c-surface`, Schrift ohne Kontur in 8 Welt-Pixeln (`SCENE_FX.doorSignPx`); beim Herauszoomen wächst die Schrift auf Lesegröße und der farbige Grund mit (Farben aus `UI_THEME`). Nach Ladenschluss brennt drinnen nur noch 15 % des Lichts (`SCENE_FX.closedLight`: Lichtscheine und Lichtkegel der Leuchten). Das **Team macht Feierabend**: Wartende ohne Bestellung gehen, die Tafel leert sich, Gäste vom Parkplatz kehren um; Verkäufer, Baristas und Bedienungen gehen nach hinten hinaus, Putzkräfte wischen noch 10 s (`CROWD.cleanAfterCloseSec`) und gehen dann; morgens kommen alle nacheinander wieder (`CROWD.arriveStaggerSec`). Beim Szenenstart steht das Team schon an seinen Plätzen. |
+| Parkplatz (Phase 3) | Links neben dem Café-Block (wo bis Phase 2 ein Altbau stand), `scenes/city/ParkingView.ts`, Daten `data/parking.ts`: Stufe 0 eine eingezäunte Schotterfläche (Bauzaun-Elemente mit rot-weißem Warnband, Grasbüschel), ab Stufe 1 Asphalt (`lotAsphalt` der Standort-Palette) mit hellen Markierungen, Einfahrt über einen abgesenkten Bordstein, Pfeil in der Fahrgasse und blaues Schild „P“; Fahrradbügel aus Edelstahl (Stufe 1 zwei, Stufe 2 vier – erst ab der Höhe, wo sie nicht hinter der Glaswand des Wintergartens stehen), drei Roller-Felder (Stufe 3), Auto-Boxen an der Rückwand (Stufe 4 zwei, Stufe 5 vier) und eine Ladesäule (Stufe 5). Neue Stufe: Funken über dem Platz. **Gäste mit Fahrzeug** (kosmetisch, `PARKING_CROWD`): Autos biegen vom Bordstein in die Einfahrt, fahren die Fahrgasse entlang und vorwärts in ihre Box (beim Wegfahren rückwärts aus der Box, dann vorwärts hinaus; am Bordstein ein- und ausblendend); Rad und Roller erscheinen mit ihrem Gast (0,35 s). Der Gast steigt aus, geht zu Fuß zur Tür und stellt sich **erst dort** an – wer noch weit weg ist, hält keinen Platz in der Schlange frei; sein Vorlauf ist so berechnet, dass bei jeder Zahlung jemand an der Kasse steht. Gäste-Autos nutzen die vorhandenen Auto-Sprites (Limousine, Lieferwagen, Kleinwagen, je zwei Lacke, kein Taxi). |
+| Lieferung (Phase 3) | Bei jeder angekommenen Matcha-Lieferung (`supply.delivered` steigt) fährt der vorhandene **Lieferwagen** (`car-2`) auf dem Parkstreifen der rechten Straße vor, hält auf Höhe der Tür, ein Karton (`supply-crate`) wandert durch die Tür ins Café, „Matcha geliefert!“ steigt auf, dann fährt der Wagen weiter und blendet aus (`DELIVERY_VAN`); mehrere Lieferungen fahren nacheinander (höchstens drei auf einmal angezeigt). |
 | Kamera | Fester Winkel, Pinch-Zoom 0.8–1.6, Pan begrenzt auf Grid + Rand. Beim Antippen einer Station Zoom auf 1.3 und Panel öffnen (Vorbild: Zimmer-Panel; Zoom noch offen). Der Ausschnitt bleibt, wo der Spieler ihn hinschiebt – auch wenn sich die Spielfläche ändert (Adressleiste, Drehen); nur die unbewegte Startansicht passt sich neu ein. Wischen und Zoomen auf der Szene gehören dem Spiel (`touch-action: none`), die Seite federt nie. |
 | Antippen (Vorgabe Vincent) | **Jedes Objekt öffnet direkt sein Upgrade-Panel** (`scenes/tapTarget.ts`): Geräte, Thekenmodule (gehören zur Kasse bzw. zum Gerät darauf), Warteschlangen-Tafel (Kasse), Tische (Tische), Terrassen-Tische (Terrasse), Deko-Stücke inkl. Barhocker und Wand-Deko (Deko), Musik-Anlage, WLAN. Deko, Musik und WLAN zählen nur dort, wo sie sichtbar sind (Pixel-Test ab Alpha `SCENE_FX.tapAlpha`, ohne weiche Schatten und Lichtscheine); von mehreren Objekten unter dem Finger gewinnt das oberste sichtbare, knapp daneben das oberste getroffene. Böden (Teppiche, Terrassen-Fliesen) und das Lager (keine eigene Stufe) füllen wie bisher den Hype. **Keine Level-Schilder über Objekten**: Das Level steht nur im Panel; über Bauplätzen stehen nur „Kaufen“ bzw. „Terrasse nötig“. |
-| Feedback | Kauf: Objekt „ploppt“ (Scale 0 → 1.1 → 1, 250 ms). Level-up: weißer Shine-Sweep. Neue Optik-Stufe: zusätzlich Funken und „Neues Design!“ über dem Gerät; wird die Theke oder werden die Tische edler, ploppen alle Module bzw. Tische als Welle von links nach rechts. Bezahlen: Kassenlade fährt aus, „+Betrag“ über dem zahlenden Gast (bei vielen Zahlungen gesammelt, höchstens alle 400 ms), ein grüner Geldschein fliegt vom Zahlenden ins Geld-Feld des HUD – genau dann, wenn `core` die Zahlung bucht (GAME_DESIGN § 7.2). Der Schein hat in jedem Zoom dieselbe Bildschirmgröße (34 → 40 px breit, `SCENE_FX.cashBillPx`), startet links neben dem Betrag und folgt beim Flug der Kamera. Beim Servieren nur noch ein Emote. |
+| Feedback | Kauf: Objekt „ploppt“ (Scale 0 → 1.1 → 1, 250 ms). Level-up: weißer Shine-Sweep. Neue Optik-Stufe: zusätzlich Funken und „Neues Design!“ über dem Gerät; wird die Theke oder werden die Tische edler, ploppen alle Module bzw. Tische als Welle von links nach rechts. Bezahlen: Kassenlade fährt aus, „+Betrag“ über dem zahlenden Gast (bei vielen Zahlungen gesammelt, höchstens alle 400 ms), ein grüner Geldschein fliegt vom Zahlenden ins Geld-Feld des HUD – genau dann, wenn `core` die Zahlung bucht (GAME_DESIGN § 7.2). Der Schein hat in jedem Zoom dieselbe Bildschirmgröße (34 → 40 px breit, `SCENE_FX.cashBillPx`), startet links neben dem Betrag und folgt beim Flug der Kamera. Beim Servieren nur noch ein Emote. Phase 3: Zu jeder vollen Spielstunde, in der laufende Kosten abgebucht werden, steigt über der Kasse „−Betrag“ in `--c-danger` auf (`UI_THEME.dangerCss`); bei einer Lieferung „Matcha geliefert!“ an der Tür; ist kein Matcha mehr da, steht „Matcha leer!“ in `--c-danger` über der Matcha-Station, bis wieder Vorrat da ist; eine neue Parkplatz-Stufe sprüht Funken über dem Platz. |
 | Bewegung im Café (Phase 2) | Gäste: Tür → nach zwei, drei Kacheln Schlange entlang des Kassen-Schenkels (neben der Schlange heran, höchstens 6 Figuren, der Rest zählt auf der Tafel) → bestellen und **bezahlen** an der Ecke (Ring bis zur Zahlung) → um die Ecke zum Abholplatz an der Ausgabe oder zum Tisch → Abholer setzen sich mit ihrem Getränk oft auf einen freien **Barhocker** (Sitzpose höher, Blick zur Theke, Getränk auf der Thekenplatte) → hinter der Schlange vorbei hinaus. Bedienungen kommen durch einen Durchgang in der Theke in den Gastraum. **Personal arbeitet sichtbar** („kleine Arbeiter“): Verkäufer stehen hinter der Kasse, deren Bildschirm bzw. Tasten zu ihnen zeigen, und tippen, solange jemand bestellt; nach jeder Bestellung fährt die Kassenlade aus. Baristas bereiten mit dem Rücken zum Gastraum zu (Hände im Takt, Fortschrittsring, Geräte-Effekt: Dampf, Dampfstöße, Frost, Glut, Pulver, Funkeln), tragen den Becher den Personal-Gang entlang zur Ausgabe und stellen ihn ab, holen gelegentlich Nachschub aus dem Lager (greifen ins Regal, tragen Dose, Sack oder Karton ans Gerät); Bedienungen nehmen ihn mit und laufen mit Tablett zum Gast. Putzkräfte gehen von Tisch zu Tisch zu dreckigen Tischen und wischen sonst den Boden in der Nähe. Musiknoten über der Anlage, Dampf über den Tassen. **Wege wirken natürlich**: direkt und mit gerundeten Ecken (Wegsuche, kein Raster-Zickzack), jeder Weg beginnt dort, wo die Figur gerade steht, und führt um Tische, Stühle, Deko und Wartende herum; an den Platz tritt man von der freien Seite, Bedienungen treten neben den Gast. Gehende Figuren behalten auf schrägen Wegen ihre Ansicht (kein Flackern zwischen zwei Ansichten), jeder Gast hat sein eigenes Tempo, auf dem Gehweg blenden Gäste ein und aus. Alles kosmetisch – Spawn und Tempo kommen aus den Raten in `core`. |
+| Arbeit, Tablett und Geschirr (Phase 3) | Vorgabe Vincent: „nicht nur vor dem Gerät stehen und die Arme wackeln, sondern wirklich etwas an den Geräten tun und das Tablett auf den Tisch stellen“. **Baristas arbeiten Schritt für Schritt** nach einem Skript je Gerät (`WORK_SCRIPTS` in `data/art.ts`, Anteile der Zubereitungszeit): Matcha-Station – Schale hinstellen, mit dem Bambusbesen aufschlagen, Milch eingießen, Becher nehmen; Kaffeemaschine – Siebträger füllen und tampen, Tasse unter den Auslauf, Bezug läuft, Milchschaum, Tasse nehmen; Kühl-/Eisfach – ins Kühlfach greifen und Eis schöpfen, Glas hinstellen, eingießen; Ofen – Blech hinein, backen, Blech heraus, auf den Teller; Kuchenvitrine – Stück herausheben, anrichten; Steinmühle – Blätter einfüllen, mahlen, aufgießen; Zeremonie-Set – Chawan hinstellen, lange aufschlagen, reichen. Dafür eigene Posen (`CHAR_FRAMES`: vorgreifen/abstellen, Bambusbesen im schnellen Wechsel, tief greifen mit in die Knie gehen, eingießen mit Milchkännchen) und Werkzeug in der Hand; Geräte-Effekte nur in den Schritten, in denen das Gerät arbeitet. Das Produkt steht während der Zubereitung auf dem Gerät (`DEVICE_ITEM_AT`), geht dann in die vorgestreckte Hand (`HOLD_POINTS.carry`) und auf die Ausgabe. **Bedienungen** tragen ein leeres Tablett, auf dem die echten Becher und Teller der Bestellung stehen; beim Aufnehmen an der Ausgabe, Abstellen am Tisch, Abräumen und Wegstellen strecken sie es vor (`HOLD_POINTS.trayServe`). Sie stellen die Bestellung vor den Gast, räumen später das Geschirr ab (stehen auf drei Tischen benutzte Teller, räumen sie zuerst ab) und stellen es hinter der Ausgabe in die Spüle. **Ohne Bedienung** holen Gäste an der Ausgabe selbst ab, tragen ihre Bestellung in der Hand an den Tisch und bringen beim Gehen ihr Geschirr zur Rückgabe auf der Theke (dort stehen höchstens drei Teile, kurz danach räumt jemand von hinten ab); stehengelassenes Geschirr verschwindet ohne Bedienung nach höchstens 40 s. Verkäufer kommen morgens durch den Gang und gehen abends hinaus. |
 
 ---
 
@@ -288,23 +345,25 @@ Jede Komponente: Aussehen im Vorbild → unsere Fassung → CSS-Klasse (Ziel) �
 
 | Hotel-Element (UI) | Matcha Café Empire | Status im Repo |
 |---|---|---|
-| 💵 Cash | 💵 Geld (grüner Geldschein, vorher Matcha-Münze) | vorhanden |
+| 💵 Cash | 💵 Geld (grüner Geldschein, vorher Matcha-Münze; seit Phase 3 in Euro) | vorhanden |
 | ⚡ Energie (Generator begrenzt Käufe) | ⚡ **Kapazität**: Theken-/Sitzplätze begrenzen, wie viele Stationen laufen; Ambiente „Sitzbereich“/„Terrasse“ = Generator-Äquivalent | **neu** – Vorschlag für S9/Offen; bis dahin Zahl ausblenden |
 | 💎 Gems | 🍃 Goldene Blätter | vorhanden (verdienbar ab S5) |
-| ★★★★★ Sterne | 🍃🍃🍃🍃 Qualitätsgrad (4 Stufen) | S5 |
+| ★★★★★ Sterne | 🍃🍃🍃🍃 Qualitätsgrad (4 Stufen); Phase 3: sechs Blätter für die Matcha-Sorte im Ausschank | S5, Phase 3 |
 | Zimmer 201 (ein Raum mit vielen Möbeln) | Das Café selbst; Stations-Panel zeigt alle Stationen als Kacheln | vorhanden (Panel-Umbau S8) |
 | Doppelbett, Nachttisch, TV … (Möbel mit Level) | Stationen (Matcha-Bar, Kasse, To-go-Fenster …) und Ambiente | vorhanden |
 | Restaurant, Pool, Spa | Ambiente: Sitzbereich, Terrasse, Deko, Musik, WLAN | vorhanden |
-| Front Desk / Housekeeping / Kitchen | Barista, Kassierer, Bäcker, Tee-Meister, Reinigungskraft, Social-Media, Filialleiter | vorhanden |
-| Verwaltung → Statistik, Tagesbilanz | Verwaltung → Statistik, Tagesbilanz | S5/S9 |
-| Werbung (Flyer/Radio/TV/Social) | Marketing-Level + Kampagne | vorhanden |
+| Front Desk / Housekeeping / Kitchen | Phase 2: Verkäufer, Baristas, Bedienungen, Putzkräfte, Social Media, Filialleiter (bis Phase 1 auch Bäcker, Tee-Meister) | vorhanden |
+| Personal mit Tageslohn | Stundenlohn je Kraft und Team, Einstellen und Entlassen (§ 3.15) | Phase 3 |
+| Verwaltung → Statistik, Tagesbilanz | Verwaltung → Betrieb: Öffnungszeiten (§ 3.16), Tagesbilanz mit Einnahmen und Kosten, grüne/rote Pille (§ 3.17) | S5/S9, Phase 3 |
+| Werbung (Flyer/Radio/TV/Social) | bis Phase 2 Marketing-Level + Kampagne; Phase 3 Social-Media-Account mit Videos (§ 3.14) | vorhanden |
 | VIP / Investor-Karte | Influencer-Besuch, Event-Karte | S7 |
 | Manager-Portrait + Timer | Filialleiter + Auto-Kauf/Event-Timer | S4 (Filialleiter), S7 |
 | Belegung 44/44 | Auslastung Sitzplätze | S5 |
 | Hai-Kachel (Kredit) | 🍃-Premium-Kachel (nur spielintern) | S7 |
 | Weltkarte im Verwaltungs-Hintergrund | Weltkarte mit 6 Standorten (Berlin → Bali) | S6 |
 | LED-Tafel „09:00 AM“ | Warteschlangen-Zähler an der Kasse | S8 |
-| Uhr `10:56 PM` | Café-Tageszeit (kosmetisch) | S8 |
+| Uhr `10:56 PM` | Café-Tageszeit (S8 kosmetisch); Phase 3 Spieluhr mit Tag, Geöffnet/Geschlossen und Öffnungszeiten | S8, Phase 3 |
+| – (eigenes Element) | Parkplatz neben dem Café mit Rad, Roller, Auto (§ 4) | Phase 3 |
 
 ---
 
@@ -334,6 +393,16 @@ Jede Komponente: Aussehen im Vorbild → unsere Fassung → CSS-Klasse (Ziel) �
     💵 im Vorbild. Geld kommt erst herein, wenn ein Gast an der Kasse bezahlt hat (Lade, Betrag, Schein, HUD springt
     an). Barhocker sind einzelne Sprites, damit Sitzende davor sortiert werden; die Pendelleuchten der Bar hängen
     über der Theke (Schein auf der Thekenplatte), nicht über den Hockern.
+11. **Realistisches Café (Vincent, 2026-10-16, Phase 3):** Geld in Euro (`fmtMoney`) statt währungsloser Beträge; die
+    Verwaltung bekommt fünf Reiter (Shop, Einkauf, Personal, Social Media, Betrieb), Icon über dem Namen statt
+    abgeschnittener Namen; Marketing wird zu Social Media (Bottom-Bar), die rechte Spalte bekommt Einkauf; die
+    Qualitäts-Pille zeigt sechs Blätter für die Matcha-Sorte und öffnet den Einkauf. Die Uhr im HUD ist ein Knopf zu
+    den Öffnungszeiten und zeigt „Geöffnet/Geschlossen“; die Tagesbilanz übernimmt die Statistik-Karte des Vorbilds mit
+    echten Kosten. In der Szene: Schild an der Tür, Licht aus und Feierabend nach Ladenschluss, Arbeitsschritte je
+    Gerät, Tablett mit den echten Bestellungen, Geschirr auf den Tischen, Parkplatz mit Fahrzeugen und Lieferwagen –
+    alles kosmetisch, gelesen aus `core`. Neues Phosphor-Icon `video-camera` (Social Media); `truck`, `user-minus`,
+    `car`, `eye`, `trend-up` und `door` liegen schon im Sprite, werden aber noch nicht benutzt. Farben nur über Tokens
+    bzw. `UI_THEME` (neu `dangerCss` für Kosten und „Matcha leer!“ in der Szene).
 
 ---
 
