@@ -89,6 +89,22 @@ test('Spielschleife ohne Debug-Tasten: kaufen, speichern, neu laden', async ({ p
   expect(errors).toEqual([]);
 });
 
+test('Objekt-Panel: Verbessern ohne Scrollen sichtbar, auch auf kleinem Handy', async ({
+  page,
+}) => {
+  // Antippen eines Objekts in der Szene öffnet dieses Panel; die Kauf-Buttons stehen direkt unter dem Level.
+  await page.setViewportSize({ width: 360, height: 640 });
+  await page.goto('?lang=de&tutorial=0');
+  await page.getByTestId('nav-shop').click();
+  await page.getByTestId('shop-station-matchaStation').click();
+  for (const amount of ['1', '10', '100', 'max']) {
+    await expect(page.getByTestId(`buy-${amount}`)).toBeInViewport({ ratio: 1 });
+  }
+  await page.getByTestId('tile-ambience-decor').click();
+  await expect(page.getByTestId('ambience-level')).toBeVisible();
+  await expect(page.getByTestId('ambience-buy-decor')).toBeInViewport({ ratio: 1 });
+});
+
 test('Ambiente lässt sich im Shop kaufen', async ({ page }) => {
   await page.goto('?lang=en&tutorial=0');
   await reloadWithSave(page, { coins: '1000' });
