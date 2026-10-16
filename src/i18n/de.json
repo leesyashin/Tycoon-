@@ -708,5 +708,10 @@
   "tutorial.social.title": "Social Media",
   "tutorial.social.text": "Poste bis zu drei Videos am Tag. Follower bringen dauerhaft mehr Gäste, frische Videos einen kurzen Schub – manchmal geht eins viral.",
   "staff.fireMin": "Mindestens {count} × {name} muss bleiben, sonst steht das Café still.",
-  "ledger.bonus": "Boni (Anfeuern, Café-Level)"
+  "ledger.bonus": "Boni (Anfeuern, Café-Level)",
+  "scene.sign.open": "Geöffnet · bis {time}",
+  "scene.sign.closed": "Geschlossen · ab {time}",
+  "scene.costPopup": "−{amount}",
+  "scene.delivery": "Matcha geliefert!",
+  "scene.matchaOut": "Matcha leer!"
 }

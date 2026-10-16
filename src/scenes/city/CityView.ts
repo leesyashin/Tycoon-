@@ -277,6 +277,7 @@ export class CityView {
     const p = this.palette;
     const map: Record<GroundKind, string> = {
       courtyard: p.courtyard,
+      lot: p.lot,
       yard: p.yard,
       sidewalk: p.sidewalk,
       road: p.road,

@@ -60,5 +60,7 @@ export const UI_THEME = {
   goldCss: '#ffb929',
   /** Rote 7-Segment-Ziffern der Warteschlangen-Tafel (§ 3.10). */
   ledCss: '#f33838',
+  /** Kosten und Warnungen in der Szene (`--c-danger`). */
+  dangerCss: '#f33838',
   fontUi: 'Poppins, system-ui, sans-serif',
 } as const;

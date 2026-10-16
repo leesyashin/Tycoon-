@@ -1,5 +1,6 @@
 import { CITY, propFootprint } from '@data/city';
 import { CROWD, NAV, inRoom, type CafeLayout, type GridPos } from '@data/layouts';
+import { PARKING_LOT } from '@data/parking';
 
 /**
  * Wegsuche der kosmetischen Figuren: ein Raster über Raum, Terrasse und Gehweg (Zellen `NAV.cell`), A* darüber,
@@ -146,10 +147,11 @@ export class CafeNav {
     const decor = this.layout.decor.map((d) => level('decor') >= d.minLevel);
     const amb = this.layout.ambience.map((a) => level(a.id) >= a.minLevel);
     const bits = (list: readonly boolean[]) => list.map((v) => (v ? '1' : '0')).join('');
-    const key = `${bits(tables)}|${bits(decor)}|${bits(amb)}`;
+    const parking = ambience ? (ambience['parking'] ?? 0) : 0;
+    const key = `${bits(tables)}|${bits(decor)}|${bits(amb)}|${String(parking)}`;
     if (key === this.visibleKey) return;
     this.visibleKey = key;
-    this.shapes = this.buildShapes(tables, decor, amb);
+    this.shapes = this.buildShapes(tables, decor, amb, parking);
     this.grids.clear();
   }
 
@@ -164,7 +166,17 @@ export class CafeNav {
     const cells = this.search(grid, q);
     if (!cells) return [{ ...to }];
     const pts: GridPos[] = [{ ...from }];
+    // Start bzw. Ziel in einer engen Lücke (Stuhl an der Wand): über die freie Start- bzw. Zielzelle, statt quer
+    // durch den Tisch daneben.
+    const startCell = cells[0];
+    const first = cells.length > 2 ? this.center(cells[1] ?? 0) : to;
+    if (startCell !== undefined && this.probe(grid, q, from, first).blocked)
+      pts.push(this.center(startCell));
     for (let i = 1; i < cells.length - 1; i++) pts.push(this.center(cells[i] ?? 0));
+    const goal = cells[cells.length - 1];
+    const before = pts[pts.length - 1] ?? from;
+    if (cells.length > 1 && goal !== undefined && this.probe(grid, q, before, to).blocked)
+      pts.push(this.center(goal));
     pts.push({ ...to });
     const pulled = this.pull(grid, q, pts);
     const smooth = this.round(grid, q, pulled);
@@ -223,6 +235,7 @@ export class CafeNav {
     shown: readonly boolean[],
     decor: readonly boolean[],
     ambience: readonly boolean[],
+    parking: number,
   ): Shape[] {
     const L = this.layout;
     const out: Shape[] = [];
@@ -278,6 +291,19 @@ export class CafeNav {
     });
     for (const q of L.order.queue) out.push(circle(q, NAV.queueR, false));
     out.push(circle(L.order.crowd, CROWD.crowdSpread / 2, false));
+    // Parkplatz (Grid → Agenten: −0,5): Ständer, Roller- und Auto-Plätze, Schild, Ladesäule; unausgebaut ein Bauzaun.
+    const lot = PARKING_LOT;
+    for (const s of lot.slots) {
+      if (parking < s.minLevel) continue;
+      const [hx, hy] =
+        s.kind === 'car' ? [0.36, 0.72] : s.kind === 'moped' ? [0.14, 0.36] : [0.12, 0.3];
+      out.push(box(s.x - 0.5 - hx, s.y - 0.5 - hy, s.x - 0.5 + hx, s.y - 0.5 + hy));
+    }
+    if (parking > 0) out.push(circle({ x: lot.sign.x - 0.5, y: lot.sign.y - 0.5 }, 0.06, true));
+    if (parking >= lot.charger.minLevel)
+      out.push(circle({ x: lot.charger.x - 0.5, y: lot.charger.y - 0.5 }, 0.12, true));
+    if (parking <= 0)
+      out.push(box(lot.rect.x0 - 0.5, lot.fenceY - 0.55, lot.rect.x1 - 0.5, lot.fenceY - 0.45, 0));
     // Stadt-Objekte auf dem Gehweg (Grid-Koordinaten → Agenten: −0,5).
     for (const p of CITY.props) {
       const f = propFootprint(p);

@@ -708,5 +708,10 @@
   "tutorial.social.title": "Social media",
   "tutorial.social.text": "Post up to three videos a day. Followers bring more guests for good, fresh videos a short boost – sometimes one goes viral.",
   "staff.fireMin": "At least {count} × {name} must stay, or the café stops.",
-  "ledger.bonus": "Bonuses (cheering, café level)"
+  "ledger.bonus": "Bonuses (cheering, café level)",
+  "scene.sign.open": "Open · until {time}",
+  "scene.sign.closed": "Closed · opens {time}",
+  "scene.costPopup": "−{amount}",
+  "scene.delivery": "Matcha delivered!",
+  "scene.matchaOut": "Out of matcha!"
 }

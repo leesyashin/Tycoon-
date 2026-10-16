@@ -15,6 +15,7 @@
  * Flächen, die Fassaden-Module rendert `pnpm art` (`scripts/art/city.ts`) in den Themen-Atlas.
  */
 import { getLayout } from './layouts';
+import { PARKING_LOT } from './parking';
 
 export interface GridRect {
   x0: number;
@@ -25,6 +26,7 @@ export interface GridRect {
 
 export type GroundKind =
   | 'courtyard'
+  | 'lot'
   | 'yard'
   | 'sidewalk'
   | 'road'
@@ -687,6 +689,13 @@ function placeFree(
     ...fixed.filter((p) => p.kind === 'busstop').map(busStopClearance),
     ...doorFronts(buildings, ground),
     ...crossingApproaches(CROSSINGS),
+    // Einfahrt des Parkplatzes über den Gehweg (abgesenkter Bordstein)
+    {
+      x0: PARKING_LOT.driveX - 0.75,
+      y0: PARKING_LOT.rect.y1,
+      x1: PARKING_LOT.driveX + 0.75,
+      y1: O,
+    },
   ];
   const placed = fixed.map(propFootprint);
   const rank = (p: PropDef) => {
@@ -848,7 +857,8 @@ function buildCity(): CityDef {
         buildings.push(building({ x0: cx, y0, x1: 6, y1: cy }, 'gable-u', false, 5));
         buildings.push(building({ x0: 6, y0, x1: 12, y1: cy }, 'hip', false, 5));
         buildings.push(building({ x0, y0: cy, x1: cx, y1: 7 }, 'gable-v', false, 5));
-        buildings.push(building({ x0, y0: 7, x1: cx, y1: 12 }, 'hip', false, 5));
+        // Links neben dem Café: der Parkplatz (Ausbau und Fahrzeuge zeichnet die Szene, `data/parking.ts`).
+        ground.push({ kind: 'lot', rect: { ...PARKING_LOT.rect } });
       } else if (kind === 'canal') {
         ground.push({ kind: 'grass', rect: { x0: CANAL.quay1, y0, x1: 31, y1 } });
         ground.push({ kind: 'courtyard', rect: { x0: 31, y0, x1, y1 } });
@@ -1080,6 +1090,10 @@ export interface CityPalette {
   /** Dachfarben (Schiefer, Ziegel, dunkle Ziegel, Zink). */
   roofs: readonly string[];
   courtyard: string;
+  /** Parkplatz: Schotter, solange er nicht ausgebaut ist; ausgebaut Asphalt mit Markierung. */
+  lot: string;
+  lotAsphalt: string;
+  lotMark: string;
   yard: string;
   sidewalk: string;
   sidewalkJoint: string;
@@ -1106,6 +1120,9 @@ const BERLIN: CityPalette = {
   plinth: '#a59b8f',
   roofs: ['#77798c', '#b06a4f', '#8f5a49', '#6d7386'],
   courtyard: '#b9b1a4',
+  lot: '#c2b8a6',
+  lotAsphalt: '#6f7383',
+  lotMark: '#f3f1ea',
   yard: '#a9b597',
   sidewalk: '#cdc8bf',
   sidewalkJoint: '#b6b0a6',
