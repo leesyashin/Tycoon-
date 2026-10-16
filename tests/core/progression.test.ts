@@ -554,9 +554,11 @@ describe('Standorte: Freischalt-Kette und Eröffnung (GAME_DESIGN § 3)', () => 
       if (l.unlock) expect(l.unlock.cost).toBeGreaterThan(BALANCE.startCoins);
     }
   });
-  it('braucht Café-Level-Bestwert des Vorgängers, Zen und das Geld für die Eröffnung', () => {
+  it('Kyoto braucht Berlins Café-Level-Bestwert und das Geld für die Eröffnung, aber kein Zen', () => {
     const u = kyoto();
-    let s = withZen(patch(fresh(), { coins: D(u.cost) }), u.zen - 1);
+    // Zen gibt es nur für einen Reset, und der leerte Berlins Kasse, aus der Kyoto bezahlt wird.
+    expect(u.zen).toBe(0);
+    let s = patch(fresh(), { coins: D(u.cost) });
     expect(getLocationRequirement(s, L)).toBeNull();
     expect(canUnlockLocation(s, 'kyoto')).toBe(false);
     s = patch(s, { bestLevel: u.cafeLevel });
@@ -565,11 +567,9 @@ describe('Standorte: Freischalt-Kette und Eröffnung (GAME_DESIGN § 3)', () => 
       cafeLevel: u.cafeLevel,
       prevBestLevel: u.cafeLevel,
       levelOk: true,
-      zenOk: false,
+      zenOk: true,
       moneyOk: true,
     });
-    expect(unlockLocation(s, 'kyoto')).toBe(s);
-    s = withZen(s, u.zen);
     expect(canUnlockLocation(s, 'kyoto')).toBe(true);
     // Die Investition kommt aus der Kasse des Vorgängers.
     const poor = patch(s, { coins: D(u.cost - 1) });
@@ -579,7 +579,7 @@ describe('Standorte: Freischalt-Kette und Eröffnung (GAME_DESIGN § 3)', () => 
     expect(canUnlockLocation(withZen(patch(s, { coins: D(1e12) }), 1e6), 'tokyo')).toBe(false);
     const day3 = { ...s, clock: 3 * TIME.minutesPerDay + 10 * 60, hourMark: 3 * 24 + 10 };
     const r = unlockLocation(day3, 'kyoto');
-    expect(r.meta.zen.toNumber()).toBe(0);
+    expect(r.meta.zen.eq(day3.meta.zen)).toBe(true);
     expect(loc(r).coins.toNumber()).toBe(0);
     expect(r.meta.unlockedLocations).toEqual(['berlin', 'kyoto']);
     expect(isLocationUnlocked(r, 'kyoto')).toBe(true);
@@ -593,6 +593,33 @@ describe('Standorte: Freischalt-Kette und Eröffnung (GAME_DESIGN § 3)', () => 
     expect(r.activeLocationId).toBe(L);
     expect(getNextLockedLocation(r)).toBe('tokyo');
     expect(achievementValue(r, getAchievementDef('locations1'))).toBe(2);
+  });
+  it('ab Tokio kostet eine Filiale Zen – aus dem Reset der anderen Cafés, während der Vorgänger spart', () => {
+    const t = getLocationDef('tokyo').unlock;
+    if (!t) throw new Error('Tokio ohne Freischaltung');
+    expect(t.zen).toBeGreaterThan(0);
+    let s = unlockLocation(readyForKyoto(), 'kyoto');
+    s = patch(s, { bestLevel: t.cafeLevel, coins: D(t.cost) }, 'kyoto');
+    s = withZen(s, t.zen - 1);
+    expect(getLocationRequirement(s, 'tokyo')).toMatchObject({
+      prevLocationId: 'kyoto',
+      levelOk: true,
+      zenOk: false,
+      moneyOk: true,
+    });
+    expect(unlockLocation(s, 'tokyo')).toBe(s);
+    // Berlin zurücksetzen bringt das Zen; Kyotos Kasse bleibt dabei unberührt.
+    const earned = PRESTIGE.zen.divisor * ((t.zen + 1) / PRESTIGE.zen.factor) ** 2;
+    const reset = franchiseReset(
+      patch(s, { level: PRESTIGE.resetMinCafeLevel, earnedThisRun: D(earned) }),
+      L,
+    );
+    expect(loc(reset, 'kyoto').coins.eq(loc(s, 'kyoto').coins)).toBe(true);
+    expect(canUnlockLocation(reset, 'tokyo')).toBe(true);
+    const r = unlockLocation(reset, 'tokyo');
+    expect(r.meta.zen.toNumber()).toBeCloseTo(reset.meta.zen.toNumber() - t.zen, 9);
+    expect(loc(r, 'kyoto').coins.toNumber()).toBe(0);
+    expect(isLocationUnlocked(r, 'tokyo')).toBe(true);
   });
   it('Bestwert zählt auch nach einem Reset – das Geld muss der neue Lauf verdienen', () => {
     const u = kyoto();

@@ -105,10 +105,12 @@ function locationRow(store: Store, id: string, onReset: (id: string) => void): R
         return;
       }
       const r = getLocationRequirement(s, id);
+      // Die erste Filiale kostet kein Zen: dann steht es weder in der Bedingung noch auf dem Knopf.
+      const zenFree = !r || r.zen.lte(0);
       setText(
         detail,
         r
-          ? t('locations.unlock', {
+          ? t(zenFree ? 'locations.unlockNoZen' : 'locations.unlock', {
               prev: locName(r.prevLocationId),
               level: r.cafeLevel,
               best: r.prevBestLevel,
@@ -119,7 +121,9 @@ function locationRow(store: Store, id: string, onReset: (id: string) => void): R
       );
       const can = canUnlockLocation(s, id);
       setText(status, can ? t('ui.affordable') : '');
-      const label = t('locations.open', { zen: r ? fmt(s, r.zen) : '0' });
+      const label = zenFree
+        ? t('locations.openCost', { cost: fmtMoney(r?.cost ?? 0) })
+        : t('locations.open', { zen: fmt(s, r.zen) });
       setText(mainBtn, label);
       mainBtn.setAttribute('aria-label', `${locName(id)}: ${label}`);
       setDisabled(mainBtn, !can);

@@ -1,7 +1,9 @@
 /**
  * Standorte nach GAME_DESIGN § 3 (Phase 3): jede Filiale ist ein eigenes Café mit realistischem Preisniveau
  * (`scale`: Verkaufspreise, Einkauf, Löhne, Miete, Ausbau – Berlin = 1) und eigener Gäste-Zahl (`demand`).
- * Eröffnet wird mit Café-Level des Vorgängers, Zen und einer Investition aus der Kasse des Vorgängers.
+ * Eröffnet wird mit Café-Level des Vorgängers, Zen und einer Investition aus der Kasse des Vorgängers. Die erste
+ * Filiale kostet kein Zen: Zen gibt es nur für einen Franchise-Reset, und der leerte die Kasse, aus der Kyoto bezahlt
+ * wird. Ab Tokio kommt das Zen aus dem Reset der anderen Cafés, während das Vorgänger-Café spart.
  */
 export interface LocationDef {
   id: string;
@@ -18,7 +20,7 @@ export const LOCATIONS: readonly LocationDef[] = [
     id: 'kyoto',
     scale: 1.1,
     demand: 1.25,
-    unlock: { prevLocationId: 'berlin', cafeLevel: 12, zen: 10, cost: 30_000 },
+    unlock: { prevLocationId: 'berlin', cafeLevel: 12, zen: 0, cost: 30_000 },
   },
   {
     id: 'tokyo',

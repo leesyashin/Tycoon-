@@ -74,7 +74,7 @@ export const STATIONS: readonly StationDef[] = [
     area: 'order',
     unlockCafeLevel: 1,
     baseCost: 90,
-    growth: 1.27,
+    growth: 1.19,
     maxLevel: 20,
     workMin: BALANCE.order.orderMin,
     menu: [],
@@ -89,7 +89,7 @@ export const STATIONS: readonly StationDef[] = [
     area: 'bar',
     unlockCafeLevel: 1,
     baseCost: 35,
-    growth: 1.27,
+    growth: 1.19,
     maxLevel: 20,
     workMin: 2,
     menu: tiers(
@@ -110,7 +110,7 @@ export const STATIONS: readonly StationDef[] = [
     area: 'bar',
     unlockCafeLevel: 2,
     baseCost: 420,
-    growth: 1.22,
+    growth: 1.155,
     maxLevel: 20,
     workMin: 1.5,
     menu: tiers(
@@ -131,7 +131,7 @@ export const STATIONS: readonly StationDef[] = [
     area: 'bar',
     unlockCafeLevel: 3,
     baseCost: 900,
-    growth: 1.21,
+    growth: 1.15,
     maxLevel: 20,
     workMin: 1.6,
     menu: tiers(
@@ -152,7 +152,7 @@ export const STATIONS: readonly StationDef[] = [
     area: 'bar',
     unlockCafeLevel: 5,
     baseCost: 1_600,
-    growth: 1.2,
+    growth: 1.14,
     maxLevel: 20,
     workMin: 1,
     menu: tiers(
@@ -173,7 +173,7 @@ export const STATIONS: readonly StationDef[] = [
     area: 'bar',
     unlockCafeLevel: 7,
     baseCost: 3_200,
-    growth: 1.19,
+    growth: 1.135,
     maxLevel: 20,
     workMin: 0.6,
     menu: tiers(
@@ -194,7 +194,7 @@ export const STATIONS: readonly StationDef[] = [
     area: 'bar',
     unlockCafeLevel: 9,
     baseCost: 7_500,
-    growth: 1.18,
+    growth: 1.125,
     maxLevel: 20,
     workMin: 3,
     menu: tiers(
@@ -215,7 +215,7 @@ export const STATIONS: readonly StationDef[] = [
     area: 'bar',
     unlockCafeLevel: 12,
     baseCost: 6_500,
-    growth: 1.17,
+    growth: 1.12,
     maxLevel: 20,
     workMin: 10,
     menu: tiers(
@@ -235,7 +235,7 @@ export const STATIONS: readonly StationDef[] = [
     area: 'service',
     unlockCafeLevel: 4,
     baseCost: 650,
-    growth: 1.21,
+    growth: 1.15,
     maxLevel: 20,
     workMin: 0,
     menu: [],
