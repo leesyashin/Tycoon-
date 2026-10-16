@@ -39,6 +39,7 @@ import {
   menuTier,
 } from '@core/economy';
 import { isOpenHour, openHoursPerDay, realSecondsPerDay, setOpeningHours } from '@core/time';
+import { dailyMatchaCost } from '@core/supply';
 import {
   advanceCleanliness,
   canAutoBuy,
@@ -621,11 +622,15 @@ describe('Filialleiter: Auto-Kauf mit Reserve', () => {
     return autoBuy ? setAutoBuy(m, LOC, true) : m;
   };
 
-  it('Reserve: Löhne eines Öffnungstags plus Tagesmiete', () => {
+  it('Reserve: Löhne eines Öffnungstags, Tagesmiete und Matcha-Einkauf eines Tags', () => {
     const s = managed(0);
     const l = loc(s);
+    // Sonst gibt der Auto-Kauf das Geld aus, das um Mitternacht die Nachbestellung braucht.
+    expect(dailyMatchaCost(s, LOC).toNumber()).toBeGreaterThan(0);
     expect(autoBuyReserve(s, LOC).toNumber()).toBeCloseTo(
-      (wagesPerOpenHour(l, LOC) * openHoursPerDay(l.hours) + rentPerDay(l, LOC)) *
+      (wagesPerOpenHour(l, LOC) * openHoursPerDay(l.hours) +
+        rentPerDay(l, LOC) +
+        dailyMatchaCost(s, LOC).toNumber()) *
         BALANCE.manager.autoBuyReserveDays,
       9,
     );

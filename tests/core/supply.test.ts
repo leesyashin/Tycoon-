@@ -443,6 +443,39 @@ describe('Tagesbedarf und automatische Nachbestellung', () => {
     expect(sup(ok).reorderFailed).toBe(false);
   });
 
+  it('bei knappem Geld bestellt sie, was das Konto hergibt: weniger, kleinere Packungen, notfalls günstiger', () => {
+    // Sorte 2 gewählt, große Packungen eingestellt, nichts im Lager: gebraucht werden mehrere große Packungen.
+    const base = make({}, { autoReorder: true, autoPackage: BIG, grade: 2, stock: stockOf({}) });
+    const need = dailyMatchaNeed(base, LOC) * DELIVERY.reorderDays;
+    const unit = (g: number, k: number) => getOrderCost(base, LOC, g, k, false);
+    const withCoins = (coins: number) => withLocation(base, LOC, { ...loc(base), coins: D(coins) });
+    const wanted = Math.ceil(need / pkg(0).grams);
+    expect(wanted).toBeGreaterThan(1);
+
+    // Geld für etwas mehr als eine kleine Packung der Sorte (keine große): eine kleine, Hinweis bleibt.
+    const small = autoReorderStep(withCoins(unit(2, 0).toNumber() * 1.5), LOC);
+    expect(sup(small).orders).toHaveLength(1);
+    expect(firstOrder(small)).toMatchObject({ grade: 2, grams: pkg(0).grams, express: false });
+    expect(sup(small).reorderFailed).toBe(true);
+    expect(loc(small).coins.toNumber()).toBeCloseTo(unit(2, 0).toNumber() * 0.5, 6);
+
+    // Nicht mal das: eine Packung der besten günstigeren Sorte, die das Konto hergibt.
+    const cheaper = autoReorderStep(withCoins(unit(1, 0).toNumber() * 1.01), LOC);
+    expect(firstOrder(cheaper)).toMatchObject({ grade: 1, grams: pkg(0).grams });
+    expect(sup(cheaper).reorderFailed).toBe(true);
+
+    // Nie mehr, als fehlt, und nie ins Minus.
+    for (const coins of [unit(0, 0).toNumber(), unit(2, 0).toNumber() * 3.2, 1e9]) {
+      const n = autoReorderStep(withCoins(coins), LOC);
+      expect(loc(n).coins.toNumber()).toBeGreaterThanOrEqual(0);
+      expect(gramsInTransit(sup(n))).toBeLessThanOrEqual(need + pkg(BIG).grams);
+    }
+    // Im Minus: nichts bestellt, nur der Hinweis.
+    const broke = autoReorderStep(withCoins(-50), LOC);
+    expect(sup(broke).orders).toEqual([]);
+    expect(sup(broke).reorderFailed).toBe(true);
+  });
+
   it('nicht bei voller Bestell-Liste oder gesperrter Sorte', () => {
     const orders: SupplyOrder[] = Array.from({ length: DELIVERY.maxOrders }, () => ({
       grade: 1,

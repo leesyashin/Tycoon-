@@ -4,11 +4,12 @@ import { getLocation, withLocation, type GameState } from '../GameState';
 import { collectModifiers } from './modifiers';
 import { computeCafeLevel } from './cafeLevel';
 import { getMaxAffordable, getStationCost, levelsLeft } from './stations';
-import { D, type Decimal } from '../math/bignum';
+import type { Decimal } from '../math/bignum';
 import { canAutoBuy } from '../staff/effects';
 import { applyCafeLevelUp } from '../progression/cafeLevel';
 import { rentPerDay, wagesPerOpenHour } from '../customers/rates';
 import { openHoursPerDay } from '../time/clock';
+import { dailyMatchaCost } from '../supply/actions';
 import { TERRACE_REQUIREMENT } from '@data/unlocks';
 
 /** Kauf-Mengen im Geräte-Panel (Höchstlevel 20, deshalb ×1, ×5, Max). */
@@ -115,12 +116,15 @@ export function getCheapestStation(
   return best;
 }
 
-/** Laufende Kosten eines ganzen Tages (Löhne der Öffnungszeit, Miete), die der Auto-Kauf auf dem Konto lässt. */
+/**
+ * Laufende Kosten eines ganzen Tages (Löhne der Öffnungszeit, Miete, Matcha-Einkauf), die der Auto-Kauf auf dem
+ * Konto lässt – sonst fehlte um Mitternacht das Geld für die Nachbestellung.
+ */
 export function autoBuyReserve(state: GameState, locationId: string): Decimal {
   const loc = getLocation(state, locationId);
   const day =
     wagesPerOpenHour(loc, locationId) * openHoursPerDay(loc.hours) + rentPerDay(loc, locationId);
-  return D(day * BALANCE.manager.autoBuyReserveDays);
+  return dailyMatchaCost(state, locationId).add(day).mul(BALANCE.manager.autoBuyReserveDays);
 }
 
 /**

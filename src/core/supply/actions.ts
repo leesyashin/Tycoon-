@@ -1,6 +1,6 @@
 import { DELIVERY, MATCHA_PACKAGES } from '@data/matcha';
 import { getLocation, withLocation, type GameState, type LocationState } from '../GameState';
-import type { Decimal } from '../math/bignum';
+import { D, type Decimal } from '../math/bignum';
 import { payCost } from '../economy/ledger';
 import { getMetaEffects } from '../prestige/meta';
 import { computeLocationRates } from '../customers/rates';
@@ -133,10 +133,46 @@ export function stockDays(state: GameState, locationId: string): number {
   return totalStock(getLocation(state, locationId).supply) / need;
 }
 
+/** Matcha-Einkauf eines ganzen Öffnungstags in Euro (gewählte Sorte, Packung der automatischen Nachbestellung). */
+export function dailyMatchaCost(state: GameState, locationId: string): Decimal {
+  const sup = getLocation(state, locationId).supply;
+  const p = MATCHA_PACKAGES[sup.autoPackage] ?? MATCHA_PACKAGES[0];
+  if (!p) return D(0);
+  const perGram = getOrderCost(state, locationId, sup.grade, sup.autoPackage, false).div(p.grams);
+  return perGram.mul(dailyMatchaNeed(state, locationId));
+}
+
 /**
- * Automatische Nachbestellung (um Mitternacht, die Lieferung kommt morgens): reicht Vorrat + Unterwegs der gewählten Sorte für weniger als
- * `DELIVERY.reorderDays` Öffnungstage, bestellt das Café so viele Packungen nach, wie fehlen (normale Lieferung).
- * Reicht das Geld nicht, merkt es sich das für einen Hinweis.
+ * Was die Nachbestellung bei knappem Geld noch bestellen kann (höchstens `missing` Gramm): von der gewählten Sorte
+ * so viele Packungen wie möglich (erst die eingestellte Größe, dann kleinere), sonst von einer günstigeren Sorte.
+ */
+function affordableReorder(
+  state: GameState,
+  locationId: string,
+  missing: number,
+): { grade: number; grams: number; cost: Decimal } | null {
+  const loc = getLocation(state, locationId);
+  const sup = loc.supply;
+  for (let g = sup.grade; g >= 0; g--) {
+    if (!isGradeUnlocked(loc, g)) continue;
+    for (let k = Math.min(sup.autoPackage, MATCHA_PACKAGES.length - 1); k >= 0; k--) {
+      const p = MATCHA_PACKAGES[k];
+      if (!p) continue;
+      const unit = getOrderCost(state, locationId, g, k, false);
+      const want = Math.max(1, Math.ceil(missing / p.grams));
+      const n = Math.min(want, Math.floor(loc.coins.div(unit).toNumber()));
+      if (n >= 1) return { grade: g, grams: n * p.grams, cost: unit.mul(n) };
+    }
+  }
+  return null;
+}
+
+/**
+ * Automatische Nachbestellung (um Mitternacht, die Lieferung kommt morgens): reicht Vorrat + Unterwegs der gewählten
+ * Sorte für weniger als `DELIVERY.reorderDays` Öffnungstage, bestellt das Café so viele Packungen nach, wie fehlen
+ * (normale Lieferung). Reicht das Geld dafür nicht, bestellt es, was das Konto hergibt – weniger oder kleinere
+ * Packungen, notfalls eine günstigere Sorte –, damit die Bar nicht ganz leer läuft, und merkt sich den Engpass für
+ * einen Hinweis.
  */
 export function autoReorderStep(state: GameState, locationId: string): GameState {
   const loc = getLocation(state, locationId);
@@ -150,9 +186,17 @@ export function autoReorderStep(state: GameState, locationId: string): GameState
   if (!p) return state;
   const count = Math.max(1, Math.ceil((need - have) / p.grams));
   const cost = getOrderCost(state, locationId, sup.grade, sup.autoPackage, false, count);
-  if (loc.coins.lt(cost)) {
+  if (loc.coins.gte(cost))
+    return placeOrder(state, locationId, sup.grade, p.grams * count, cost, false);
+  const part = affordableReorder(state, locationId, need - have);
+  if (!part) {
     if (sup.reorderFailed) return state;
     return withLocation(state, locationId, { ...loc, supply: { ...sup, reorderFailed: true } });
   }
-  return placeOrder(state, locationId, sup.grade, p.grams * count, cost, false);
+  const placed = placeOrder(state, locationId, part.grade, part.grams, part.cost, false);
+  const after = getLocation(placed, locationId);
+  return withLocation(placed, locationId, {
+    ...after,
+    supply: { ...after.supply, reorderFailed: true },
+  });
 }
