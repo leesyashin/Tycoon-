@@ -1,69 +1,37 @@
 import { BALANCE } from '@data/balance';
-import { getLocation, type GameState, type LocationState } from './GameState';
-import { computeLocationRates } from './customers/rates';
+import { getLocation, type GameState } from './GameState';
 import { applyOffline } from './economy/offline';
 import { autoBuyStep } from './economy/actions';
-import { advanceCleanliness } from './staff/effects';
+import { advanceRealSeconds } from './economy/simulate';
 import { HIGH_SATISFACTION } from '@data/achievements';
 import { stepEvents } from './events/schedule';
-import { accrueLeafDrops, expectedLeafDrops } from './customers/drops';
-import { settleTill } from './economy/till';
 
 /**
- * Ein Simulationsschritt beliebiger Länge; die Rate-Formeln sind linear, die Zufriedenheit nähert sich exakt.
- * Einnahmen nutzen den Zustand zu Beginn des Schritts, danach ändern sich Sauberkeit und Zufriedenheit.
- * Der Umsatz landet zuerst auf den offenen Bons der Kasse und kommt erst ins Geld, wenn ein Gast bezahlt hat.
+ * Ein Simulationsschritt über `dtMs` echte Millisekunden: Die Spieluhr läuft (geöffnet 1 Spielminute je Sekunde,
+ * nachts schneller), die Cafés arbeiten in Spielzeit (`economy/simulate`), Boosts, Hype und Events laufen in
+ * aktiver Spielzeit (`playtimeSec`). Der Umsatz landet zuerst auf den offenen Bons der Kasse und kommt erst ins
+ * Geld, wenn ein Gast bezahlt hat; Kosten werden zu jeder vollen Spielstunde abgebucht.
  */
 export function tick(state: GameState, dtMs: number): GameState {
   const dt = Number.isFinite(dtMs) ? Math.max(0, dtMs) / 1000 : 0;
   if (dt === 0) return state;
 
-  const locations: Record<string, LocationState> = {};
-  let earnedTotal = state.meta.lifetimeEarned;
-  let served = 0;
-  let expectedDrops = 0;
-  const keep = 1 - BALANCE.satisfaction.approachPerSec;
-  for (const id of Object.keys(state.locations)) {
-    const loc = getLocation(state, id);
-    const rates = computeLocationRates(state, id);
-    const { till, paidAmount: gain } = settleTill(
-      loc.till,
-      rates.incomePerSec.mul(dt),
-      rates.served * dt,
-    );
-    const target = rates.satisfaction.target;
-    const satisfaction = target + (loc.satisfaction - target) * keep ** dt;
-    locations[id] = {
-      ...loc,
-      coins: loc.coins.add(gain),
-      earnedThisRun: loc.earnedThisRun.add(gain),
-      satisfaction,
-      cleanliness: advanceCleanliness(loc, dt, rates.served),
-      till,
-    };
-    earnedTotal = earnedTotal.add(gain);
-    served += rates.served * dt;
-    expectedDrops += expectedLeafDrops(id, rates.served * dt);
-  }
-  const activeSat = getLocation(state, state.activeLocationId).satisfaction;
+  let next = advanceRealSeconds(state, dt);
+  const activeSat = getLocation(next, next.activeLocationId).satisfaction;
   const highSec =
-    activeSat >= HIGH_SATISFACTION.threshold ? state.stats.highSatisfactionSec + dt : 0;
-  const playtimeSec = state.playtimeSec + dt;
-  let next: GameState = {
-    ...state,
+    activeSat >= HIGH_SATISFACTION.threshold ? next.stats.highSatisfactionSec + dt : 0;
+  const playtimeSec = next.playtimeSec + dt;
+  next = {
+    ...next,
     playtimeSec,
-    locations,
-    meta: { ...state.meta, lifetimeEarned: earnedTotal },
     stats: {
-      ...state.stats,
-      customersServed: state.stats.customersServed + served,
+      ...next.stats,
       highSatisfactionSec: highSec,
-      highSatisfactionBestSec: Math.max(state.stats.highSatisfactionBestSec, highSec),
+      highSatisfactionBestSec: Math.max(next.stats.highSatisfactionBestSec, highSec),
     },
-    boosts: state.boosts.filter((b) => b.until > playtimeSec),
-    tap: { ...state.tap, hype: Math.max(0, state.tap.hype - BALANCE.tap.hypeDecayPerSec * dt) },
+    boosts: next.boosts.filter((b) => b.until > playtimeSec),
+    tap: { ...next.tap, hype: Math.max(0, next.tap.hype - BALANCE.tap.hypeDecayPerSec * dt) },
   };
-  next = accrueLeafDrops(next, expectedDrops);
   next = stepEvents(next);
   for (const id of Object.keys(next.locations)) next = autoBuyStep(next, id);
   return next;
@@ -74,13 +42,13 @@ export interface FrameResult {
   /** Verbleibende Zeit < 1 Tick, wird im nächsten Frame weiterverwendet. */
   accumulatorMs: number;
   ticks: number;
-  /** Zeit, die nicht in Einzelticks simuliert, sondern als Offline-Lump gutgeschrieben wurde. */
+  /** Zeit, die nicht in Einzelticks simuliert, sondern als Offline-Lump gerechnet wurde. */
   lumpMs: number;
 }
 
 /**
  * Treibt die Simulation mit festem Tick. Mehr als `maxTicksPerFrame` Ticks pro Frame
- * (z. B. nach Tab-Wechsel) werden nicht simuliert, sondern als Offline-Lump verrechnet.
+ * (z. B. nach Tab-Wechsel) werden nicht einzeln simuliert, sondern wie Abwesenheit gerechnet.
  */
 export function runFrame(state: GameState, accumulatorMs: number, frameMs: number): FrameResult {
   const delta = Number.isFinite(frameMs) ? Math.max(0, frameMs) : 0;

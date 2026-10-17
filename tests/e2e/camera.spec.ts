@@ -13,7 +13,8 @@ interface CamView {
 
 async function ready(page: Page): Promise<void> {
   await page.goto('?lang=de&tutorial=0');
-  await expect(page.getByTestId('hud-income')).toContainText('pro Sek.');
+  // HUD steht: Umsatz pro Stunde (geöffnet) bzw. Tagesgewinn (geschlossen), immer in Euro.
+  await expect(page.getByTestId('hud-income')).toContainText('€');
   await page.waitForFunction(
     () => (window as Win).__mceGame?.scene.getScene('CafeScene')?.sys.settings.status === 5,
   );

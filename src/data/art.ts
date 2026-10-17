@@ -3,12 +3,13 @@
  */
 import type { CustomerTypeId } from './customerTypes';
 import type { StaffRoleId } from './staff';
+import { MENU_LEVELS } from './stations';
 
 /**
- * Ab diesen Leveln bekommt eine Ausstattung ein edleres Aussehen (UI_STYLE § 4): fünf Stufen, jeweils an
- * einem Meilenstein (GAME_DESIGN § 4), damit „schneller“ und „schöner“ zusammenfallen.
+ * Ab diesen Leveln bekommt eine Ausstattung ein edleres Aussehen (UI_STYLE § 4): fünf Stufen bis zum Höchstlevel
+ * 20 – dieselben Schwellen wie die Speisekarte (`MENU_LEVELS`), mit jeder Stufe kommt ein neues Produkt dazu.
  */
-export const STATION_LOOK_LEVELS = [1, 10, 25, 50, 100] as const;
+export const STATION_LOOK_LEVELS = MENU_LEVELS;
 
 export type LookTier = 1 | 2 | 3 | 4 | 5;
 
@@ -104,8 +105,8 @@ export function roomLook(decorLevel: number): RoomLook {
 /** Blumenkästen auf der Vorderwand ragen so viele Pixel über die Wand (Leinwand der Vorderwände ist so viel höher). */
 export const FRONT_PLANTER_H = 14;
 
-/** Tische (Ambiente `seats`): vier Optik-Stufen nach Anzahl gekaufter Tische. */
-export const TABLE_LOOK_LEVELS = [1, 13, 25, 40] as const;
+/** Tische (Ambiente `seats`, höchstens 10): vier Optik-Stufen nach Anzahl gekaufter Tische. */
+export const TABLE_LOOK_LEVELS = [1, 4, 7, 10] as const;
 
 export type TableTier = 1 | 2 | 3 | 4;
 
@@ -162,6 +163,11 @@ export const SCENE_FX = {
   ringLift: 1,
   /** Kassenlade bleibt nach dem Kassieren so lange offen. */
   drawerOpenMs: 650,
+  /** Schild „Geöffnet/Geschlossen“: so hoch über dem Boden an der Tür (Pixel) und Schriftgröße (Welt-Pixel). */
+  doorSignLift: 46,
+  doorSignPx: 8,
+  /** Nach Ladenschluss brennt drinnen nur noch so viel Licht (Anteil). */
+  closedLight: 0.15,
   /**
    * Antippen: Ab diesem Alpha (0–255) zählt ein Pixel als Teil des Objekts. Darunter liegen Kontaktschatten
    * (~24 %) und Lichtscheine, die sonst Theke oder Tisch darunter verdecken würden.
@@ -252,31 +258,180 @@ export const CHAR_SPRITE = { w: 32, h: 56, footY: 51, headTop: 37 } as const;
 
 /**
  * Frames je Figur und Blickrichtung: 0 = Stehen, 1/2 = Laufen, 3/4 = Arbeiten (Hände auf Arbeitshöhe im Wechsel:
- * tippen, rühren; Putzkräfte wischen mit dem Mopp), 5–7 = mit Becher in der Hand stehen/laufen (Baristas bringen
- * das Fertige zur Ausgabe).
+ * tippen, tampen, mahlen; Putzkräfte wischen mit dem Mopp), 5–7 = mit vorgestreckter Hand stehen/laufen (Becher,
+ * Teller oder Geschirr legt die Szene als eigenes Sprite hinein, `HOLD_POINTS.carry`), 8 = vorgreifen und abstellen
+ * (Bedienung: Tablett vor zum Tisch bzw. zur Ausgabe), 9/10 = Matcha mit dem Bambusbesen aufschlagen, 11/12 = tief
+ * greifen (Ofen, Kühlfach, Vitrine), 13 = eingießen (Milchkännchen).
  */
-export const CHAR_FRAMES = { stand: 0, walk: [1, 2], work: [3, 4], carry: [5, 6, 7] } as const;
+export const CHAR_FRAMES = {
+  stand: 0,
+  walk: [1, 2],
+  work: [3, 4],
+  carry: [5, 6, 7],
+  place: 8,
+  whisk: [9, 10],
+  low: [11, 12],
+  pour: 13,
+} as const;
 
 /** Lauf-Zyklus aus diesen Frames (Schritt, Mitte, Schritt, Mitte) und Dauer eines Schritts. */
 export const CHAR_WALK = { cycle: [1, 0, 2, 0], stepSec: 0.12 } as const;
-/** Lauf-Zyklus mit Becher in der Hand. */
+/** Lauf-Zyklus mit vorgestreckter Hand (Becher, Teller, Geschirr). */
 export const CHAR_CARRY = { cycle: [6, 5, 7, 5], stepSec: 0.12 } as const;
 /** Arbeits-Takt: Hände wechseln so oft (Sekunden je Frame). */
 export const CHAR_WORK = { cycle: [3, 4], stepSec: 0.2 } as const;
+/** Bambusbesen: schnelles Hin und Her. */
+export const CHAR_WHISK = { cycle: [9, 10], stepSec: 0.09 } as const;
+/** Tief greifen: langsamer Wechsel (Blech schieben, Eis schöpfen, Kuchen heben). */
+export const CHAR_LOW = { cycle: [11, 12], stepSec: 0.32 } as const;
+
+/** Frames der Gäste: Stehen, Laufen, mit Becher/Teller/Geschirr in der Hand (Selbstbedienung); dazu die Sitzpose. */
+export const CUSTOMER_FRAMES: readonly number[] = [0, 1, 2, 5, 6, 7];
 
 /**
- * Gerenderte Frames je Rolle (Atlas-Fläche sparen): Verkäufer tippen an der Kasse (nur Vorderansicht nötig, beide
- * Richtungen werden gezeichnet), Baristas arbeiten am Gerät, laufen mit dem Becher zur Ausgabe und zurück,
- * Bedienungen laufen, Putzkräfte laufen und wischen. Filialleitung und Social Media stehen nur (Portrait).
+ * Gerenderte Frames je Rolle (Atlas-Fläche sparen): Verkäufer tippen an der Kasse und gehen morgens herein bzw.
+ * abends hinaus, Baristas arbeiten am Gerät in allen Posen und tragen das Fertige zur Ausgabe, Bedienungen laufen
+ * mit dem Tablett und stellen ab, Putzkräfte laufen und wischen. Filialleitung und Social Media stehen nur
+ * (Portrait).
  */
 export const STAFF_FRAMES: Readonly<Record<StaffRoleId, readonly number[]>> = {
-  cashier: [0, 3, 4],
-  barista: [0, 1, 2, 3, 4, 5, 6, 7],
-  waiter: [0, 1, 2],
+  cashier: [0, 1, 2, 3, 4],
+  barista: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
+  waiter: [0, 1, 2, 8],
   cleaner: [0, 1, 2, 3, 4],
   manager: [0],
   socialMedia: [0],
 };
+
+/** Punkt an einer Figur: x quer (+x = Flanke zur Kamera), y in Blickrichtung, z Höhe in Pixeln über den Füßen. */
+export interface FigurePoint {
+  x: number;
+  y: number;
+  z: number;
+}
+
+/**
+ * Wo eine Figur Dinge hält (`scripts/art/figures.ts` zeichnet Hände und Tablett genau dort): vorgestreckte rechte
+ * Hand beim Tragen, Mitte des Tabletts beim Gehen und beim Abstellen.
+ */
+export const HOLD_POINTS = {
+  carry: { x: 0.2, y: 0.17, z: 12.8 },
+  /** Beide Hände vorn an der Arbeitsplatte (Abstellen auf der Ausgabe). */
+  place: { x: 0.02, y: 0.17, z: 26.8 },
+  tray: { x: 0.235, y: 0, z: 12.6 },
+  trayServe: { x: 0.235, y: 0.17, z: 14.2 },
+} as const satisfies Record<string, FigurePoint>;
+
+/**
+ * Bildschirm-Versatz (logische Pixel) eines Figur-Punkts vom Fußpunkt, ungespiegelt; `front` blickt zur Kamera.
+ * Dieselbe Projektion wie die Figuren-Sprites (Kachel 64×32).
+ */
+export function figureOffset(p: FigurePoint, dir: 'front' | 'back'): { x: number; y: number } {
+  const v = dir === 'front' ? p.y : -p.y;
+  return { x: (p.x - v) * 32, y: ((p.x + v) * 32) / 2 - p.z };
+}
+
+/** Pose eines Arbeitsschritts am Gerät (Frames siehe `CHAR_FRAMES`). */
+export type WorkPose = 'place' | 'whisk' | 'work' | 'low' | 'pour' | 'stand';
+
+/**
+ * Ein Arbeitsschritt: Pose, Anteil an der Zubereitungszeit, ob das Produkt schon auf dem Gerät steht (`item`) und
+ * ob das Gerät dabei dampft, glüht, mahlt … (`fx`, `STATION_FX`).
+ */
+export interface WorkStep {
+  pose: WorkPose;
+  share: number;
+  item?: boolean;
+  fx?: boolean;
+}
+
+/**
+ * Was ein Barista an seinem Gerät wirklich tut (Vorgabe Vincent 2026-10-16: „nicht nur vor dem Gerät stehen und
+ * die Arme wackeln“): Schritt für Schritt mit eigener Pose; das Produkt erscheint auf dem Gerät, sobald es dort
+ * steht, und geht danach in seine Hand. Anteile summieren sich je Gerät zu 1.
+ */
+export const WORK_SCRIPTS: Readonly<Record<string, readonly WorkStep[]>> = {
+  // Schale hinstellen, Matcha aufschlagen, Milch eingießen, Becher nehmen
+  matchaStation: [
+    { pose: 'place', share: 0.12, item: true },
+    { pose: 'whisk', share: 0.48, item: true, fx: true },
+    { pose: 'pour', share: 0.24, item: true, fx: true },
+    { pose: 'place', share: 0.16, item: true },
+  ],
+  // Siebträger füllen und tampen, Tasse unter den Auslauf, Bezug läuft, Milchschaum, Tasse nehmen
+  coffeeMachine: [
+    { pose: 'work', share: 0.24 },
+    { pose: 'place', share: 0.12, item: true },
+    { pose: 'stand', share: 0.3, item: true, fx: true },
+    { pose: 'pour', share: 0.2, item: true, fx: true },
+    { pose: 'place', share: 0.14, item: true },
+  ],
+  // Kühlfach auf und Eis schöpfen, Glas hinstellen, Matcha und Milch über das Eis, Glas nehmen
+  iceBox: [
+    { pose: 'low', share: 0.34, fx: true },
+    { pose: 'place', share: 0.14, item: true },
+    { pose: 'pour', share: 0.36, item: true },
+    { pose: 'place', share: 0.16, item: true },
+  ],
+  // Blech in den Ofen, backen, Blech heraus, auf den Teller
+  oven: [
+    { pose: 'low', share: 0.28 },
+    { pose: 'stand', share: 0.34, fx: true },
+    { pose: 'low', share: 0.22, fx: true },
+    { pose: 'place', share: 0.16, item: true },
+  ],
+  // Kuchenstück aus der Vitrine heben, anrichten
+  displayCase: [
+    { pose: 'low', share: 0.44, fx: true },
+    { pose: 'place', share: 0.56, item: true },
+  ],
+  // Blätter einfüllen, mahlen, Becher aufgießen und nehmen
+  grinder: [
+    { pose: 'place', share: 0.18 },
+    { pose: 'work', share: 0.5, fx: true },
+    { pose: 'pour', share: 0.16, item: true },
+    { pose: 'place', share: 0.16, item: true },
+  ],
+  // Chawan hinstellen, lange aufschlagen, reichen
+  ceremonySet: [
+    { pose: 'place', share: 0.14, item: true },
+    { pose: 'whisk', share: 0.66, item: true, fx: true },
+    { pose: 'place', share: 0.2, item: true },
+  ],
+};
+
+const DEFAULT_WORK: readonly WorkStep[] = [{ pose: 'work', share: 1, fx: true }];
+
+/** Schritt am Gerät bei Fortschritt 0..1 der Zubereitung. */
+export function workStepAt(stationId: string, progress: number): WorkStep {
+  const steps = WORK_SCRIPTS[stationId] ?? DEFAULT_WORK;
+  const p = Math.min(1, Math.max(0, progress));
+  let acc = 0;
+  for (const s of steps) {
+    acc += s.share;
+    if (p < acc) return s;
+  }
+  return steps[steps.length - 1] ?? DEFAULT_WORK[0] ?? { pose: 'work', share: 1 };
+}
+
+/**
+ * Wo das Produkt während der Zubereitung auf dem Gerät steht (Kachel-Koordinaten wie `STATION_FX`, Front nach +y;
+ * Höhe in Pixeln, Arbeitsplatte der Rückwand-Geräte).
+ */
+export const DEVICE_ITEM_AT: Readonly<Record<string, { u: number; v: number; z: number }>> = {
+  matchaStation: { u: 0.62, v: 0.74, z: 27 },
+  coffeeMachine: { u: 0.5, v: 0.66, z: 27 },
+  iceBox: { u: 0.5, v: 0.74, z: 27 },
+  oven: { u: 0.3, v: 0.8, z: 27 },
+  displayCase: { u: 0.74, v: 0.84, z: 27 },
+  grinder: { u: 0.28, v: 0.78, z: 27 },
+  ceremonySet: { u: 0.62, v: 0.72, z: 27 },
+};
+
+/** Tischplatte (alle Tisch-Stufen, drinnen und draußen) in Pixeln über dem Boden. */
+export const TABLE_TOP_PX = 15.4;
+/** Teller/Becher eines Gasts: so weit vom Tischmittelpunkt zu seinem Platz hin (Kacheln). */
+export const TABLE_ITEM_OFFSET = 0.14;
 
 /** Look-Name für die n-te Figur einer Rolle (zyklisch). */
 export function staffLookFor(role: StaffRoleId, index: number): string {
@@ -306,3 +461,23 @@ export function decorFrame(frame: string, decorLevel: number): string {
   const up = DECOR_UPGRADES[frame];
   return up && decorLevel >= up.level ? up.frame : frame;
 }
+
+/**
+ * Lieferwagen bei jeder Matcha-Lieferung (kosmetisch): fährt auf dem Parkstreifen der rechten Straße (vor dem Café
+ * frei) vor, hält auf Höhe der Tür, ein Karton geht hinein, dann fährt er weiter. Grid-Koordinaten, Tempo in
+ * Kacheln je Sekunde.
+ */
+export const DELIVERY_VAN = {
+  /** Lieferwagen im Stadt-Atlas (`car-<typ>-f|b`). */
+  carType: 2,
+  laneX: 15.55,
+  fromY: -1.5,
+  stopY: 7.1,
+  toY: 26,
+  tilesPerSec: 3,
+  fadeTiles: 2,
+  waitMs: 2600,
+  unloadMs: 900,
+  /** Karton startet so weit neben dem Wagen (Richtung Gehweg). */
+  boxOffset: 0.9,
+} as const;

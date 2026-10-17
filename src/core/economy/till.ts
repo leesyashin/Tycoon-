@@ -22,14 +22,15 @@ export function settleTill(till: TillState, income: Decimal, customers: number):
   const add = Number.isFinite(customers) ? Math.max(0, customers) : 0;
   const open = till.open.add(income);
   const progress = till.progress + add;
-  const paidCount = Math.floor(progress);
+  // Viele kleine Schritte summieren Rundungsfehler auf (0,9999…): ein fertiger Gast bezahlt trotzdem.
+  const paidCount = Math.floor(progress + 1e-9);
   if (paidCount < 1) return { till: { ...till, open, progress }, paidAmount: D(0), paidCount: 0 };
   // Anteil der fertigen Gäste am offenen Umsatz; der Rest gehört dem Gast, der gerade bezahlt.
   const paidAmount = open.mul(paidCount / progress);
   return {
     till: {
       open: open.sub(paidAmount),
-      progress: progress - paidCount,
+      progress: Math.max(0, progress - paidCount),
       paid: till.paid + paidCount,
     },
     paidAmount,

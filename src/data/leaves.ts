@@ -1,5 +1,6 @@
 /** Goldene Blätter: Ausgaben (GAME_DESIGN § 10), Boost-Regeln (§ 12.3) und Kunden-Drops (§ 7.5). */
 
+/** Zeitsprung: Gewinn so vieler echter Stunden Café-Betrieb (alle Standorte) sofort, ohne dass die Zeit vergeht. */
 export const TIME_SKIPS = [
   { id: 'skip1h', hours: 1, cost: 5 },
   { id: 'skip4h', hours: 4, cost: 15 },

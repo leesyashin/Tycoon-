@@ -7,26 +7,19 @@ import {
   getNextAmbienceCost,
   isAmbienceMaxed,
   isAmbienceUnlocked,
+  isStationMaxed,
   isStationUnlocked,
 } from '@core/economy';
-import {
-  buyQuality,
-  getNextQualityCost,
-  isNextQualityUnlocked,
-  qualityPriceMult,
-} from '@core/progression';
-import { BALANCE } from '@data/balance';
-import { QUALITY_PRICE_MULT_PER_TIER, getNextQualityTier } from '@data/quality';
 import { AMBIENCE } from '@data/ambience';
 import { STATIONS, STATION_AREAS } from '@data/stations';
 import { h, on, setDisabled, setText, type View } from './dom';
-import { fmt, fmtSmall } from './format';
+import { fmtMoney } from './format';
 import type { PanelContent } from './panel';
 import { createTabs } from './tabs';
 import { areaName, lockedReason, productName, stationName } from './labels';
 
-type Tab = 'stations' | 'ambience' | 'quality';
-const TABS: Tab[] = ['stations', 'ambience', 'quality'];
+type Tab = 'stations' | 'ambience';
+const TABS: Tab[] = ['stations', 'ambience'];
 
 interface Row {
   el: HTMLElement;
@@ -53,104 +46,21 @@ function stationRow(locId: string, id: string, openStation: (id: string) => void
       const loc = getLocation(s, locId);
       const lvl = loc.stations[id]?.level ?? 0;
       const unlocked = isStationUnlocked(s, locId, id);
+      const maxed = isStationMaxed(s, locId, id);
       const cost = getBulkCost(s, locId, id, 1);
-      const affordable = unlocked && cost.lte(loc.coins);
+      const affordable = unlocked && !maxed && cost.lte(loc.coins);
       el.classList.toggle('affordable', affordable);
       el.classList.toggle('locked', !unlocked);
       const def = STATIONS.find((d) => d.id === id);
+      const product = def && def.menu.length > 0 && lvl > 0 ? ` · ${productName(id, lvl)}` : '';
       setText(
         status,
         unlocked
-          ? `${t('station.panel.level', { level: lvl })}${affordable ? ` · ${t('ui.affordable')}` : ''}`
+          ? `${t('station.panel.level', { level: lvl })}${product}${affordable ? ` · ${t('ui.affordable')}` : ''}`
           : lockedReason(s, locId, id, def?.unlockCafeLevel ?? 0),
       );
-      setText(btn, unlocked ? fmt(s, cost) : t('shop.open'));
+      setText(btn, !unlocked ? t('shop.open') : maxed ? t('ui.maxed') : fmtMoney(cost));
       btn.setAttribute('aria-label', `${stationName(locId, id)}: ${t('shop.open')}`);
-    },
-  };
-}
-
-/** Qualitäts-Tab (GAME_DESIGN § 8): aktuelle Stufe, Angebot, nächste Stufe kaufen. */
-function qualityView(store: Store, locId: string): Row {
-  const current = h('strong', { 'data-testid': 'quality-current' });
-  const effect = h('span', { class: 'muted' });
-  const menu = h('ul', { class: 'product-list', 'aria-label': t('quality.menu') });
-  const next = h('strong');
-  const nextEffect = h('span', { class: 'muted' });
-  const status = h('span', { class: 'row-status' });
-  const btn = h('button', { class: 'btn btn-row', type: 'button', 'data-testid': 'quality-buy' });
-  on(btn, 'click', () => store.dispatch((s) => buyQuality(s, locId)));
-  const nextRow = h(
-    'li',
-    { class: 'shop-row' },
-    h('div', { class: 'row-text' }, next, nextEffect, status),
-    btn,
-  );
-  const el = h(
-    'div',
-    { class: 'quality' },
-    h('p', { class: 'row-text' }, current, effect),
-    h('p', { class: 'muted', text: t('quality.menu') }),
-    menu,
-    h('ul', { class: 'shop-list' }, nextRow),
-  );
-  let shownQuality = -1;
-  return {
-    el,
-    update(s) {
-      const loc = getLocation(s, locId);
-      const q = loc.quality;
-      if (q !== shownQuality) {
-        shownQuality = q;
-        setText(current, t('quality.current', { name: t(`quality.tier.${String(q)}.name`) }));
-        menu.replaceChildren(
-          ...STATIONS.filter((d) => d.basePrice > 0).map((d) =>
-            h('li', { text: `${stationName(locId, d.id)}: ${productName(d.id, q)}` }),
-          ),
-        );
-      }
-      setText(
-        effect,
-        t('quality.effectNow', {
-          mult: fmtSmall(qualityPriceMult(loc)),
-          sat: q * BALANCE.satisfaction.perQuality,
-        }),
-      );
-      const tier = getNextQualityTier(q);
-      const cost = getNextQualityCost(s, locId);
-      if (!tier || !cost) {
-        setText(next, t('quality.maxed'));
-        setText(nextEffect, '');
-        setText(status, '');
-        btn.hidden = true;
-        nextRow.classList.remove('affordable', 'locked');
-        return;
-      }
-      btn.hidden = false;
-      const unlocked = isNextQualityUnlocked(s, locId);
-      const affordable = unlocked && cost.lte(loc.coins);
-      nextRow.classList.toggle('affordable', affordable);
-      nextRow.classList.toggle('locked', !unlocked);
-      setText(next, t('quality.next', { name: t(`quality.tier.${String(tier.tier)}.name`) }));
-      setText(
-        nextEffect,
-        t('quality.nextEffect', {
-          mult: fmtSmall(QUALITY_PRICE_MULT_PER_TIER),
-          sat: BALANCE.satisfaction.perQuality,
-        }),
-      );
-      setText(
-        status,
-        unlocked
-          ? affordable
-            ? t('ui.affordable')
-            : ''
-          : t('ui.unlockAt', { level: tier.unlockCafeLevel }),
-      );
-      const label = t('quality.buy', { cost: fmt(s, cost) });
-      setText(btn, label);
-      btn.setAttribute('aria-label', `${t(`quality.tier.${String(tier.tier)}.name`)}: ${label}`);
-      setDisabled(btn, !affordable);
     },
   };
 }
@@ -193,7 +103,7 @@ function ambienceRow(store: Store, locId: string, id: string): Row {
           ? t('ui.unlockAt', { level: def?.unlockCafeLevel ?? 0 })
           : `${t('shop.ambienceLevel', { level: lvl, max: def?.maxLevel ?? 0 })}${affordable ? ` · ${t('ui.affordable')}` : ''}`,
       );
-      const label = maxed ? t('ui.maxed') : t('shop.buyOne', { cost: fmt(s, cost) });
+      const label = maxed ? t('ui.maxed') : t('shop.buyOne', { cost: fmtMoney(cost) });
       setText(btn, label);
       btn.setAttribute('aria-label', `${name}: ${label}`);
       setDisabled(btn, !affordable);
@@ -201,7 +111,7 @@ function ambienceRow(store: Store, locId: string, id: string): Row {
   };
 }
 
-/** Shop-Übersicht (GAME_DESIGN § 16.3) mit Tabs Stationen / Ambiente / Qualität. */
+/** Shop-Übersicht (GAME_DESIGN § 16.3) mit Tabs Ausstattung / Ambiente (Matcha-Sorten stehen im Einkauf). */
 export function createShopPanel(
   store: Store,
   openStation: (id: string) => void,
@@ -211,7 +121,6 @@ export function createShopPanel(
   const lists: Record<Tab, { el: HTMLElement; rows: Row[] }> = {
     stations: { el: h('ul', { class: 'shop-list' }), rows: [] },
     ambience: { el: h('ul', { class: 'shop-list' }), rows: [] },
-    quality: { el: h('div'), rows: [] },
   };
   // Ausstattung nach Theken-Bereich (GAME_DESIGN § 4): Bestelltheke, Barista-Theke, Ausgabe.
   for (const area of STATION_AREAS) {
@@ -225,9 +134,7 @@ export function createShopPanel(
     );
   }
   lists.ambience.rows = AMBIENCE.map((a) => ambienceRow(store, locId, a.id));
-  lists.quality.rows = [qualityView(store, locId)];
-  for (const tab of ['ambience', 'quality'] as const)
-    lists[tab].el.append(...lists[tab].rows.map((r) => r.el));
+  lists.ambience.el.append(...lists.ambience.rows.map((r) => r.el));
 
   let view: View | null = null;
   const tabs = createTabs(

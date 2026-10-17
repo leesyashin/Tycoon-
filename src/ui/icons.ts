@@ -51,7 +51,8 @@ export type IconName =
   | 'confetti'
   | 'package'
   | 'ice-cream'
-  | 'tick';
+  | 'tick'
+  | 'video-camera';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 

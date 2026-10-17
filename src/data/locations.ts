@@ -1,20 +1,51 @@
-/** Standorte nach GAME_DESIGN § 3. Die Stations-Mechanik ist überall gleich, nur die Skalierung unterscheidet sich. */
+/**
+ * Standorte nach GAME_DESIGN § 3 (Phase 3): jede Filiale ist ein eigenes Café mit realistischem Preisniveau
+ * (`scale`: Verkaufspreise, Einkauf, Löhne, Miete, Ausbau – Berlin = 1) und eigener Gäste-Zahl (`demand`).
+ * Eröffnet wird mit Café-Level des Vorgängers, Zen und einer Investition aus der Kasse des Vorgängers. Die erste
+ * Filiale kostet kein Zen: Zen gibt es nur für einen Franchise-Reset, und der leerte die Kasse, aus der Kyoto bezahlt
+ * wird. Ab Tokio kommt das Zen aus dem Reset der anderen Cafés, während das Vorgänger-Café spart.
+ */
 export interface LocationDef {
   id: string;
-  /** Preis-Multiplikator für Kosten und Verkaufspreise aller Stationen. */
+  /** Preisniveau der Stadt für Preise und Kosten. */
   scale: number;
-  unlock: { prevLocationId: string; cafeLevel: number; zen: number } | null;
+  /** Gäste-Potenzial der Stadt (Faktor auf die Nachfrage). */
+  demand: number;
+  unlock: { prevLocationId: string; cafeLevel: number; zen: number; cost: number } | null;
 }
 
 export const LOCATIONS: readonly LocationDef[] = [
-  { id: 'berlin', scale: 1, unlock: null },
-  // Kyoto: Café-Level 14 statt 15 (GAME_DESIGN § 3), damit der Richtwert „Kyoto nach 3–4 h“ (§ 15)
-  // mit der Berlin-Kurve hält; siehe STATUS „Entscheidungen“ (in S9 per Sim bestätigt).
-  { id: 'kyoto', scale: 25, unlock: { prevLocationId: 'berlin', cafeLevel: 14, zen: 10 } },
-  { id: 'tokyo', scale: 600, unlock: { prevLocationId: 'kyoto', cafeLevel: 15, zen: 50 } },
-  { id: 'seoul', scale: 15_000, unlock: { prevLocationId: 'tokyo', cafeLevel: 15, zen: 250 } },
-  { id: 'newyork', scale: 400_000, unlock: { prevLocationId: 'seoul', cafeLevel: 15, zen: 1_200 } },
-  { id: 'bali', scale: 1e7, unlock: { prevLocationId: 'newyork', cafeLevel: 15, zen: 6_000 } },
+  { id: 'berlin', scale: 1, demand: 1, unlock: null },
+  {
+    id: 'kyoto',
+    scale: 1.1,
+    demand: 1.25,
+    unlock: { prevLocationId: 'berlin', cafeLevel: 12, zen: 0, cost: 30_000 },
+  },
+  {
+    id: 'tokyo',
+    scale: 1.3,
+    demand: 1.6,
+    unlock: { prevLocationId: 'kyoto', cafeLevel: 12, zen: 40, cost: 90_000 },
+  },
+  {
+    id: 'seoul',
+    scale: 1.15,
+    demand: 1.45,
+    unlock: { prevLocationId: 'tokyo', cafeLevel: 12, zen: 120, cost: 180_000 },
+  },
+  {
+    id: 'newyork',
+    scale: 1.6,
+    demand: 1.9,
+    unlock: { prevLocationId: 'seoul', cafeLevel: 12, zen: 300, cost: 350_000 },
+  },
+  {
+    id: 'bali',
+    scale: 0.85,
+    demand: 1.4,
+    unlock: { prevLocationId: 'newyork', cafeLevel: 12, zen: 700, cost: 600_000 },
+  },
 ];
 
 export const START_LOCATION_ID = 'berlin';

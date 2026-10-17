@@ -24,6 +24,8 @@ import {
   type CrowdInput,
 } from '@scenes/agents/crowd';
 import { CafeNav, pathLength } from '@scenes/agents/nav';
+import { carPath, parkSec, polylineLength } from '@scenes/agents/parking';
+import { PARKING_CROWD, PARKING_LOT, parkingSlotsAt } from '@data/parking';
 import { CUSTOMER_LOOKS, SUPPLY_ITEMS, storageLookTier, type StorageTier } from '@data/art';
 import { FRAME } from '@scenes/art';
 
@@ -497,7 +499,6 @@ describe('Gäste, Bedienungen und Putzkräfte (kosmetisch)', () => {
       return { station: id, home: p.workSpot };
     });
     const phases = new Set<string>();
-    let maxItems = 0;
     for (let t = 0; t < 60 * 60; t++) {
       crowd.update(1 / 60, input({ served: 1, waiters: 0, baristas: posts, prepSec: 2 }));
       for (const b of crowd.baristas.filter((x) => x.active)) {
@@ -509,13 +510,17 @@ describe('Gäste, Bedienungen und Putzkräfte (kosmetisch)', () => {
         expect(b.x).toBeGreaterThan(layout.origin.x + 0.5);
         if (b.phase === 'work') expect(b.workTotal).toBeGreaterThanOrEqual(CROWD.minPrepSec);
       }
-      maxItems = Math.max(maxItems, crowd.passItems.length);
     }
     expect(crowd.baristas.filter((b) => b.active)).toHaveLength(3);
     for (const p of ['work', 'toPass', 'drop', 'back', 'toStore', 'fetch', 'fromStore'])
       expect(phases).toContain(p);
-    // Ohne Bedienung stapelt sich höchstens `passItemsMax` auf der Ausgabe.
-    expect(maxItems).toBe(CROWD.passItemsMax);
+    // Ohne Abnehmer (keine Gäste, keine Bedienung) stapelt sich höchstens `passItemsMax` auf der Ausgabe.
+    let stacked = 0;
+    for (let t = 0; t < 30 * 60; t++) {
+      crowd.update(1 / 60, input({ served: 0, waiters: 0, baristas: posts, prepSec: 2 }));
+      stacked = Math.max(stacked, crowd.passItems.length);
+    }
+    expect(stacked).toBe(CROWD.passItemsMax);
     // Bedienungen nehmen je Auftrag einen Teller mit.
     run(crowd, input({ served: 1, waiters: 3, baristas: posts, prepSec: 30 }), 30);
     expect(crowd.passItems.length).toBeLessThan(CROWD.passItemsMax);
@@ -580,6 +585,248 @@ describe('Gäste, Bedienungen und Putzkräfte (kosmetisch)', () => {
     expect(serveDuration(1)).toBe(1);
     expect(serveDuration(1000)).toBe(CROWD.minServeSec);
     expect(serveDuration(0)).toBe(CROWD.maxServeSec);
+  });
+});
+
+describe('Feierabend, Tablett und Geschirr (Phase 3)', () => {
+  const layout = getLayout('berlin');
+  const postsFor = (ids: string[]) =>
+    ids.map((id) => {
+      const p = layout.stations.find((x) => x.stationId === id);
+      if (!p) throw new Error(id);
+      return { station: id, home: p.workSpot };
+    });
+
+  it('beim Szenenstart steht das Team schon an seinen Plätzen', () => {
+    const crowd = new CustomerCrowd(layout, 'berlin', lcg(52));
+    const posts = postsFor(['matchaStation']);
+    crowd.update(
+      1 / 60,
+      input({ served: 0, waiters: 1, cleaners: 1, cashiers: 1, baristas: posts, prepSec: 0 }),
+    );
+    const c = crowd.cashiers[0];
+    expect(c?.phase).toBe('idle');
+    expect(c?.fade).toBe(1);
+    expect(crowd.baristas[0]?.x).toBeCloseTo(posts[0]?.home.x ?? NaN);
+    expect(crowd.waiters[0]?.phase).toBe('idle');
+    expect(crowd.waiters[0]?.fade).toBe(1);
+  });
+
+  it('nach Ladenschluss geht das Team, Wartende ohne Bestellung gehen; morgens kommen alle wieder', () => {
+    const crowd = new CustomerCrowd(layout, 'berlin', lcg(51));
+    const open = input({
+      served: 1,
+      waiters: 2,
+      cleaners: 1,
+      cashiers: 2,
+      baristas: postsFor(['matchaStation', 'coffeeMachine']),
+      prepSec: 3,
+    });
+    run(crowd, open, 20);
+    expect(crowd.cashiers.filter((c) => c.active)).toHaveLength(2);
+    const closed = { ...open, onDuty: false };
+    run(crowd, closed, 1);
+    expect(crowd.waitingCount).toBe(0);
+    // Putzkräfte wischen nach Ladenschluss noch eine Weile, der Rest ist schon auf dem Weg nach hinten.
+    expect(crowd.cleaners.some((c) => c.active && c.phase !== 'off')).toBe(true);
+    expect(crowd.cashiers.every((c) => !c.active || c.phase === 'off')).toBe(true);
+    run(crowd, closed, CROWD.cleanAfterCloseSec + 40);
+    for (const s of [...crowd.waiters, ...crowd.cleaners, ...crowd.baristas, ...crowd.cashiers])
+      expect(s.active).toBe(false);
+    expect(crowd.activeCount).toBe(0);
+    // Morgens: am Personal-Ausgang auftauchen, einblenden und an die Plätze gehen.
+    crowd.update(1 / 60, open);
+    const b = crowd.baristas[0];
+    expect(b?.active).toBe(true);
+    expect(b?.phase).toBe('arrive');
+    expect(b?.fade).toBeLessThan(1);
+    run(crowd, { ...open, served: 0, prepSec: 0 }, 20);
+    for (const c of crowd.cashiers) {
+      expect(c.phase).toBe('idle');
+      expect(c.fade).toBe(1);
+      expect(c.x).toBeCloseTo(c.home.x);
+      expect(c.y).toBeCloseTo(c.home.y);
+    }
+    for (const x of crowd.baristas.filter((y) => y.active)) {
+      expect(x.phase).toBe('idle');
+      expect(x.x).toBeCloseTo(x.home.x);
+    }
+    expect(crowd.cleaners[0]?.active).toBe(true);
+  });
+
+  it('Bedienungen holen das Fertige von der Ausgabe, stellen es auf den Tisch und räumen später ab', () => {
+    const crowd = new CustomerCrowd(layout, 'berlin', lcg(53));
+    const inp = input({
+      served: 0.6,
+      waiters: 2,
+      tables: 6,
+      baristas: postsFor(['matchaStation', 'oven']),
+      prepSec: 3,
+    });
+    const phases = new Set<string>();
+    const trayItems = new Set<string>();
+    let placed = 0;
+    let dishes = 0;
+    for (let t = 0; t < 120 * 60; t++) {
+      crowd.update(1 / 60, inp);
+      for (const w of crowd.waiters) {
+        phases.add(w.phase);
+        for (const it of w.tray) trayItems.add(it);
+      }
+      for (const slots of crowd.tableItems)
+        for (const it of slots) {
+          if (it && !it.empty) placed++;
+          if (it?.empty) dishes++;
+        }
+      // Wer am Tisch sitzt und bedient wurde, hat seine Bestellung vor sich.
+      for (const a of crowd.agents)
+        if (a.active && a.phase === 'consume' && a.table >= 0)
+          expect(crowd.tableItems[a.table]?.[a.seat]).toMatchObject({ empty: false, item: a.item });
+    }
+    for (const p of ['pickup', 'toTable', 'serve', 'toClear', 'clear', 'stash'])
+      expect(phases).toContain(p);
+    expect(placed).toBeGreaterThan(0);
+    expect(dishes).toBeGreaterThan(0);
+    // Auf dem Tablett: Produkte beider Geräte und benutztes Geschirr.
+    expect(trayItems).toContain('matcha');
+    expect(trayItems).toContain('croissant');
+    expect([...trayItems].some((i) => i.endsWith('-empty'))).toBe(true);
+    // Ohne neue Gäste ist irgendwann alles abgeräumt.
+    run(crowd, { ...inp, served: 0 }, 90);
+    expect(crowd.tableItems.flat().filter(Boolean)).toHaveLength(0);
+  });
+
+  it('ohne Bedienung holen Gäste selbst ab, tragen es an den Tisch und bringen ihr Geschirr zurück', () => {
+    const crowd = new CustomerCrowd(layout, 'berlin', lcg(54));
+    const inp = input({
+      served: 0.6,
+      waiters: 0,
+      tables: 6,
+      baristas: postsFor(['coffeeMachine']),
+      prepSec: 3,
+    });
+    let carried = 0;
+    let returning = 0;
+    const back = new Set<string>();
+    for (let t = 0; t < 120 * 60; t++) {
+      crowd.update(1 / 60, inp);
+      for (const a of crowd.agents) {
+        if (!a.active) continue;
+        if (a.phase === 'toSeat' && a.carry === 'coffee') carried++;
+        if (a.phase === 'toReturn') {
+          returning++;
+          expect(a.carry).toMatch(/-empty$/);
+        }
+      }
+      for (const r of crowd.returnItems) back.add(r.item);
+      expect(crowd.returnItems.length).toBeLessThanOrEqual(CROWD.returnItemsMax);
+      // Selbstbedienung: niemand lässt Geschirr auf dem Tisch stehen.
+      expect(crowd.tableItems.flat().filter((it) => it?.empty)).toHaveLength(0);
+    }
+    expect(carried).toBeGreaterThan(0);
+    expect(returning).toBeGreaterThan(0);
+    expect(back).toContain('coffee-empty');
+    // Die Rückgabe räumt jemand von hinten weg.
+    run(crowd, { ...inp, served: 0 }, 60);
+    expect(crowd.returnItems).toHaveLength(0);
+  });
+});
+
+describe('Parkplatz: Gäste mit Rad, Roller oder Auto (Phase 3)', () => {
+  const layout = getLayout('berlin');
+
+  it('bei Stufe 0 kommt niemand mit dem Fahrzeug, der Parkplatz bleibt leer', () => {
+    const crowd = new CustomerCrowd(layout, 'berlin', lcg(61));
+    run(crowd, input({ served: 1, parking: 0 }), 60);
+    expect(crowd.vehicles.every((v) => v.state === 'free')).toBe(true);
+    expect(crowd.agents.every((a) => a.vehicle === -1)).toBe(true);
+  });
+
+  it('Gäste parken auf freien Plätzen der Stufe ein, gehen zu Fuß ins Café und fahren wieder weg', () => {
+    const crowd = new CustomerCrowd(layout, 'berlin', lcg(62));
+    const level = 5;
+    const states = new Set<string>();
+    const kinds = new Set<string>();
+    let walkedFromLot = 0;
+    for (let t = 0; t < 180 * 60; t++) {
+      crowd.update(1 / 60, input({ served: 1, tables: 8, parking: level }));
+      for (const v of crowd.vehicles) {
+        if (v.state === 'free') continue;
+        const slot = PARKING_LOT.slots[v.slot];
+        expect(slot).toBeDefined();
+        if (!slot) continue;
+        // Nur Plätze dieser Stufe, jeder höchstens einem Gast.
+        expect(slot.minLevel).toBeLessThanOrEqual(level);
+        states.add(v.state);
+        kinds.add(slot.kind);
+        const owners = crowd.agents.filter((a) => a.active && a.vehicle === v.slot);
+        expect(owners.length).toBeLessThanOrEqual(1);
+      }
+      for (const a of crowd.agents) {
+        if (!a.active || a.vehicle < 0) continue;
+        // Im Fahrzeug unsichtbar; ausgestiegen erst, wenn es steht. Bis zur Tür hält niemand einen Platz in der
+        // Schlange frei (sonst stünde bei mancher Zahlung niemand an der Kasse).
+        if (a.phase === 'arrive') expect(a.fade).toBe(0);
+        if (a.phase === 'arrive' || a.phase === 'approach') expect(crowd.queueIndex(a)).toBe(-1);
+        if (a.phase === 'approach' && crowd.vehicles[a.vehicle]?.state === 'parked')
+          walkedFromLot++;
+      }
+    }
+    for (const st of ['arriving', 'parked', 'leaving']) expect(states).toContain(st);
+    for (const k of ['bike', 'moped', 'car']) expect(kinds).toContain(k);
+    expect(walkedFromLot).toBeGreaterThan(0);
+    // Ohne neue Gäste ist der Parkplatz irgendwann wieder leer.
+    run(crowd, input({ served: 0, tables: 8, parking: level }), 120);
+    expect(crowd.vehicles.every((v) => v.state === 'free')).toBe(true);
+    expect(crowd.activeCount).toBe(0);
+  }, 30_000);
+
+  it('mit Fahrzeug-Gästen steht bei fast jeder Zahlung trotzdem jemand an der Kasse', () => {
+    for (const served of [0.2, 0.6]) {
+      const crowd = new CustomerCrowd(layout, 'berlin', lcg(63));
+      const till = tillDriver(served);
+      let payments = 0;
+      let paid = 0;
+      let vehicles = 0;
+      for (let t = 0; t < 240 * 60; t++) {
+        const inp = till(1 / 60);
+        const r = crowd.update(1 / 60, input({ served, orderCap: 3, till: inp, parking: 5 }));
+        if (t > 30 * 60) {
+          payments += inp.payments;
+          paid += r.orders.length;
+        }
+        vehicles = Math.max(vehicles, crowd.vehicles.filter((v) => v.state !== 'free').length);
+      }
+      expect(vehicles).toBeGreaterThan(0);
+      expect(paid / payments, `served ${String(served)}`).toBeGreaterThanOrEqual(0.9);
+    }
+  });
+
+  it('Autos fahren über die Einfahrt in ihre Box; Ein- und Ausparken dauern so lange wie der Weg', () => {
+    for (const slot of PARKING_LOT.slots) {
+      if (slot.kind !== 'car') {
+        expect(parkSec(slot)).toBe(PARKING_CROWD.popSec);
+        continue;
+      }
+      const path = carPath(slot);
+      expect(path[0]).toEqual({ x: PARKING_LOT.driveX, y: PARKING_LOT.streetY });
+      expect(path[path.length - 1]).toEqual({ x: slot.x, y: slot.y });
+      expect(parkSec(slot)).toBeCloseTo(polylineLength(path) / PARKING_CROWD.carTilesPerSec, 9);
+      // Der Weg bleibt auf dem Parkplatz bzw. in der Einfahrt.
+      for (const p of path) {
+        expect(p.x).toBeGreaterThanOrEqual(PARKING_LOT.rect.x0);
+        expect(p.x).toBeLessThanOrEqual(PARKING_LOT.rect.x1);
+      }
+    }
+    // Plätze jeder Stufe: erst Räder, dann Roller, dann Autos.
+    expect(parkingSlotsAt(0)).toEqual([]);
+    const kindsAt = (l: number) =>
+      new Set(parkingSlotsAt(l).map((i) => PARKING_LOT.slots[i]?.kind));
+    expect([...kindsAt(1)]).toEqual(['bike']);
+    expect(kindsAt(3)).toContain('moped');
+    expect(kindsAt(3).has('car')).toBe(false);
+    expect(kindsAt(4)).toContain('car');
+    expect(parkingSlotsAt(5).length).toBeGreaterThan(parkingSlotsAt(4).length);
   });
 });
 
@@ -684,9 +931,10 @@ describe('Natürliche Laufwege', () => {
       }
       if (prev.phase === 'toTable' && c.phase === 'wipe' && trip) {
         // Der Weg zum Tisch beginnt dort, wo sie gerade ist, und ist kaum länger als die Luftlinie
-        // (vorher: zurück auf die Laufzeile bis zum Startpunkt, dann erst hin).
+        // (vorher: zurück auf die Laufzeile bis zum Startpunkt, dann erst hin). Etwas Spiel für Bedienungen,
+        // die zum Abräumen an Tischen stehen und umgangen werden.
         const air = Math.hypot(c.x - trip.from.x, c.y - trip.from.y);
-        expect(trip.walked).toBeLessThan(air * 1.3 + 0.6);
+        expect(trip.walked).toBeLessThan(air * 1.3 + 0.8);
         hops++;
         trip = null;
       }

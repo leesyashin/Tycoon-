@@ -15,8 +15,14 @@ import { CROWD } from '@data/layouts';
 import {
   CHAR_CARRY,
   CHAR_FRAMES,
+  CHAR_LOW,
   CHAR_WALK,
+  CHAR_WHISK,
   CHAR_WORK,
+  HOLD_POINTS,
+  figureOffset,
+  workStepAt,
+  type WorkPose,
   CUSTOMER_LOOKS,
   DECOR_BIG,
   DECOR_BIG_FRAMES,
@@ -47,17 +53,29 @@ import type { Store } from '@core/store';
 import { computeLocationRates, mood, tapCafe, type LocationRates } from '@core/customers';
 import { buyStation, getBulkCost, isStationUnlocked, needsTerrace } from '@core/economy';
 import { getStaffLevel } from '@core/staff';
-import { formatNumber } from '@core/math/format';
+import { formatMoney } from '@core/math/format';
+import { TIME } from '@data/time';
 import { getEventOverlay } from '@core/events';
 import { equippedSkinTints } from '@core/leaves';
 import { getCafeClock } from '@core/time/dayCycle';
+import { isOpenAt } from '@core/time/clock';
+import { gradeInUse } from '@core/supply/stock';
 import type { EventOverlay } from '@data/events';
 import { Decimal } from '@core/math/bignum';
 import { getLang, t } from '@i18n/index';
-import { CustomerCrowd, type Agent, type BaristaPost } from './agents/crowd';
+import {
+  CustomerCrowd,
+  type Agent,
+  type BaristaPost,
+  type Waiter,
+  type WaiterPhase,
+} from './agents/crowd';
+import { CafeItems, ITEM_ORIGIN_Y } from './cafeItems';
+import { CafeStreet, formatHour } from './cafeStreet';
 import { CameraControls } from './cameraControls';
 import { TAP_TARGET_KEY, ambienceTarget, pickTapTarget, tableTarget } from './tapTarget';
 import { CityView } from './city/CityView';
+import { ParkingView } from './city/ParkingView';
 import { TILE_H, TILE_W, isoDepth, toGrid, toScreen } from './iso/iso';
 import { ART_SCALE, ATLAS, CHAR_FOOT_ORIGIN_Y, CHAR_OVERLAY_Y, FRAME, atlasUrls } from './art';
 import { REGISTRY, UI_EVENTS, getStore } from './registry';
@@ -85,12 +103,10 @@ const HUD_CASH = { x: 34, y: 34 };
 /** Der Schein startet auf Handhöhe des Zahlenden (Weltpixel über dem Fußpunkt). */
 const CASH_BILL_LIFT = 12;
 const DEPTH = { wall: -2000, floor: -1000, label: 10_000, overlay: 20_000 } as const;
-/** Teller/Becher-Sprites (`item-*`): Bodenpunkt 16 px unter der Oberkante einer 22 px hohen Leinwand. */
-const ITEM_ORIGIN_Y = 16 / 22;
 /** Getränk vor einem Barhocker: so weit zur Theke hin (Kacheln), an der Vorderkante der Platte. */
 const STOOL_ITEM_BACK = 0.55;
-/** Getragene Ware aus dem Lager: so hoch über den Füßen (Hände) und so weit vor dem Körper (Pixel). */
-const SUPPLY_HAND = { z: 15, ahead: 4 } as const;
+/** Bedienungen strecken das Tablett vor (Aufnehmen, Abstellen, Abräumen, Wegstellen). */
+const WAITER_HANDS: readonly WaiterPhase[] = ['pickup', 'serve', 'clear', 'stash'];
 /** Deko, Musik und WLAN sind nur dort antippbar, wo sie sichtbar sind (Pixel-Test, ohne weiche Schatten). */
 const TAP_PIXEL = {
   pixelPerfect: true,
@@ -165,6 +181,8 @@ const OVERLAY_SIZE = 20_000;
 // Einmal abfragen, `matches` folgt Änderungen live (vorher lief `matchMedia` in jedem Frame).
 const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
 const reducedMotion = (): boolean => motionQuery.matches;
+/** Rate pro Spielstunde → je echter Sekunde (geöffnet vergeht eine Spielminute je Sekunde). */
+const perRealSec = (perHour: number): number => (perHour * TIME.openMinutesPerSec) / 60;
 
 /** Lager-Stufe 1..3 aus einer Mindest-Stufe des Grundrisses. */
 function storageTierAt(tier: number): StorageTier {
@@ -193,12 +211,6 @@ function walkFacing(prev: Look | null, dx: number, dy: number): Look {
   return facing(dx, dy);
 }
 
-/** Frame im Lauf-Zyklus nach `sec` Sekunden Gehen. */
-function walkFrame(sec: number): number {
-  const c = CHAR_WALK.cycle;
-  return c[Math.floor(sec / CHAR_WALK.stepSec) % c.length] ?? CHAR_FRAMES.stand;
-}
-
 export class CafeScene extends Phaser.Scene {
   private store!: Store;
   private layout!: CafeLayout;
@@ -224,7 +236,7 @@ export class CafeScene extends Phaser.Scene {
   private agentLook: (Look | null)[] = [];
   private waiterFigures: StaffFigure[] = [];
   private cleanerFigures: StaffFigure[] = [];
-  private cashierFigures: Phaser.GameObjects.Image[] = [];
+  private cashierFigures: StaffFigure[] = [];
   private baristaFigures: StaffFigure[] = [];
   /** Sichtbare Baristas: je gekauftem Gerät einer (Reihenfolge der Produktlinien), höchstens so viele wie eingestellt. */
   private baristaPosts: BaristaPost[] = [];
@@ -281,6 +293,17 @@ export class CafeScene extends Phaser.Scene {
     Record<NonNullable<EventOverlay['particles']>, Phaser.GameObjects.Particles.ParticleEmitter>
   > = {};
   private overlayKey = '';
+  /** Produkte auf Geräten, in Händen, auf Tabletts und Tischen, Geschirr auf der Rückgabe. */
+  private items!: CafeItems;
+  /** Schild an der Tür und Lieferwagen. */
+  private street!: CafeStreet;
+  /** Parkplatz neben dem Café mit den Fahrzeugen der Gäste. */
+  private parking!: ParkingView;
+  /** Zuletzt gezeigte Lieferungen und Kosten-Abbuchungen (neue zeigen Wagen bzw. „−Betrag“). */
+  private lastDelivered = 0;
+  private lastBills = 0;
+  /** Hinweis über der Matcha-Station, wenn kein Matcha mehr da ist. */
+  private matchaOut: Phaser.GameObjects.Text | null = null;
 
   constructor() {
     super('CafeScene');
@@ -338,6 +361,9 @@ export class CafeScene extends Phaser.Scene {
     this.walkClock = 0;
     this.fx = {};
     this.overlayKey = '';
+    this.lastDelivered = 0;
+    this.lastBills = 0;
+    this.matchaOut = null;
   }
 
   /** Themen-Atlas nur für den aktiven Standort laden (Lazy-Loading je Standort). */
@@ -368,11 +394,13 @@ export class CafeScene extends Phaser.Scene {
       { x0: o.x, y0: o.y, x1: n, y1: n },
       DEPTH.overlay - 1,
     );
+    this.parking = new ParkingView(this, this.locationId);
     this.drawRoom();
     this.createCounter();
     this.createStorage();
     this.createStations();
     this.createTables();
+    this.items = new CafeItems(this, this.layout);
     this.createAmbience(state);
     this.agentSprites = this.crowd.agents.map(() =>
       this.sprite(0, 0, FRAME.customer('student', CUSTOMER_LOOKS.student[0] ?? '', 'front', 0))
@@ -429,6 +457,17 @@ export class CafeScene extends Phaser.Scene {
     this.updateRoomBounds(getLocation(state, this.locationId).ambience['terrace'] ?? 0);
     this.createEventFx();
     this.createNight();
+    const startLoc = getLocation(state, this.locationId);
+    this.lastDelivered = startLoc.supply.delivered;
+    this.lastBills = startLoc.bills.count;
+    this.street = new CafeStreet(
+      this,
+      this.layout,
+      (size, color) => this.makeText(size, color),
+      DEPTH.label - 4,
+      (x, y) => this.textPopup(x, y, t('scene.delivery'), UI_THEME.textCss),
+    );
+    this.createMatchaOut();
     this.createStationFx();
     this.createAmbientFx();
     // Schwenken über das Viertel, ohne je einen Rand zu sehen; die Startansicht passt auf den Raum (`fitCamera`).
@@ -488,6 +527,7 @@ export class CafeScene extends Phaser.Scene {
       this.refreshStorage(state, true);
       this.refreshStations(state, true);
       this.refreshTables(state, true);
+      this.refreshParking(state);
       this.createAmbience(state);
       this.refreshStaff(state);
       this.refreshEventFx(state);
@@ -495,13 +535,18 @@ export class CafeScene extends Phaser.Scene {
       this.refreshBoard();
     }
     const loc = getLocation(state, this.locationId);
+    this.watchSupplyAndBills(loc);
     // Mit Debug-Spawn kommen mehr Figuren, als `core` bucht: dann bezahlen sie im eigenen Takt (nur Optik).
     const till = this.tillInput(loc);
+    const open = isOpenAt(loc, state.clock);
     const { purchases, orders, payments } = this.crowd.update(dt, {
       served: this.visibleServed(this.rates),
-      orderCap: this.rates.stages.order,
+      orderCap: perRealSec(this.rates.stages.order),
       waiters: getStaffLevel(loc, 'waiter'),
       cleaners: getStaffLevel(loc, 'cleaner'),
+      cashiers: getStaffLevel(loc, 'cashier'),
+      parking: loc.ambience['parking'] ?? 0,
+      onDuty: open || this.debugSpawn > 0,
       tables: loc.ambience['seats'] ?? 0,
       terrace: loc.ambience['terrace'] ?? 0,
       ambience: loc.ambience,
@@ -518,6 +563,12 @@ export class CafeScene extends Phaser.Scene {
     this.syncDirt();
     this.syncPassItems();
     this.syncStoolItems();
+    this.items.sync(
+      this.crowd,
+      (i) => this.tables[i]?.sprite.visible ?? false,
+      (img) => this.plop(img),
+    );
+    this.parking.sync(this.crowd.vehicles);
     this.syncStationFx(dt);
     this.drawRings();
     if (payments > 0) this.onPayments(payments, orders);
@@ -550,6 +601,8 @@ export class CafeScene extends Phaser.Scene {
     for (const p of this.popups) p.setScale(f);
     this.moreText.setScale(f);
     this.board?.text.setScale(f);
+    this.street.setLabelScale(f);
+    this.matchaOut?.setScale(f);
   }
 
   /** Neue Zahlungen seit dem letzten Frame; `till.paid` beginnt nach einem Reset wieder bei 0. */
@@ -560,9 +613,12 @@ export class CafeScene extends Phaser.Scene {
     return { payments, progress: loc.till.progress };
   }
 
-  /** Gäste/s für die Figuren; im Debug-Modus kosmetisch auf `debugSpawn` gesetzt (nie für Einnahmen). */
+  /**
+   * Gäste je echter Sekunde für die Figuren (die Raten aus `core` sind pro Spielstunde, geöffnet vergeht eine
+   * Spielminute je Sekunde); im Debug-Modus kosmetisch auf `debugSpawn` gesetzt (nie für Einnahmen).
+   */
   private visibleServed(r: LocationRates): number {
-    return this.debugSpawn > 0 ? this.debugSpawn : r.served;
+    return this.debugSpawn > 0 ? this.debugSpawn : perRealSec(r.served);
   }
 
   private world(p: GridPos): { x: number; y: number } {
@@ -1019,6 +1075,8 @@ export class CafeScene extends Phaser.Scene {
 
   /** Nach Sprachwechsel alle Stations-Texte neu setzen. */
   private relabel(): void {
+    this.matchaOut?.setText(t('scene.matchaOut'));
+    this.shownNight = -1;
     for (const v of this.stations) v.shownLevel = -1;
     this.refreshStations(this.store.getState(), false);
   }
@@ -1275,36 +1333,99 @@ export class CafeScene extends Phaser.Scene {
   }
 
   private refreshNight(state: GameState): void {
-    const night = Math.round(getCafeClock(state.playtimeSec).night * 100) / 100;
-    if (night === this.shownNight) return;
-    this.shownNight = night;
+    const loc = getLocation(state, this.locationId);
+    const open = isOpenAt(loc, state.clock);
+    // Schild an der Tür: geöffnet bis … bzw. geschlossen ab … (Öffnungszeiten können sich ändern).
+    const lang = getLang();
+    this.street.setSign(
+      open,
+      open
+        ? t('scene.sign.open', { time: formatHour(loc.hours.close, lang) })
+        : t('scene.sign.closed', { time: formatHour(loc.hours.open, lang) }),
+    );
+    const night = Math.round(getCafeClock(state.clock).night * 100) / 100;
+    const key = night + (open ? 10 : 0);
+    if (key === this.shownNight) return;
+    this.shownNight = key;
     // Multiply mit Alpha mischt Richtung Indigo; 0 = Tag.
     this.nightTint.setAlpha(night * DAY_CYCLE.nightAlpha);
     this.nightTint.setVisible(night > 0);
-    for (const g of this.glows) g.setAlpha(night * 0.8);
+    // Nach Ladenschluss ist drinnen das Licht aus (nur ein Rest brennt).
+    const lit = open ? 1 : SCENE_FX.closedLight;
+    for (const g of this.glows) g.setAlpha(night * 0.8 * lit);
     // Heller Marmor sättigt schnell: nur ein Hauch Licht, nachts etwas mehr.
-    for (const p of this.lightPools) p.setAlpha(0.06 + night * 0.24);
+    for (const p of this.lightPools) p.setAlpha((0.06 + night * 0.24) * lit);
     this.city.setNight(night);
   }
 
+  /** Parkplatz-Ausbau: neue Stufe mit Funken über dem Platz. */
+  private refreshParking(state: GameState): void {
+    const level = getLocation(state, this.locationId).ambience['parking'] ?? 0;
+    if (this.parking.setLevel(level) && !reducedMotion()) {
+      const c = this.parking.center();
+      this.sparkles.explode(SCENE_FX.newLookSparkles, c.x, c.y - 10);
+    }
+  }
+
+  /** Neue Lieferungen: der Wagen fährt vor; neue Kosten-Abbuchungen: „−Betrag“ über der Kasse. */
+  private watchSupplyAndBills(loc: LocationState): void {
+    const delivered = loc.supply.delivered;
+    if (delivered < this.lastDelivered) this.lastDelivered = delivered;
+    if (delivered > this.lastDelivered) {
+      this.street.deliver(Math.min(3, delivered - this.lastDelivered));
+      this.lastDelivered = delivered;
+    }
+    const bills = loc.bills.count;
+    if (bills < this.lastBills) this.lastBills = bills;
+    if (bills > this.lastBills) {
+      this.lastBills = bills;
+      if (loc.bills.last.gt(0)) {
+        const reg = this.layout.stations.find((s) => s.stationId === REGISTER_ID)?.tile;
+        const at = reg ? toScreen(reg.x, reg.y) : toScreen(0, 0);
+        this.textPopup(
+          at.x,
+          at.y - STATION_TOP,
+          t('scene.costPopup', { amount: formatMoney(loc.bills.last, getLang()) }),
+          UI_THEME.dangerCss,
+        );
+      }
+    }
+    // Kein Matcha mehr: Hinweis über der Matcha-Station.
+    if (this.matchaOut) this.matchaOut.setVisible(gradeInUse(loc.supply) < 0);
+  }
+
+  private createMatchaOut(): void {
+    const p = this.layout.stations.find((s) => s.stationId === 'matchaStation');
+    if (!p) return;
+    const w = this.world(p.tile);
+    this.matchaOut = this.makeText(12, UI_THEME.dangerCss)
+      .setText(t('scene.matchaOut'))
+      .setPosition(w.x, w.y - STATION_TOP - 8)
+      .setDepth(DEPTH.label)
+      .setVisible(false);
+  }
+
+  /** Kurzer Text, der aufsteigt und verblasst (Lieferung, Kosten). */
+  private textPopup(x: number, y: number, text: string, color: string): void {
+    const popup = this.freePopup();
+    if (!popup) return;
+    popup.setColor(color).setText(text).setPosition(x, y).setAlpha(1).setVisible(true);
+    this.tweens.add({
+      targets: popup,
+      y: y - 30,
+      alpha: 0,
+      duration: 1400,
+      onComplete: () => popup.setVisible(false).setColor(UI_THEME.goldCss),
+    });
+  }
+
   /**
-   * Personal-Figuren (kosmetisch): Verkäufer hinter der Kasse, Baristas an den Geräten (laufen mit dem Becher zur
-   * Ausgabe), Bedienungen und Putzkräfte als bewegte Figuren aus `crowd`. Sichtbar nach Anzahl, gedeckelt
-   * (`CROWD.max*`).
+   * Personal-Figuren (kosmetisch, aus `crowd`): Verkäufer hinter der Kasse, Baristas an den Geräten (tragen das
+   * Fertige zur Ausgabe), Bedienungen mit Tablett und Putzkräfte. Sichtbar nach Anzahl, gedeckelt (`CROWD.max*`);
+   * nach Ladenschluss gehen sie nach hinten hinaus, morgens kommen sie wieder.
    */
   private createStaff(): void {
-    // Die n-te Figur einer Rolle bekommt den n-ten Look (`STAFF_LOOKS`), rein optisch. Verkäufer blicken zur Kasse.
-    const look = this.cashierLook();
-    this.layout.order.cashierSpots.slice(0, CROWD.maxCashiers).forEach((spot, i) => {
-      const w = this.world(spot);
-      this.cashierFigures.push(
-        this.sprite(w.x, w.y + TILE_H * 0.5, FRAME.staff('cashier', staffLookFor('cashier', i)))
-          .setOrigin(0.5, CHAR_FOOT_ORIGIN_Y)
-          .setDepth(isoDepth(spot.x, spot.y, 6))
-          .setFlipX(look.flip)
-          .setVisible(false),
-      );
-    });
+    // Die n-te Figur einer Rolle bekommt den n-ten Look (`STAFF_LOOKS`), rein optisch.
     const moving = (role: StaffRoleId, n: number): StaffFigure[] =>
       Array.from({ length: n }, (_, i) => ({
         sprite: this.sprite(0, 0, FRAME.staff(role, staffLookFor(role, i)))
@@ -1313,6 +1434,7 @@ export class CafeScene extends Phaser.Scene {
         prev: { x: 0, y: 0 },
         look: null,
       }));
+    this.cashierFigures = moving('cashier', this.crowd.cashiers.length);
     this.baristaFigures = moving('barista', CROWD.maxBaristas);
     this.waiterFigures = moving('waiter', CROWD.maxWaiters);
     this.cleanerFigures = moving('cleaner', CROWD.maxCleaners);
@@ -1331,11 +1453,6 @@ export class CafeScene extends Phaser.Scene {
 
   private refreshStaff(state: GameState): void {
     const loc = getLocation(state, this.locationId);
-    const cashiers = getStaffLevel(loc, 'cashier');
-    this.cashierFigures.forEach((s, i) => {
-      const show = i < cashiers;
-      if (s.visible !== show) s.setVisible(show);
-    });
     // Baristas arbeiten an den gekauften Geräten, in Reihenfolge der Produktlinien; die Simulation bewegt sie.
     let left = getStaffLevel(loc, 'barista');
     const posts: BaristaPost[] = [];
@@ -1356,30 +1473,79 @@ export class CafeScene extends Phaser.Scene {
   private prepSec(r: LocationRates): number {
     const n = this.baristaPosts.length;
     if (n === 0 || this.visibleServed(r) <= 0) return 0;
-    return n / Math.max(r.stages.production, 1e-6);
+    return n / Math.max(perRealSec(r.stages.production), 1e-6);
   }
 
-  /** Frame im Arbeits-Takt (Hände wechseln), je Figur versetzt; bei „weniger Bewegung“ Stehen. */
-  private workFrame(offset: number): number {
-    if (reducedMotion()) return CHAR_FRAMES.stand;
-    const c = CHAR_WORK.cycle;
+  /** Frame in einem Takt (Hände wechseln), je Figur versetzt; bei „weniger Bewegung“ der erste Frame. */
+  private cycleFrame(c: { cycle: readonly number[]; stepSec: number }, offset: number): number {
+    if (reducedMotion()) return c.cycle[0] ?? CHAR_FRAMES.stand;
     return (
-      c[Math.floor(this.walkClock / CHAR_WORK.stepSec + offset) % c.length] ?? CHAR_FRAMES.stand
+      c.cycle[Math.floor(this.walkClock / c.stepSec + offset) % c.cycle.length] ?? CHAR_FRAMES.stand
     );
   }
 
+  /** Frame einer Arbeits-Pose (`WORK_SCRIPTS`). */
+  private poseFrame(pose: WorkPose, offset: number): number {
+    switch (pose) {
+      case 'place':
+        return CHAR_FRAMES.place;
+      case 'pour':
+        return CHAR_FRAMES.pour;
+      case 'stand':
+        return CHAR_FRAMES.stand;
+      case 'whisk':
+        return this.cycleFrame(CHAR_WHISK, offset);
+      case 'low':
+        return this.cycleFrame(CHAR_LOW, offset);
+      case 'work':
+        return this.cycleFrame(CHAR_WORK, offset);
+    }
+  }
+
+  /** Lauf-Frame im Zyklus (mit vorgestreckter Hand beim Tragen), je Figur versetzt. */
+  private stepFrame(carrying: boolean, offset: number): number {
+    const cycle = carrying ? CHAR_CARRY : CHAR_WALK;
+    if (reducedMotion()) return cycle.cycle[1] ?? CHAR_FRAMES.stand;
+    return (
+      cycle.cycle[Math.floor((this.walkClock + offset) / cycle.stepSec) % cycle.cycle.length] ??
+      CHAR_FRAMES.stand
+    );
+  }
+
+  /** Setzt eine Personal-Figur: Frame, Spiegelung, Position, Tiefe, Ein- und Ausblenden. */
+  private placeStaff(
+    f: StaffFigure,
+    role: StaffRoleId,
+    index: number,
+    pos: { x: number; y: number; fade: number },
+    look: Look,
+    frame: number,
+  ): void {
+    f.look = look;
+    const name = FRAME.staff(role, staffLookFor(role, index), look.dir, frame);
+    if (f.sprite.frame.name !== name) f.sprite.setFrame(name);
+    const p = toScreen(pos.x, pos.y);
+    f.sprite
+      .setFlipX(look.flip)
+      .setVisible(true)
+      .setAlpha(pos.fade)
+      .setPosition(p.x, p.y + TILE_H / 2)
+      .setDepth(isoDepth(pos.x, pos.y, 6));
+  }
+
   /**
-   * Baristas: am Gerät mit dem Rücken zum Gastraum arbeiten (Hände im Takt), mit dem Becher in der Hand zur Ausgabe
-   * laufen, abstellen (Blick zur Theke) und zurückgehen.
+   * Baristas: am Gerät mit dem Rücken zum Gastraum, Schritt für Schritt (`WORK_SCRIPTS`: hinstellen, aufschlagen,
+   * eingießen, tief in Ofen oder Kühlfach greifen …), mit dem Fertigen in der Hand zur Ausgabe, abstellen (Blick zur
+   * Theke) und zurück; im Lager greifen sie ins Regal.
    */
   private syncBaristas(): void {
-    const still = reducedMotion();
     this.crowd.baristas.forEach((b, i) => {
       const f = this.baristaFigures[i];
       if (!f) return;
       if (!b.active) {
         if (f.sprite.visible) f.sprite.setVisible(false);
         f.look = null;
+        this.items.hold({ sprite: f.sprite, dir: 'front' }, [], HOLD_POINTS.carry);
         return;
       }
       const dx = b.x - f.prev.x;
@@ -1387,38 +1553,32 @@ export class CafeScene extends Phaser.Scene {
       const moving = f.sprite.visible && Math.hypot(dx, dy) > 1e-4;
       f.prev.x = b.x;
       f.prev.y = b.y;
-      const carrying = b.phase === 'toPass' || b.phase === 'drop';
+      const carrying = b.phase === 'toPass' || b.phase === 'fromStore';
       // Mit dem Rücken zum Gastraum ans Gerät (quer gestellte Geräte stehen an der linken Wand).
       const across = this.layout.stations.find((p) => p.stationId === b.station)?.facesX;
       let look = across ? facing(-1, 0) : facing(0, -1);
       let frame: number = CHAR_FRAMES.stand;
       if (moving) {
         look = walkFacing(f.look, dx, dy);
-        const cycle = carrying ? CHAR_CARRY : CHAR_WALK;
-        const c = cycle.cycle;
-        frame = still
-          ? (c[1] ?? CHAR_FRAMES.stand)
-          : (c[Math.floor((this.walkClock + i * 0.05) / cycle.stepSec) % c.length] ??
-            CHAR_FRAMES.stand);
+        frame = this.stepFrame(carrying, i * 0.05);
       } else if (b.phase === 'drop') {
         look = facing(0, 1);
-        frame = CHAR_FRAMES.carry[0];
+        frame = CHAR_FRAMES.place;
       } else if (b.phase === 'work') {
-        frame = this.workFrame(i * 0.5);
+        const step = workStepAt(b.station, b.workTotal > 0 ? 1 - b.timer / b.workTotal : 0);
+        frame = this.poseFrame(step.pose, i * 0.5);
       } else if (b.phase === 'fetch') {
-        // Greift ins Regal an der linken Wand
+        // Greift ins Regal an der linken Wand.
         look = facing(-1, 0);
-        frame = this.workFrame(i * 0.5);
+        frame = CHAR_FRAMES.place;
       }
-      f.look = look;
-      const name = FRAME.staff('barista', staffLookFor('barista', i), look.dir, frame);
-      if (f.sprite.frame.name !== name) f.sprite.setFrame(name);
-      const p = toScreen(b.x, b.y);
-      f.sprite
-        .setFlipX(look.flip)
-        .setVisible(true)
-        .setPosition(p.x, p.y + TILE_H / 2)
-        .setDepth(isoDepth(b.x, b.y, 6));
+      this.placeStaff(f, 'barista', i, b, look, frame);
+      // Das Fertige in der Hand: auf dem Weg zur Ausgabe vorgestreckt, beim Abstellen vorn auf der Theke.
+      const item = PASS_ITEMS[b.station] ?? 'matcha';
+      const fig = { sprite: f.sprite, dir: look.dir };
+      if (b.phase === 'toPass') this.items.hold(fig, [item], HOLD_POINTS.carry);
+      else if (b.phase === 'drop') this.items.hold(fig, [item], HOLD_POINTS.place);
+      else this.items.hold(fig, [], HOLD_POINTS.carry);
     });
   }
 
@@ -1436,92 +1596,137 @@ export class CafeScene extends Phaser.Scene {
       if (!show) return;
       const frame = FRAME.supply(SUPPLY_ITEMS[b.station] ?? 'tin');
       if (s.frame.name !== frame) s.setFrame(frame);
-      const away = f.sprite.frame.name.includes('-back-');
-      const side = f.sprite.flipX ? 1 : -1;
-      s.setPosition(f.sprite.x + side * SUPPLY_HAND.ahead, f.sprite.y - SUPPLY_HAND.z).setDepth(
-        f.sprite.depth + (away ? -0.05 : 0.05),
-      );
+      const dir = f.look?.dir ?? 'front';
+      const off = figureOffset(HOLD_POINTS.carry, dir);
+      const flip = f.sprite.flipX ? -1 : 1;
+      s.setPosition(f.sprite.x + off.x * flip, f.sprite.y + off.y)
+        .setAlpha(f.sprite.alpha)
+        .setDepth(f.sprite.depth + (dir === 'back' ? -0.05 : 0.05));
     });
   }
 
-  /** Verkäufer tippen, solange jemand bestellt (die Kasse zeigt zu ihnen); sonst stehen sie und schauen zum Gast. */
+  /**
+   * Verkäufer: Der erste tippt, solange jemand bestellt (die Kasse zeigt zu ihnen), die anderen helfen erst, wenn
+   * sich eine Schlange bildet; sonst stehen sie und schauen zum Gast. Morgens und abends gehen sie durch den Gang.
+   */
   private syncCashiers(): void {
     const ordering = this.crowd.agents.some((a) => a.active && a.phase === 'order');
     const busy = ordering || this.crowd.waitingCount > 0;
-    const look = this.cashierLook();
-    this.cashierFigures.forEach((s, i) => {
-      if (!s.visible) return;
-      // Der erste Verkäufer steht an der Kasse; die anderen helfen erst, wenn sich eine Schlange bildet.
-      const works = i === 0 ? ordering : busy && this.crowd.waitingCount > i;
-      const frame = works ? this.workFrame(i * 0.7) : CHAR_FRAMES.stand;
-      const name = FRAME.staff('cashier', staffLookFor('cashier', i), look.dir, frame);
-      if (s.frame.name !== name) s.setFrame(name);
+    const atRegister = this.cashierLook();
+    this.crowd.cashiers.forEach((c, i) => {
+      const f = this.cashierFigures[i];
+      if (!f) return;
+      if (!c.active) {
+        if (f.sprite.visible) f.sprite.setVisible(false);
+        f.look = null;
+        return;
+      }
+      const dx = c.x - f.prev.x;
+      const dy = c.y - f.prev.y;
+      const moving = f.sprite.visible && Math.hypot(dx, dy) > 1e-4;
+      f.prev.x = c.x;
+      f.prev.y = c.y;
+      if (moving) {
+        this.placeStaff(
+          f,
+          'cashier',
+          i,
+          c,
+          walkFacing(f.look, dx, dy),
+          this.stepFrame(false, i * 0.07),
+        );
+        return;
+      }
+      const works =
+        c.phase === 'idle' && (i === 0 ? ordering : busy && this.crowd.waitingCount > i);
+      const frame = works ? this.cycleFrame(CHAR_WORK, i * 0.7) : CHAR_FRAMES.stand;
+      this.placeStaff(f, 'cashier', i, c, atRegister, frame);
     });
   }
 
-  /** Bewegte Personal-Figuren (Bedienungen, Putzkräfte) aus der Crowd-Simulation. */
+  /**
+   * Bedienungen und Putzkräfte aus der Crowd-Simulation. Bedienungen tragen ihr Tablett mit dem, was darauf steht;
+   * beim Aufnehmen an der Ausgabe, Abstellen am Tisch, Abräumen und Wegstellen strecken sie es vor.
+   */
   private syncStaffFigures(): void {
-    const still = reducedMotion();
-    const sync = (
-      role: StaffRoleId,
-      figures: StaffFigure[],
-      agents: { active: boolean; x: number; y: number; phase: string }[],
-      lookWhenIdle: (a: { x: number; y: number; phase: string }, i: number) => Look,
-      workPhases: readonly string[] = [],
-    ): void => {
-      agents.forEach((a, i) => {
-        const f = figures[i];
-        if (!f) return;
-        if (!a.active) {
-          f.sprite.setVisible(false);
-          f.look = null;
-          return;
-        }
-        const p = toScreen(a.x, a.y);
-        const dx = a.x - f.prev.x;
-        const dy = a.y - f.prev.y;
-        const moving = f.sprite.visible && Math.hypot(dx, dy) > 1e-4;
-        f.prev.x = a.x;
-        f.prev.y = a.y;
-        const look = moving ? walkFacing(f.look, dx, dy) : lookWhenIdle(a, i);
-        f.look = look;
-        // Laufend im Zyklus, je Figur versetzt; wischend im Arbeits-Takt; sonst Frame 0.
-        const frame =
-          moving && !still
-            ? walkFrame(this.walkClock + i * CHAR_WALK.stepSec)
-            : !moving && workPhases.includes(a.phase)
-              ? this.workFrame(i * 0.5)
-              : CHAR_FRAMES.stand;
-        const name = FRAME.staff(role, staffLookFor(role, i), look.dir, frame);
-        if (f.sprite.frame.name !== name) f.sprite.setFrame(name);
-        f.sprite
-          .setFlipX(look.flip)
-          .setVisible(true)
-          .setPosition(p.x, p.y + TILE_H / 2)
-          .setDepth(isoDepth(a.x, a.y, 6));
-      });
-    };
-    // Stehend blicken Bedienungen zum Gastraum (+y) bzw. beim Servieren zum Gast, Putzkräfte zum Tisch bzw. beim
-    // Bodenwischen schräg zur Kamera.
-    sync('waiter', this.waiterFigures, this.crowd.waiters, (a, i) => {
-      const w = this.crowd.waiters[i];
-      const guest =
-        w && w.phase === 'serve' && w.target >= 0 ? this.crowd.agents[w.target] : undefined;
-      if (guest?.active && guest.table >= 0) return facing(guest.x - a.x, guest.y - a.y);
-      return facing(0, 1);
+    this.crowd.waiters.forEach((w, i) => {
+      const f = this.waiterFigures[i];
+      if (!f) return;
+      if (!w.active) {
+        if (f.sprite.visible) f.sprite.setVisible(false);
+        f.look = null;
+        this.items.hold({ sprite: f.sprite, dir: 'front' }, [], HOLD_POINTS.tray);
+        return;
+      }
+      const dx = w.x - f.prev.x;
+      const dy = w.y - f.prev.y;
+      const moving = f.sprite.visible && Math.hypot(dx, dy) > 1e-4;
+      f.prev.x = w.x;
+      f.prev.y = w.y;
+      let look: Look;
+      let frame: number = CHAR_FRAMES.stand;
+      if (moving) {
+        look = walkFacing(f.look, dx, dy);
+        frame = this.stepFrame(false, i * CHAR_WALK.stepSec);
+      } else {
+        look = this.waiterLook(w);
+        if (WAITER_HANDS.includes(w.phase)) frame = CHAR_FRAMES.place;
+      }
+      this.placeStaff(f, 'waiter', i, w, look, frame);
+      this.items.hold(
+        { sprite: f.sprite, dir: look.dir },
+        w.tray,
+        frame === CHAR_FRAMES.place ? HOLD_POINTS.trayServe : HOLD_POINTS.tray,
+      );
     });
-    sync(
-      'cleaner',
-      this.cleanerFigures,
-      this.crowd.cleaners,
-      (a, i) => {
-        const c = this.crowd.cleaners[i];
-        const table = c && c.table >= 0 ? this.layout.tables[c.table] : undefined;
-        if (table) return facing(table.tile.x - a.x, table.tile.y - a.y);
-        return a.phase === 'mop' ? facing(i % 2 ? 1 : 0, i % 2 ? 0 : 1) : facing(0, 1);
-      },
-      ['wipe', 'mop'],
-    );
+    // Putzkräfte blicken zum Tisch bzw. beim Bodenwischen schräg zur Kamera.
+    this.crowd.cleaners.forEach((c, i) => {
+      const f = this.cleanerFigures[i];
+      if (!f) return;
+      if (!c.active) {
+        if (f.sprite.visible) f.sprite.setVisible(false);
+        f.look = null;
+        return;
+      }
+      const dx = c.x - f.prev.x;
+      const dy = c.y - f.prev.y;
+      const moving = f.sprite.visible && Math.hypot(dx, dy) > 1e-4;
+      f.prev.x = c.x;
+      f.prev.y = c.y;
+      if (moving) {
+        this.placeStaff(
+          f,
+          'cleaner',
+          i,
+          c,
+          walkFacing(f.look, dx, dy),
+          this.stepFrame(false, i * CHAR_WALK.stepSec),
+        );
+        return;
+      }
+      const table = c.table >= 0 ? this.layout.tables[c.table] : undefined;
+      const look = table
+        ? facing(table.tile.x - c.x, table.tile.y - c.y)
+        : c.phase === 'mop'
+          ? facing(i % 2 ? 1 : 0, i % 2 ? 0 : 1)
+          : facing(0, 1);
+      const frame =
+        c.phase === 'wipe' || c.phase === 'mop'
+          ? this.cycleFrame(CHAR_WORK, i * 0.5)
+          : CHAR_FRAMES.stand;
+      this.placeStaff(f, 'cleaner', i, c, look, frame);
+    });
+  }
+
+  /** Stehende Bedienung: zum Gast bzw. zum Tisch, an der Ausgabe zur Theke, beim Wegstellen nach hinten. */
+  private waiterLook(w: Waiter): Look {
+    const guest = w.target >= 0 ? this.crowd.agents[w.target] : undefined;
+    if (w.phase === 'serve' && guest?.active && guest.table >= 0 && !guest.pickup)
+      return facing(guest.x - w.x, guest.y - w.y);
+    const table = w.table >= 0 ? this.layout.tables[w.table] : undefined;
+    if (w.phase === 'clear' && table) return facing(table.tile.x - w.x, table.tile.y - w.y);
+    if (w.phase === 'stash') return facing(0, -1);
+    return facing(0, 1);
   }
 
   /** Ring-Pool: Bestellender, Baristas, wischende Putzkräfte. */
@@ -1711,10 +1916,15 @@ export class CafeScene extends Phaser.Scene {
     const still = reducedMotion();
     const t = this.walkClock;
     for (const v of this.stationFx) {
+      // Nur in den Schritten, in denen das Gerät wirklich dampft, glüht oder mahlt (`WORK_SCRIPTS`).
       const run =
         !still &&
         this.crowd.baristas.some(
-          (b) => b.active && b.station === v.stationId && b.phase === 'work',
+          (b) =>
+            b.active &&
+            b.station === v.stationId &&
+            b.phase === 'work' &&
+            workStepAt(v.stationId, b.workTotal > 0 ? 1 - b.timer / b.workTotal : 0).fx === true,
         );
       if (v.burst) {
         if (run && t >= v.nextBurst) {
@@ -1833,7 +2043,6 @@ export class CafeScene extends Phaser.Scene {
   private syncAgents(currentMood: string): void {
     const agents = this.crowd.agents;
     const moodFrame = FRAME.mood(currentMood);
-    const still = reducedMotion();
     for (let i = 0; i < agents.length; i++) {
       const a = agents[i];
       const s = this.agentSprites[i];
@@ -1844,6 +2053,7 @@ export class CafeScene extends Phaser.Scene {
         s.setVisible(false);
         m.setVisible(false);
         this.agentLook[i] = null;
+        this.items.hold({ sprite: s, dir: 'front' }, [], HOLD_POINTS.carry);
         continue;
       }
       const p = toScreen(a.x, a.y);
@@ -1867,14 +2077,18 @@ export class CafeScene extends Phaser.Scene {
         const dx = a.x - prev.x;
         const dy = a.y - prev.y;
         const moving = s.visible && Math.hypot(dx, dy) > 1e-4;
+        const carrying = a.carry !== null;
         let look: Look;
         if (moving) look = walkFacing(s.visible ? (this.agentLook[i] ?? null) : null, dx, dy);
         else if (a.phase === 'queue' || a.phase === 'order') look = this.queueLook(a);
+        // An der Ausgabe und an der Rückgabe zur Theke.
+        else if (a.pickup || a.phase === 'returnDishes') look = facing(0, -1);
         else look = facing(0, 1);
         this.agentLook[i] = look;
-        const frameNo =
-          moving && !still
-            ? walkFrame(this.walkClock + a.id * CHAR_WALK.stepSec)
+        const frameNo = moving
+          ? this.stepFrame(carrying, a.id * CHAR_WALK.stepSec)
+          : carrying
+            ? CHAR_FRAMES.carry[0]
             : CHAR_FRAMES.stand;
         const frame = FRAME.customer(a.type, a.look, look.dir, frameNo);
         if (s.frame.name !== frame) s.setFrame(frame);
@@ -1887,6 +2101,12 @@ export class CafeScene extends Phaser.Scene {
         .setAlpha(a.fade)
         .setPosition(x, onStool ? y - STOOL_SEAT_LIFT : y)
         .setDepth(isoDepth(a.x, a.y, 6));
+      // Becher, Teller oder Geschirr in der Hand (Selbstbedienung, Abholer mit dem Becher hinaus).
+      this.items.hold(
+        { sprite: s, dir: this.agentLook[i]?.dir ?? 'front' },
+        a.carry !== null && !seated ? [a.carry] : [],
+        HOLD_POINTS.carry,
+      );
       // Smiley nur über den sichtbaren Schlangenplätzen, nicht über dem Grüppchen dahinter.
       const queueing = a.phase === 'queue' && this.crowd.queueIndex(a) < CROWD.maxQueue;
       m.setVisible(queueing);
@@ -1989,15 +2209,11 @@ export class CafeScene extends Phaser.Scene {
     const popup = this.freePopup();
     if (!popup) return;
     // Bei gleichbleibenden Raten zahlt jeder Gast genau den Durchschnittsbon (`settleTill`).
-    const ticket = r.incomePerSec.div(new Decimal(r.served)).mul(customers);
-    const state = this.store.getState();
+    const ticket = r.incomePerHour.div(new Decimal(r.served)).mul(customers);
     const p = toScreen(gx, gy);
     popup
-      .setText(
-        t('scene.coinPopup', {
-          amount: formatNumber(ticket, getLang(), state.settings.numberFormat),
-        }),
-      )
+      .setColor(UI_THEME.goldCss)
+      .setText(t('scene.coinPopup', { amount: formatMoney(ticket, getLang()) }))
       .setPosition(p.x, p.y - 10)
       .setAlpha(1)
       .setVisible(true);

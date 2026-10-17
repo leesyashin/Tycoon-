@@ -1,36 +1,36 @@
 import { AMBIENCE } from './ambience';
-import { BALANCE } from './balance';
-import { QUALITY_TIERS } from './quality';
+import { MATCHA_GRADES } from './matcha';
+import { VIDEO_FORMATS } from './social';
 import { STAFF_ROLES } from './staff';
 import { STATIONS } from './stations';
 
 /**
  * Freischalt-Tabelle und Café-Level-Belohnungen (GAME_DESIGN § 5.3). Die Freischalt-Level stehen an den
- * Definitionen selbst (Station, Ambiente, Personal, Qualität, Marketing); hier werden sie je Café-Level
+ * Definitionen selbst (Gerät, Ambiente, Personal, Matcha-Sorte, Video-Format); hier werden sie je Café-Level
  * gesammelt, damit UI und Tests eine einzige Übersicht haben.
  */
 export const CAFE_LEVEL_REWARD = {
-  /** Einmal-Belohnung: so viele Sekunden des aktuellen Einkommens. */
-  incomeSeconds: 30,
+  /** Einmal-Belohnung: so viele Spielstunden Umsatz zur Hauptzeit (Zuschuss vom Vermieter, Presse …). */
+  incomeHours: 1,
   /** Ab diesem Café-Level gibt es zusätzlich Goldene Blätter … */
-  leavesFromLevel: 5,
-  /** … 1 Blatt, +1 alle `leavesStep` Level, höchstens `leavesMax`. */
-  leavesStep: 5,
+  leavesFromLevel: 3,
+  /** 1 Blatt, +1 alle `leavesStep` Level, höchstens `leavesMax`. */
+  leavesStep: 4,
   leavesMax: 3,
 } as const;
 
-/** Grid-Erweiterung (GAME_DESIGN § 5.2): Stationen ab diesem Café-Level brauchen Terrasse ≥ 1 (Platz). */
+/** Grid-Erweiterung (GAME_DESIGN § 5.2): Geräte ab diesem Café-Level brauchen Terrasse ≥ 1 (Platz). */
 export const TERRACE_REQUIREMENT = {
   fromCafeLevel: 9,
   ambienceId: 'terrace',
   minLevel: 1,
 } as const;
 
-export type UnlockKind = 'station' | 'ambience' | 'staff' | 'quality' | 'marketing';
+export type UnlockKind = 'station' | 'ambience' | 'staff' | 'grade' | 'video';
 
 export interface Unlock {
   kind: UnlockKind;
-  /** Stations-/Ambiente-/Personal-ID, Qualitätsstufe als String, `campaign` für Marketing. */
+  /** Geräte-/Ambiente-/Personal-ID, Matcha-Sorte als String, Video-Format. */
   id: string;
 }
 
@@ -42,8 +42,9 @@ function collect(): Map<number, Unlock[]> {
   for (const s of STATIONS) add(s.unlockCafeLevel, { kind: 'station', id: s.id });
   for (const a of AMBIENCE) add(a.unlockCafeLevel, { kind: 'ambience', id: a.id });
   for (const r of STAFF_ROLES) add(r.unlockCafeLevel, { kind: 'staff', id: r.id });
-  for (const q of QUALITY_TIERS) add(q.unlockCafeLevel, { kind: 'quality', id: String(q.tier) });
-  add(BALANCE.marketing.unlockCafeLevel, { kind: 'marketing', id: 'campaign' });
+  for (const g of MATCHA_GRADES)
+    if (g.grade > 0) add(g.unlockCafeLevel, { kind: 'grade', id: String(g.grade) });
+  for (const f of VIDEO_FORMATS) add(f.unlockCafeLevel, { kind: 'video', id: f.id });
   return table;
 }
 

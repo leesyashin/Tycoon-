@@ -1,6 +1,9 @@
 import { DAY_CYCLE } from '@data/ui';
+import { dayOf, minuteOfDay } from './clock';
 
 export interface CafeClock {
+  /** Spieltag (0 = erster Tag). */
+  day: number;
   /** 0..23 */
   hour: number;
   /** 0..59 */
@@ -14,16 +17,13 @@ const smooth = (x: number): number => {
   return c * c * (3 - 2 * c);
 };
 
-/**
- * Café-Tageszeit aus der Spielzeit (UI_STYLE § 4: 24 min = 1 Tag). Rein kosmetisch: weder Einnahmen
- * noch Kunden hängen daran (CLAUDE.md).
- */
-export function getCafeClock(playtimeSec: number): CafeClock {
+/** Café-Tageszeit aus der Spieluhr (`GameState.clock`, Spielminuten) mit weichem Licht für die Szene. */
+export function getCafeClock(clock: number): CafeClock {
   const c = DAY_CYCLE;
-  const dayFrac = (((playtimeSec / c.dayLengthSec + c.startHour / 24) % 1) + 1) % 1;
+  const m = minuteOfDay(clock);
   // Kleiner Zuschlag gegen Rundungsfehler (8:00 soll nicht als 7:59 erscheinen).
-  const totalMin = Math.floor(dayFrac * 24 * 60 + 1e-6) % (24 * 60);
-  const h = dayFrac * 24;
+  const totalMin = Math.floor(m + 1e-6) % (24 * 60);
+  const h = m / 60;
   // Abends von duskFrom bis nightFrom dunkler werden, morgens von nightTo bis dawnTo heller.
   const night =
     h >= c.duskFrom
@@ -31,5 +31,5 @@ export function getCafeClock(playtimeSec: number): CafeClock {
       : h < c.dawnTo
         ? 1 - smooth((h - c.nightTo) / (c.dawnTo - c.nightTo))
         : 0;
-  return { hour: Math.floor(totalMin / 60), minute: totalMin % 60, night };
+  return { day: dayOf(clock), hour: Math.floor(totalMin / 60), minute: totalMin % 60, night };
 }

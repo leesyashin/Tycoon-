@@ -24,12 +24,8 @@ export const UI_CONFIG = {
   licensesUrl: 'https://github.com/leesyashin/Tycoon-/blob/main/docs/ASSETS.md',
 } as const;
 
-/** Kosmetischer Tag/Nacht-Zyklus (UI_STYLE § 4). Stunden 0..24. */
+/** Licht im Tag/Nacht-Wechsel der Spieluhr (UI_STYLE § 4, Uhr in `data/time.ts`). Stunden 0..24. */
 export const DAY_CYCLE = {
-  /** 24 min Spielzeit = 1 Café-Tag. */
-  dayLengthSec: 24 * 60,
-  /** Neues Spiel beginnt am Vormittag. */
-  startHour: 9,
   duskFrom: 18,
   nightFrom: 21,
   nightTo: 5,
@@ -51,6 +47,8 @@ export const UI_THEME = {
   successDeep: 0x27d436,
   gold: 0xffb929,
   danger: 0xf33838,
+  /** Tieferes Rot für weiße Schrift (`--c-danger-ink`, 5,7:1). */
+  dangerInk: 0xc42727,
   cash: 0x3fb950,
   gem: 0xffd23f,
   surface: 0xffffff,
@@ -64,5 +62,7 @@ export const UI_THEME = {
   goldCss: '#ffb929',
   /** Rote 7-Segment-Ziffern der Warteschlangen-Tafel (§ 3.10). */
   ledCss: '#f33838',
+  /** Kosten und Warnungen in der Szene (`--c-danger`). */
+  dangerCss: '#f33838',
   fontUi: 'Poppins, system-ui, sans-serif',
 } as const;

@@ -1,46 +1,24 @@
 import { BALANCE } from '@data/balance';
 import { getLocationDef } from '@data/locations';
-import { REGISTER_ID, type StationDef } from '@data/stations';
+import { getGradeDef } from '@data/matcha';
+import {
+  MENU_LEVELS,
+  REGISTER_ID,
+  menuTierIndex,
+  type MenuTier,
+  type StationDef,
+} from '@data/stations';
 import { Decimal, D } from '../math/bignum';
 
-/** Tempo-Meilensteine sind bis Index 3 immer Tempo, danach wechseln sich Preis (gerade) und Tempo (ungerade) ab. */
-export function milestoneLevels(upTo: number): number[] {
-  const { levels, stepAfter } = BALANCE.milestones;
-  const out: number[] = [];
-  for (const l of levels) if (l <= upTo) out.push(l);
-  const last = levels[levels.length - 1] ?? 0;
-  for (let l = last + stepAfter; l <= upTo; l += stepAfter) out.push(l);
-  return out;
+/** Wie viele Level ab `level` noch gekauft werden können (Höchstlevel). */
+export function levelsLeft(def: StationDef, level: number): number {
+  return Math.max(0, def.maxLevel - level);
 }
 
-export function milestoneCounts(level: number): { speed: number; price: number } {
-  let speed = 0;
-  let price = 0;
-  milestoneLevels(level).forEach((_, i) => {
-    const index = i + 1;
-    const isPrice = index >= BALANCE.milestones.firstAlternatingIndex && index % 2 === 0;
-    if (isPrice) price++;
-    else speed++;
-  });
-  return { speed, price };
-}
-
-export function milestoneSpeedMult(level: number): number {
-  return 2 ** milestoneCounts(level).speed;
-}
-
-export function milestonePriceMult(level: number): number {
-  return 2 ** milestoneCounts(level).price;
-}
-
-export function nextMilestone(level: number): number {
-  const { levels, stepAfter } = BALANCE.milestones;
-  for (const l of levels) if (l > level) return l;
-  const last = levels[levels.length - 1] ?? 0;
-  return last + (Math.floor((level - last) / stepAfter) + 1) * stepAfter;
-}
-
-/** cost(level→level+n) = base × g^level × (g^n − 1) / (g − 1) × (1 − discount) × locationScale */
+/**
+ * cost(level→level+n) = base × g^level × (g^n − 1) / (g − 1) × (1 − discount) × Preisniveau, n höchstens bis zum
+ * Höchstlevel.
+ */
 export function getStationCost(
   def: StationDef,
   level: number,
@@ -48,17 +26,18 @@ export function getStationCost(
   locationId: string,
   discount = 0,
 ): Decimal {
-  if (amount <= 0) return D(0);
+  const n = Math.min(amount, levelsLeft(def, level));
+  if (n <= 0) return D(0);
   const g = def.growth;
   const scale = getLocationDef(locationId).scale;
   return D(g)
     .pow(level)
-    .mul(D(g).pow(amount).sub(1))
+    .mul(D(g).pow(n).sub(1))
     .div(g - 1)
     .mul(def.baseCost * scale * (1 - discount));
 }
 
-/** Größtes n mit cost(level→level+n) ≤ coins. */
+/** Größtes n (bis zum Höchstlevel) mit cost(level→level+n) ≤ coins. */
 export function getMaxAffordable(
   def: StationDef,
   level: number,
@@ -66,46 +45,53 @@ export function getMaxAffordable(
   locationId: string,
   discount = 0,
 ): number {
-  const one = getStationCost(def, level, 1, locationId, discount);
-  if (coins.lt(one)) return 0;
-  const g = def.growth;
-  const scale = getLocationDef(locationId).scale;
-  // Umgestellt: g^n = coins × (g−1) / (base × g^level × scale × (1−d)) + 1
-  const first = D(g)
-    .pow(level)
-    .mul(def.baseCost * scale * (1 - discount));
-  const ratio = coins
-    .mul(g - 1)
-    .div(first)
-    .add(1);
-  let n = Math.floor(ratio.log10() / Math.log10(g));
-  // Gleitkomma-Korrektur an den Rändern.
-  while (n > 0 && getStationCost(def, level, n, locationId, discount).gt(coins)) n--;
-  while (getStationCost(def, level, n + 1, locationId, discount).lte(coins)) n++;
+  const left = levelsLeft(def, level);
+  let n = 0;
+  while (n < left && getStationCost(def, level, n + 1, locationId, discount).lte(coins)) n++;
   return n;
 }
 
-/** Preis je Stück: base × level × Standort × Preis-Meilensteine (0 ohne Level oder ohne Produkt). */
-export function getStationPrice(def: StationDef, level: number, locationId: string): Decimal {
-  if (level <= 0 || def.basePrice <= 0) return D(0);
-  return D(def.basePrice * level * getLocationDef(locationId).scale).mul(milestonePriceMult(level));
-}
-
 /**
- * Arbeitstempo der Ausstattung (GAME_DESIGN § 4): jedes Level über 1 macht sie schneller, Meilensteine
- * verdoppeln. Ohne Level: Kasse = Handkasse, Ausgabe-Station = Tempo 1 (Bedienungen arbeiten auch so),
- * Produktlinie = 0 (nicht auf der Karte).
+ * Arbeitstempo der Ausstattung (GAME_DESIGN § 4): jedes Level über 1 macht sie schneller. Ohne Level: Kasse =
+ * Handkasse, Ausgabe-Station = Tempo 1 (Bedienungen arbeiten auch so), Produktlinie = 0 (nicht auf der Karte).
  */
 export function getStationSpeed(def: StationDef, level: number): number {
   if (level <= 0) {
     if (def.id === REGISTER_ID) return BALANCE.order.handRegisterSpeed;
     return def.area === 'service' ? 1 : 0;
   }
-  return (1 + (level - 1) * BALANCE.equipment.speedPerLevel) * milestoneSpeedMult(level);
+  return 1 + (level - 1) * BALANCE.equipment.speedPerLevel;
 }
 
-/** Sekunden je Vorgang bei diesem Level (`Infinity`, wenn das Gerät nicht arbeitet). */
-export function getStationWorkSeconds(def: StationDef, level: number): number {
+/** Spielminuten je Vorgang bei diesem Level (`Infinity`, wenn das Gerät nicht arbeitet). */
+export function getStationWorkMinutes(def: StationDef, level: number): number {
   const speed = getStationSpeed(def, level);
-  return speed > 0 ? def.workTime / speed : Infinity;
+  return speed > 0 ? def.workMin / speed : Infinity;
+}
+
+/** Stufe der Speisekarte bei diesem Level (`null` ohne Produkt). */
+export function menuTier(def: StationDef, level: number): MenuTier | null {
+  if (def.menu.length === 0) return null;
+  return def.menu[Math.min(def.menu.length, menuTierIndex(level)) - 1] ?? null;
+}
+
+/** Level, ab dem die nächste Stufe der Karte gilt; `null` auf der letzten. */
+export function nextMenuLevel(level: number): number | null {
+  return MENU_LEVELS.find((l) => l > Math.max(level, 1)) ?? null;
+}
+
+/**
+ * Preis je Stück beim aktuellen Level: Karte × Preisniveau, Matcha-Produkte × Faktor der Sorte im Ausschank
+ * (`grade` < 0: Sorte egal bzw. nicht vorrätig). 0 ohne Level oder ohne Produkt.
+ */
+export function getItemPrice(
+  def: StationDef,
+  level: number,
+  locationId: string,
+  grade = 0,
+): Decimal {
+  const tier = level > 0 ? menuTier(def, level) : null;
+  if (!tier) return D(0);
+  const gradeMult = def.matchaGrams > 0 && grade >= 0 ? getGradeDef(grade).priceMult : 1;
+  return D(tier.price * getLocationDef(locationId).scale * gradeMult);
 }

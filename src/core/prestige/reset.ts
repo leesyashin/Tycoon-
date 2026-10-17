@@ -4,12 +4,14 @@ import { STATIONS } from '@data/stations';
 import { D, type Decimal } from '../math/bignum';
 import { createLocationState, getLocation, withLocation, type GameState } from '../GameState';
 import { computeCafeLevel } from '../economy/cafeLevel';
-import { getIncomePerSec } from '../customers/rates';
+import { peakIncomePerHour } from '../customers/rates';
+import { dayOf } from '../time/clock';
 import { getMetaEffects } from './meta';
 
 /**
- * zenGain = floor(3 × sqrt(earnedThisRun / (1e6 × locationScale)) × (1 + prestigeCount × 0.1))
- * (GAME_DESIGN § 11.2). Die Skalierung sorgt dafür, dass jeder Standort ähnliche Zen-Mengen liefert.
+ * zenGain = floor(factor × sqrt(earnedThisRun / (divisor × locationScale)) × (1 + prestigeCount × perPrestige))
+ * (GAME_DESIGN § 11.2, Werte in `PRESTIGE.zen`). Die Skalierung sorgt dafür, dass jeder Standort ähnliche
+ * Zen-Mengen liefert.
  */
 export function computeZenGain(state: GameState, locationId: string): Decimal {
   const loc = getLocation(state, locationId);
@@ -26,12 +28,12 @@ export function canReset(state: GameState, locationId: string): boolean {
   return getLocation(state, locationId).level >= PRESTIGE.resetMinCafeLevel;
 }
 
-/** Start-Münzen nach einem Reset: Basis-Start + Meta-Upgrade „Start-Kapital“ aus dem Einkommen des Vor-Runs. */
+/** Startkapital nach einem Reset: Basis + Meta-Upgrade „Startkapital“ aus dem Umsatz des Vor-Runs zur Hauptzeit. */
 export function getResetStartCoins(state: GameState, locationId: string): Decimal {
   const base = createLocationState(locationId).coins;
-  const sec = getMetaEffects(state).startCapitalSec;
-  if (sec <= 0) return base;
-  return base.add(getIncomePerSec(state, locationId).mul(sec));
+  const hours = getMetaEffects(state).startCapitalHours;
+  if (hours <= 0) return base;
+  return base.add(peakIncomePerHour(state, locationId).mul(hours));
 }
 
 /**
@@ -44,10 +46,12 @@ export function franchiseReset(state: GameState, locationId: string): GameState 
   const old = getLocation(state, locationId);
   const zen = computeZenGain(state, locationId);
   const fx = getMetaEffects(state);
-  const fresh = createLocationState(locationId);
+  const fresh = createLocationState(locationId, dayOf(state.clock));
   fresh.coins = getResetStartCoins(state, locationId);
   fresh.prestigeCount = old.prestigeCount + 1;
-  // „Schnellstart“: die ersten N Stationen (Reihenfolge der Freischaltung) starten auf festem Level.
+  // Öffnungszeiten sind eine Vorliebe des Spielers, keine Ausbaustufe.
+  fresh.hours = { ...old.hours };
+  // „Schnellstart“: die ersten N Geräte (Reihenfolge der Freischaltung) starten auf festem Level.
   const fast = [...STATIONS]
     .sort((a, b) => a.unlockCafeLevel - b.unlockCafeLevel)
     .slice(0, fx.fastStartStations);

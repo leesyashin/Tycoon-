@@ -77,6 +77,9 @@ export default defineConfig({
   test: {
     include: ['tests/**/*.test.ts'],
     environment: 'node',
+    // Die Figuren-Simulationen (Wege, Parkplatz) brauchen allein 3–5 s; unter Last (CI, parallel) mehr als die
+    // Vitest-Vorgabe von 5 s.
+    testTimeout: 20_000,
     coverage: {
       provider: 'v8',
       include: ['src/core/**/*.ts'],

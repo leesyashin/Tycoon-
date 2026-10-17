@@ -12,19 +12,14 @@ export interface StorageLike {
 }
 
 export const SAVE_KEY = `mce.save.v${String(SCHEMA_VERSION)}`;
-/** Frühere Schlüssel, aus denen noch gelesen (und migriert) wird. */
-const LEGACY_KEYS = [
-  'mce.save.v9',
-  'mce.save.v8',
-  'mce.save.v7',
-  'mce.save.v6',
-  'mce.save.v5',
-  'mce.save.v4',
-  'mce.save.v3',
-  'mce.save.v2',
-  'mce.save.v1',
-  'mce.save.v0',
-];
+/**
+ * Frühere Schlüssel, aus denen noch gelesen (und migriert) wird, neueste zuerst. Aus der Schema-Version gebaut,
+ * damit beim nächsten Hochzählen kein alter Spielstand verloren geht.
+ */
+const LEGACY_KEYS = Array.from(
+  { length: SCHEMA_VERSION },
+  (_, i) => `mce.save.v${String(SCHEMA_VERSION - 1 - i)}`,
+);
 
 /**
  * Zeitstempel laufen nur vorwärts: wer die Uhr vor- und wieder zurückstellt, bekommt die Offline-Zeit

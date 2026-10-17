@@ -21,13 +21,13 @@ async function editSaveAndReload(page: Page, coins: string): Promise<void> {
   await page.reload();
 }
 
-test('Tutorial: Schritte, Highlight, Aufgabe erkennt Kauf, überspringen bleibt gespeichert', async ({
+test('Tutorial: Schritte, Highlight, Aufgaben erkennen Bestellung und Kauf, überspringen bleibt gespeichert', async ({
   page,
 }) => {
   await page.goto('?lang=de');
   const tut = page.getByTestId('tutorial');
   await expect(tut).toBeVisible();
-  await expect(page.getByTestId('tutorial-count')).toHaveText('Schritt 1 von 8');
+  await expect(page.getByTestId('tutorial-count')).toHaveText(/^Schritt 1 von \d+$/);
   await expect(tut).toContainText('Willkommen in deinem Café!');
   await expect(page.locator('.tutorial-ring')).toBeVisible();
   const r = await new AxeBuilder({ page })
@@ -37,18 +37,25 @@ test('Tutorial: Schritte, Highlight, Aufgabe erkennt Kauf, überspringen bleibt 
   expect(r.violations.map((v) => v.id)).toEqual([]);
 
   await page.getByTestId('tutorial-next').click();
-  await expect(tut).toContainText('Matcha-Station verbessern');
+  // Phase 3: Matcha muss bestellt werden – die erste Aufgabe führt in den Einkauf.
+  await expect(tut).toContainText('Matcha bestellen');
+  await expect(page.getByTestId('tutorial-count')).toHaveText(/^Schritt 2 von \d+$/);
   // Aufgaben-Schritt: kein „Weiter“, nur Überspringen.
   await expect(page.getByTestId('tutorial-next')).toBeHidden();
+  await expect(page.locator('.tutorial-ring')).toBeVisible();
 
   await editSaveAndReload(page, '1000000');
-  await expect(tut).toContainText('Matcha-Station verbessern');
-  await page.getByTestId('nav-shop').click();
-  await page.getByTestId('shop-station-matchaStation').click();
-  await page.getByTestId('buy-10').click();
+  await expect(tut).toContainText('Matcha bestellen');
+  await page.getByTestId('nav-supply').click();
+  await page.getByTestId('supply-order-0').click();
   await page.getByTestId('panel-close').click();
   // Aufgabe erledigt → nächster Schritt (Prüfung läuft 1×/s).
-  await expect(tut).toContainText('Die Kasse', { timeout: 5000 });
+  await expect(tut).toContainText('Matcha-Station verbessern', { timeout: 5000 });
+  await page.getByTestId('nav-shop').click();
+  await page.getByTestId('shop-station-matchaStation').click();
+  await page.getByTestId('buy-1').click();
+  await page.getByTestId('panel-close').click();
+  await expect(tut).toContainText('Mehr Platz', { timeout: 5000 });
 
   await page.getByTestId('tutorial-skip').click();
   await expect(tut).toBeHidden();
@@ -60,7 +67,7 @@ test('Tutorial: Schritte, Highlight, Aufgabe erkennt Kauf, überspringen bleibt 
   await page.getByTestId('nav-settings').click();
   await page.getByTestId('settings-tutorial').click();
   await expect(tut).toBeVisible();
-  await expect(page.getByTestId('tutorial-count')).toHaveText('Schritt 1 von 8');
+  await expect(page.getByTestId('tutorial-count')).toHaveText(/^Schritt 1 von \d+$/);
 });
 
 test('Tutorial läuft bis zum Ende durch (manuelle Schritte, Englisch)', async ({ page }) => {
@@ -75,26 +82,35 @@ test('Tutorial läuft bis zum Ende durch (manuelle Schritte, Englisch)', async (
     const save = JSON.parse(localStorage.getItem(key) ?? '{}') as {
       locations: Record<
         string,
-        { stations: Record<string, { level: number }>; staff: Record<string, number> }
+        {
+          stations: Record<string, { level: number }>;
+          ambience: Record<string, number>;
+          staff: Record<string, number>;
+        }
       >;
+      stats: Record<string, number>;
     };
     const berlin = save.locations['berlin'];
     if (!berlin) throw new Error('no berlin');
+    // Matcha bestellt, Station verbessert, zweiter Tisch gekauft …
+    save.stats = { ...save.stats, matchaOrders: 1, videos: 1 };
     berlin.stations['matchaStation'] = { ...berlin.stations['matchaStation'], level: 5 };
-    berlin.stations['register'] = { ...berlin.stations['register'], level: 1 };
-    // Gründungsteam (3) plus eine weitere Kraft erfüllt den Personal-Schritt.
-    berlin.staff = { cashier: 1, barista: 2, waiter: 1 };
+    berlin.ambience = { ...berlin.ambience, seats: 2 };
+    // … und zum Gründungsteam (du an der Kasse, ein Barista) eine Bedienung; ein Video ist auch schon online.
+    berlin.staff = { cashier: 1, barista: 1, waiter: 1 };
     localStorage.setItem(key, JSON.stringify(save));
     Storage.prototype.setItem = () => undefined;
   });
   await page.reload();
   const tut = page.getByTestId('tutorial');
+  // Erledigte Aufgaben überspringt das Tutorial bis zum nächsten manuellen Schritt: die Uhr.
+  await expect(tut).toContainText('Day, night and opening hours', { timeout: 5000 });
+  await expect(next).toBeVisible();
+  await next.click();
   await expect(tut).toContainText('Happy guests', { timeout: 5000 });
   await next.click();
-  await expect(tut).toContainText('Your tools');
-  await next.click();
   await expect(tut).toContainText('Even while you’re away');
-  await expect(tut).toContainText('up to 4 hours');
+  await expect(tut).toContainText(/up to \d+ game day/);
   await next.click();
   await expect(tut).toContainText('The world is waiting');
   await expect(next).toHaveText('Let’s go');

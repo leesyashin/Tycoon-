@@ -9,7 +9,15 @@
  * z Höhe in Pixeln; Ursprung = Mitte zwischen den Füßen. Die Rückansicht spiegelt nur y, deshalb hält die
  * Figur Becher, Taschen und Handys immer auf der sichtbaren Seite.
  */
-import { CHAR_FRAMES, CHAR_SPRITE, CUSTOMER_LOOKS, STAFF_FRAMES, STAFF_LOOKS } from '@data/art';
+import {
+  CHAR_FRAMES,
+  CHAR_SPRITE,
+  CUSTOMER_FRAMES,
+  CUSTOMER_LOOKS,
+  HOLD_POINTS,
+  STAFF_FRAMES,
+  STAFF_LOOKS,
+} from '@data/art';
 import type { StaffRoleId } from '@data/staff';
 import { IsoCanvas, SHADE, shade, tint } from './iso';
 import { C } from './palette';
@@ -1044,17 +1052,100 @@ function upperArm(f: Fig, look: Look, side: -1 | 1) {
 
 /**
  * Unterarm nach vorn mit Hand auf Höhe `handZ`. `from` = Beginn entlang y (in der Vorderansicht ab der Brust, damit
- * der linke Unterarm nicht über den Rumpf gemalt wird).
+ * der linke Unterarm nicht über den Rumpf gemalt wird); `dx` verschiebt die Hand seitlich (Bambusbesen).
  */
-function forearm(f: Fig, look: Look, side: -1 | 1, handZ: number, from: number) {
-  const [x0, x1] = armX(look, side);
+function forearm(f: Fig, look: Look, side: -1 | 1, handZ: number, from: number, dx = 0) {
+  const [ax0, ax1] = armX(look, side);
+  const x0 = ax0 + dx;
+  const x1 = ax1 + dx;
   const inset = 0.006;
   const color = sleeveKind(look) === 'long' ? sleeveOf(look) : look.skin;
   const tip = WORK.reach - WORK.hand;
-  // Ellbogen-Stück: verbindet Oberarm und Unterarm, wenn die Hand höher liegt als der Ellbogen.
-  if (from <= 0) f.cube(x0 + inset, x1 - inset, -0.03, 0.03, WORK.elbowZ - 0.6, handZ + 1.2, color);
+  // Ellbogen-Stück: verbindet Oberarm und Unterarm (nach oben zum Gerät oder nach unten in Ofen und Kühlfach).
+  if (from <= 0) {
+    const za = Math.min(WORK.elbowZ - 0.6, handZ - 0.6);
+    const zb = Math.max(WORK.elbowZ + 0.6, handZ + 1.2);
+    f.cube(x0 + inset, x1 - inset, -0.03, 0.03, za, zb, color);
+  }
   f.cube(x0 + inset, x1 - inset, Math.max(from, -0.01), tip, handZ - 0.6, handZ + 1.6, color);
   f.cube(x0 + inset, x1 - inset, tip, WORK.reach, handZ - 1, handZ + 1.8, look.skin);
+}
+
+/** Unterarm einer Hand in einer Pose: Höhe der Hand und seitlicher Versatz. */
+interface HandPose {
+  z: number;
+  dx?: number;
+}
+
+/**
+ * Arm-Haltung eines Frames (`CHAR_FRAMES`): welche Hand nach vorn greift (sonst hängt bzw. schwingt der Arm), wie
+ * weit der Kopf nickt und wie tief der Oberkörper geht (tief greifen). Die Hände der Baristas liegen hoch (die
+ * Arbeitsplatte der Geräte ist höher als die Schultern), damit man auch von hinten sieht, was sie tun.
+ */
+interface ArmPose {
+  l?: HandPose;
+  r?: HandPose;
+  nod: number;
+  /** Oberkörper senken (Pixel, negativ = tiefer). */
+  crouch: number;
+  /** Requisit in der rechten Hand. */
+  tool?: 'chasen' | 'pitcher';
+}
+
+/** Hand, die einen Becher, Teller oder Geschirr trägt (oben auf der Hand steht das Ding, `HOLD_POINTS.carry`). */
+const CARRY_HAND_Z = HOLD_POINTS.carry.z - 1.8;
+
+function armPose(look: Look, frame: number): ArmPose | null {
+  const mops = !!has(look, 'mop');
+  const work = (CHAR_FRAMES.work as readonly number[]).indexOf(frame);
+  if (work >= 0 && !mops) {
+    const w = WORK.poses[work];
+    if (!w) return null;
+    return { l: { z: w.l }, r: { z: w.r }, nod: w.nod, crouch: 0 };
+  }
+  if ((CHAR_FRAMES.carry as readonly number[]).includes(frame))
+    return { r: { z: CARRY_HAND_Z }, nod: 0, crouch: 0 };
+  if (frame === CHAR_FRAMES.place) {
+    // Bedienung: Tablett nach vorn zum Tisch; sonst beide Hände vorn an der Arbeitsplatte.
+    if (has(look, 'tray')) return { r: { z: HOLD_POINTS.trayServe.z - 1.6 }, nod: -0.5, crouch: 0 };
+    return { l: { z: 24.2 }, r: { z: 25 }, nod: -0.4, crouch: 0 };
+  }
+  const whisk = (CHAR_FRAMES.whisk as readonly number[]).indexOf(frame);
+  if (whisk >= 0)
+    return {
+      l: { z: 23.6 },
+      r: { z: 25.4, dx: whisk === 0 ? -0.035 : 0.03 },
+      nod: whisk === 0 ? -0.6 : -0.3,
+      crouch: 0,
+      tool: 'chasen',
+    };
+  const low = (CHAR_FRAMES.low as readonly number[]).indexOf(frame);
+  if (low >= 0)
+    return {
+      l: { z: low === 0 ? 10.4 : 11.6 },
+      r: { z: low === 0 ? 11.4 : 10.2 },
+      nod: -1.4,
+      crouch: low === 0 ? -2.2 : -1.6,
+    };
+  if (frame === CHAR_FRAMES.pour)
+    return { l: { z: 23.8 }, r: { z: 28.2 }, nod: -0.5, crouch: 0, tool: 'pitcher' };
+  return null;
+}
+
+/** Werkzeug in der rechten Hand (Pose): Bambusbesen nach unten, Milchkännchen gekippt. */
+function handTool(f: Fig, look: Look, pose: ArmPose) {
+  const r = pose.r;
+  if (!r || !pose.tool) return;
+  const [x0, x1] = armX(look, 1);
+  const x = (x0 + x1) / 2 + (r.dx ?? 0);
+  const y = WORK.reach - WORK.hand / 2;
+  if (pose.tool === 'chasen') {
+    f.tube(x, y, r.z - 4.6, 0.022, 3.6, '#e2c27e', tint('#e2c27e', 0.3));
+    f.tube(x, y, r.z - 1, 0.012, 1.6, C.woodDark);
+    return;
+  }
+  f.tube(x, y + 0.02, r.z + 1.4, 0.032, 4.2, K.silver, tint(K.silver, 0.4));
+  f.cube(x - 0.008, x + 0.008, y + 0.05, y + 0.075, r.z + 4.2, r.z + 5.2, K.silver);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1442,7 +1533,7 @@ function frontBodyProps(f: Fig, look: Look) {
 }
 
 /** Requisiten an der sichtbaren Flanke (rechte Hand, Schulter, unter dem Arm). */
-function sideProps(f: Fig, look: Look, dy: number) {
+function sideProps(f: Fig, look: Look, dy: number, trayForward = false) {
   for (const q of look.props ?? []) {
     if (q.left) continue;
     switch (q.kind) {
@@ -1515,13 +1606,13 @@ function sideProps(f: Fig, look: Look, dy: number) {
         break;
       }
       case 'tray': {
-        // Tablett auf der flachen Hand: Platte mit hellem Rand, darauf Iced Matcha und ein Stück Matcha-Kuchen.
+        // Leeres Tablett auf der flachen Hand; was darauf steht, legt die Szene als eigene Sprites hinein
+        // (`HOLD_POINTS.tray`). Beim Abstellen (`trayForward`) geht es nach vorn zum Tisch.
         const c = q.color ?? K.silver;
-        f.cube(0.16, 0.31, -0.1 + dy, 0.1 + dy, 11.2, 12, shade(c, 0.9));
-        f.cube(0.17, 0.3, -0.09 + dy, 0.09 + dy, 12, 12.6, tint(c, 0.4));
-        f.tube(0.205, 0.045 + dy, 12.6, 0.03, 4.4, K.milk, K.matchaDrink);
-        f.cube(0.235, 0.28, -0.085 + dy, -0.03 + dy, 12.6, 15, K.beige);
-        f.cube(0.235, 0.28, -0.085 + dy, -0.03 + dy, 15, 15.7, K.matchaDrink);
+        const at = trayForward ? HOLD_POINTS.trayServe : HOLD_POINTS.tray;
+        const y = at.y + (trayForward ? 0 : dy);
+        f.cube(at.x - 0.075, at.x + 0.075, y - 0.1, y + 0.1, at.z - 1.4, at.z - 0.6, shade(c, 0.9));
+        f.cube(at.x - 0.065, at.x + 0.065, y - 0.09, y + 0.09, at.z - 0.6, at.z, tint(c, 0.4));
         break;
       }
       case 'chasen':
@@ -1616,19 +1707,19 @@ function figure(look: Look, dir: Dir, frame: number, shadow = true, seated = fal
   const work = (CHAR_FRAMES.work as readonly number[]).indexOf(frame);
   const carry = (CHAR_FRAMES.carry as readonly number[]).indexOf(frame);
   const mops = !!has(look, 'mop');
-  // Mit Becher (Barista auf dem Weg zur Ausgabe): Iced Matcha in der rechten Hand statt anderer Requisiten.
+  const trays = !!has(look, 'tray');
+  const arms = seated ? null : armPose(look, frame);
+  // Tragen: die rechte Hand ist vorn (die Szene legt Becher, Teller oder Geschirr hinein), Gehaltenes liegt weg.
   if (carry >= 0)
     look = {
       ...look,
-      props: [
-        ...(look.props ?? []).filter((q) => q.left || !HELD.includes(q.kind)),
-        p('icedMatcha'),
-      ],
+      props: (look.props ?? []).filter((q) => q.left || !HELD.includes(q.kind)),
     };
-  // Arbeiten mit beiden Händen: gehaltene Dinge (Tablet) liegen solange weg.
-  const hands = work >= 0 && !mops ? WORK.poses[work] : undefined;
-  if (hands) look = { ...look, props: (look.props ?? []).filter((q) => !HELD.includes(q.kind)) };
-  const pose = POSES[carry >= 0 ? carry : work >= 0 ? 0 : frame] ?? POSES[0];
+  // Arbeiten mit beiden Händen: gehaltene Dinge (Tablet) liegen solange weg; das Tablett der Bedienung bleibt.
+  else if (arms && !(trays && frame === CHAR_FRAMES.place))
+    look = { ...look, props: (look.props ?? []).filter((q) => !HELD.includes(q.kind)) };
+  const walkPose = carry >= 0 ? carry : arms ? 0 : frame;
+  const pose = POSES[walkPose] ?? POSES[0];
   if (!pose) throw new Error('no pose');
   const holds = (look.props ?? []).some((q) => !q.left && HELD.includes(q.kind));
   // Wischen: Arm und Mopp gehen gemeinsam vor und zurück.
@@ -1636,6 +1727,9 @@ function figure(look: Look, dir: Dir, frame: number, shadow = true, seated = fal
   const armR = mopSwing || (holds ? 0 : pose.armR);
   const holdsLeft = (look.props ?? []).some((q) => q.left);
   const armL = mopSwing ? -mopSwing : holdsLeft || has(look, 'chawan') ? 0 : pose.armL;
+  const L = arms?.l;
+  const R = arms?.r;
+  const crouch = arms?.crouch ?? 0;
   const hair = hairParts(look);
   const hat = hatParts(look);
 
@@ -1645,6 +1739,8 @@ function figure(look: Look, dir: Dir, frame: number, shadow = true, seated = fal
       `<ellipse cx="${sx.toFixed(2)}" cy="${sy.toFixed(2)}" rx="9.2" ry="4.2" fill="${C.ink}" fill-opacity="0.18"/>`,
     );
   }
+  // Tief greifen: alles über den Beinen sitzt etwas tiefer (in die Knie gehen).
+  f.lift = crouch;
   if (f.facingCamera) {
     backItems(f, look);
     hair.behind(f);
@@ -1652,11 +1748,12 @@ function figure(look: Look, dir: Dir, frame: number, shadow = true, seated = fal
   }
   leftHandProps(f, look, armL);
   const t = torsoBox(look);
-  if (hands) {
+  if (L) {
     // Rückansicht: der linke Unterarm liegt hinter dem Rumpf; Vorderansicht: vor der Brust (nach dem Rumpf).
-    if (!f.facingCamera) forearm(f, look, -1, hands.l, 0);
+    if (!f.facingCamera) forearm(f, look, -1, L.z, 0, L.dx);
     upperArm(f, look, -1);
   } else arm(f, look, -1, armL);
+  f.lift = 0;
   if (seated) {
     seatedLeg(f, look, -1);
     seatedLeg(f, look, 1);
@@ -1664,22 +1761,24 @@ function figure(look: Look, dir: Dir, frame: number, shadow = true, seated = fal
     leg(f, look, -1, pose.legL, pose.liftL);
     leg(f, look, 1, pose.legR, pose.liftR);
   }
+  f.lift = crouch;
   skirt(f, look);
   torso(f, look);
   torsoDetails(f, look);
   frontBodyProps(f, look);
-  if (hands) {
+  if (L && f.facingCamera) forearm(f, look, -1, L.z, t.y + 0.004, L.dx);
+  if (R) {
     if (f.facingCamera) {
-      forearm(f, look, -1, hands.l, t.y + 0.004);
       upperArm(f, look, 1);
-      forearm(f, look, 1, hands.r, 0);
+      forearm(f, look, 1, R.z, 0, R.dx);
     } else {
-      forearm(f, look, 1, hands.r, 0);
+      forearm(f, look, 1, R.z, 0, R.dx);
       upperArm(f, look, 1);
     }
+    if (arms) handTool(f, look, arms);
   } else arm(f, look, 1, armR);
   // Bei der Arbeit nickt der Kopf im Takt der Hände (blickt auf Kasse bzw. Gerät).
-  f.lift = hands?.nod ?? 0;
+  f.lift = crouch + (arms?.nod ?? 0);
   head(f, look);
   faceItems(f, look);
   if (!f.facingCamera) {
@@ -1689,10 +1788,11 @@ function figure(look: Look, dir: Dir, frame: number, shadow = true, seated = fal
   hair.over(f);
   hat?.over(f);
   headAccessories(f, look);
-  f.lift = 0;
-  sideProps(f, look, mopSwing ? mopSwing : armR);
+  f.lift = crouch;
+  sideProps(f, look, mopSwing ? mopSwing : armR, trays && frame === CHAR_FRAMES.place);
   if (!f.facingCamera) backItems(f, look);
   overheadProps(f, look);
+  f.lift = 0;
   return f.svg();
 }
 
@@ -1722,7 +1822,7 @@ function lookFrames(
  */
 export function characterSprites(): SpriteDef[] {
   const out: SpriteDef[] = [];
-  const customerFrames = [CHAR_FRAMES.stand, ...CHAR_FRAMES.walk];
+  const customerFrames = CUSTOMER_FRAMES;
   for (const [type, looks] of Object.entries(CUSTOMER_LOOKS))
     for (const id of looks) {
       const look = CUSTOMER_LOOK_DEFS[id];

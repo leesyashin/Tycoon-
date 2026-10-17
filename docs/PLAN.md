@@ -4,7 +4,7 @@
 > Dieser Plan ist die Arbeitsgrundlage für mehrere aufeinanderfolgende Opus-Sessions. Jede Session liest zuerst
 > `CLAUDE.md`, dann `docs/STATUS.md`, dann den eigenen Abschnitt in diesem Plan.
 
-Stand: 2026-10-15 (Phase 2 ergänzt) · Auftraggeber: Vincent · Repo: `leesyashin/tycoon-`
+Stand: 2026-10-16 (Phase 3 ergänzt) · Auftraggeber: Vincent · Repo: `leesyashin/tycoon-`
 
 ---
 
@@ -15,7 +15,7 @@ Stand: 2026-10-15 (Phase 2 ergänzt) · Auftraggeber: Vincent · Repo: `leesyash
 | Plattform | Web-App (Browser + PWA fürs Handy) |
 | Stack | Vite + TypeScript + **Phaser 3** für die Iso-Szene, HTML/CSS-Overlay für Menüs |
 | Grafik | Isometrisches **Flat-Shaded-Low-Poly** (2:1-Diamant-Tiles, flache Lokalfarben, keine Texturen/Outlines) nach dem Vorbild; UI-Stil 1:1 nach `docs/UI_STYLE.md`. Platzhalter zuerst, echte Sprites in Session 8 |
-| Umfang | Vollständiges Spiel: Stationen, Personal, Kunden-Sim, Zufriedenheit, Marketing, Qualitätsstufen, Achievements, Quests, mehrere Standorte, Prestige, Events, Sound |
+| Umfang | Vollständiges Spiel: Stationen, Personal, Kunden-Sim, Zufriedenheit, Marketing, Qualitätsstufen, Achievements, Quests, mehrere Standorte, Prestige, Events, Sound. Phase 3: Spieluhr mit Öffnungszeiten, Euro-Preise mit Löhnen, Kosten und Tagesbilanz, Matcha-Einkauf statt Qualitätsstufen, Social Media statt Marketing, Parkplatz |
 | Sprache | i18n von Anfang an: Deutsch + Englisch, umschaltbar |
 | Speichern | Nur lokal (localStorage, versioniertes Schema, Export/Import als Datei). Kein Backend |
 | Monetarisierung | **Vorbereitet, nicht aktiv**: Premium-Währung + `MonetizationProvider`-Interface mit No-op-Implementierung |
@@ -35,11 +35,13 @@ Idle Hotel Empire Tycoon: Man leitet ein Hotel, baut Zimmer und Einrichtungen, s
 | Städte / neue Hotels | Standorte: Berlin → Kyoto → Tokio → Seoul → New York → Bali |
 | Zimmer-Typen / Möbel mit Level | Phase 1: Verkaufsstationen. Phase 2: **Ausstattung** der Theken – Kasse, Matcha-Station, Kaffeemaschine, Kühl-/Eisfach, Ofen, Kuchenvitrine, Steinmühle, Zeremonie-Set, Ausgabe-Station (GAME_DESIGN § 4) |
 | Einrichtungen (Pool, Spa …) | Ambiente: Sitzbereich, Terrasse, Deko, Musik, WLAN |
-| Personal (Rezeption, Reinigung, Koch) | Phase 2: Verkäufer (Bestelltheke), Baristas (Barista-Theke), Bedienungen (Ausgabe/Tischservice), Putzkräfte – als Anzahl; dazu Social-Media-Manager, Filialleiter |
+| Personal (Rezeption, Reinigung, Koch) | Phase 2: Verkäufer (Bestelltheke), Baristas (Barista-Theke), Bedienungen (Ausgabe/Tischservice), Putzkräfte – als Anzahl; dazu Social-Media-Manager, Filialleiter. Phase 3: mit Stundenlohn, einstellen und entlassen; an der Kasse stehst du selbst |
+| Personal mit Tageslohn, Tagesbilanz muss grün sein | Phase 3: Stundenlöhne, Wareneinsatz, Miete & Strom, Tagesbilanz heute/gestern (GAME_DESIGN § 7.7) |
+| Uhr und Tag/Nacht | Phase 3: Spieluhr (1 Spielstunde = 1 Minute, nachts Zeitraffer) mit Öffnungszeiten je Café (GAME_DESIGN § 7.6) |
 | Rezeption → Zimmer → Housekeeping (Service-Kette) | Phase 2: Bestelltheke → Barista-Theke → Ausgabe/Tisch → Putzen (Service-Pipeline, GAME_DESIGN § 7.2) |
 | Gäste + Zufriedenheit | Kunden-Typen (Student, Tourist, Influencer, Stammgast) + Zufriedenheit 0–100 |
-| Marketing | Social-Media-Kampagnen |
-| Sterne-Rating des Hotels | Matcha-Qualitätsgrad (Culinary → Premium → Ceremonial → Meister) |
+| Marketing | Phase 1/2: Social-Media-Kampagnen. Phase 3: Social-Media-Account mit bis zu 3 Videos am Tag (Follower, Buzz, viral) |
+| Sterne-Rating des Hotels | Matcha-Qualitätsgrad (Culinary → Premium → Ceremonial → Meister). Phase 3: Matcha-Sorten, die eingekauft und geliefert werden (Culinary Grade … Uji First Flush) |
 | Prestige | „Franchise-Vertrag“: Standort zurücksetzen gegen **Zen** (permanente Boni) |
 | Gems | **Goldene Blätter** (Premium-Währung, nur spielintern verdienbar) |
 | Werbe-Boosts | Boost-Buttons gehen über das `MonetizationProvider`-Interface; No-op-Provider gibt Boosts über Timer frei |
@@ -107,7 +109,7 @@ Idle Hotel Empire Tycoon: Man leitet ein Hotel, baut Zimmer und Einrichtungen, s
 | Phaser | Phaser 3.8x, WebGL mit Canvas-Fallback, `pixelArt: false`, `antialias: true` (Flat-Shaded-Vektor-Sprites, siehe UI_STYLE § 4) |
 | Große Zahlen | `break_infinity.js` (Decimal). Anzeige: `1.23 K / M / B / T / aa / ab …`, Format pro Sprache |
 | Tick | Fester Tick 100 ms in `core`. Render-Loop via Phaser `update()`. Bei Tab-Wechsel: Catch-up über `visibilitychange` |
-| Offline | Beim Laden: `elapsed = min(now - lastSave, offlineCap)`, Einnahmen = Rate × elapsed × Offline-Effizienz (Start 50 %, upgradebar) |
+| Offline | Beim Laden: `elapsed = min(now - lastSave, offlineCap)`, Einnahmen = Rate × elapsed × Offline-Effizienz (Start 50 %, upgradebar). Phase 3: Deckel in Spieltagen (1 + Filialleiter-Stufe, max 4); das Café läuft `min(elapsed, Deckel) × Effizienz` echte Zeit lang mit Gästen, Kosten und Lieferungen weiter (GAME_DESIGN § 14) |
 | Save | localStorage Key `mce.save.v{N}`, Autosave alle 10 s + bei `visibilitychange`/`pagehide`. JSON mit `schemaVersion`, Migrationen in `save/migrations.ts`. Export/Import als `.json`-Datei. Zusätzlich IndexedDB-Backup der letzten 3 Saves |
 | Zeit-Manipulation | Monotone Zeit via `performance.now()` für Ticks, `Date.now()` nur für Offline. Negative Deltas (Uhr zurückgestellt) werden auf 0 geclampt |
 | i18n | Flache Key-Struktur `screen.element.text`, Platzhalter `{count}`, Plural über `Intl.PluralRules`. Jeder sichtbare String kommt aus `t()`. Lint-Regel/Test: `de.json` und `en.json` haben identische Keys |
@@ -154,6 +156,10 @@ interface LocationState {
 }
 ```
 
+Stand Phase 3 (Save v11, `src/core/GameState.ts`): global zusätzlich `clock` (Spieluhr in Spielminuten) und `hourMark`;
+je Standort zusätzlich `till` (offene Bons), `hours` (Öffnungszeiten), `supply` (Matcha-Lager, Bestellungen, Nachbestellung),
+`social` (Account), `ledger` (Tagesbilanz heute/gestern) und `bills` (offene laufende Kosten); `quality` und `marketing` entfallen.
+
 ---
 
 ## 3. Session-Plan
@@ -175,8 +181,9 @@ interface LocationState {
 | S10 | Service-Pipeline (Phase 2) | Bedientes Café: Bestellung → Zubereitung → Ausgabe, Ausstattung statt Stationen, Personal als Anzahl, Save v9 | 1 Session |
 | S11 | Szene und Figuren (Phase 2) | Neuer Grundriss, Theken-/Ausstattungs-/Tisch-Sprites, bessere Figuren, Bedienungen und Putzkräfte | 1–2 Sessions |
 | S12 | Balancing und Feinschliff (Phase 2) | Richtwerte, Tutorial zur Pipeline, Screenshots | 1 Session |
+| – | Realistisches Café (Phase 3, Ad-hoc 2026-10-16) | Spieluhr mit Öffnungszeiten, Euro-Wirtschaft mit Löhnen und Tagesbilanz, Matcha-Einkauf, Social Media, Parkplatz, Arbeits-Animationen, Save v11 | 1 Session |
 
-Gesamt: ca. 11–14 Sessions für Phase 1, dazu 3–4 für Phase 2 (siehe unten). Reihenfolge ist verbindlich, S2 und S3 können bei Bedarf parallel in zwei Branches laufen (Schnittstelle: `GameState` aus S1).
+Gesamt: ca. 11–14 Sessions für Phase 1, dazu 3–4 für Phase 2 und eine Ad-hoc-Session für Phase 3 (siehe unten). Reihenfolge ist verbindlich, S2 und S3 können bei Bedarf parallel in zwei Branches laufen (Schnittstelle: `GameState` aus S1).
 
 ### Regeln für jede Session
 
@@ -576,6 +583,84 @@ Figuren mit Rollen-Outfits, Bedienungen mit Tablett, Putzkräfte zwischen den Ti
 
 **Abnahmekriterien**
 - Sim trifft die Richtwerte ±20 %; Tutorial-Testlauf durch Vincent.
+
+---
+
+## Phase 3 – Realistisches Café
+
+> Vorgabe Vincent (2026-10-16, wörtlich): „Okay bitte optimiere und Upgrade das Spiel in allen Hinsichten also bitte besseres
+> Leben in Form von Animationen so das die Arbeiter nicht nur vor dem Gerät stehen und die Arme wackeln sonder das sie wirklich
+> etwas an den Geräten tuen und das Tablett auf den Tisch stellen usw. Dazu bitte das Café am Anfang mit weniger durchlauf und
+> billigeren Upgrade man muss Personal auch wieder feuern können und sehen wie viel sie kosten es soll neben dem landen einen
+> Parkplatz geben bei dem es Plätze gibt plus Roller / Fahrrad Ständer. Es soll matcha bestellt und geliefert werden müssen.
+> Besserer matcha= höherer Preis mehr Nachfrage du verstehst. Dann die Preise nicht so Tycoon sonder realistischer jeder Kunde
+> gibt im Café wahrscheinlich zwischen 5-50€ aus. Trinkgeld on top das soll so der richtige Preis sein mehr Geräte mehr Angebot
+> mehr Bestellung also höhere Beträge aber nicht wie im Tycoon. Alle Preise natürlich daran anpassen. Dann soll es als Marketing
+> keine Kampagnen gehen sonder einen Social Media acc der wächst weil man jeden Tag zb bis zu 3 Videos posten kann oder so. Es
+> muss Tag und Nacht geben und Öffnungszeiten."
+>
+> Antworten auf die Rückfragen: Fortschritt „Behalten, umrechnen“ (Standorte, Zen, Franchise-Resets, Goldene Blätter bleiben,
+> Filial-Eröffnungen kosten realistische Euro-Beträge); Kosten „Stundenlöhne, Wareneinsatz, Miete & Nebenkosten“; Tageszeit
+> „1 Spielstunde = 1 Minute, die Nacht spult vor“ (Öffnungszeiten einstellbar); Parkplatz „ausbaubar mit Wirkung“
+> (Fahrradständer → Roller-Plätze → Auto-Stellplätze, Gäste kommen sichtbar mit Rad, Roller oder Auto).
+
+Ad-hoc-Session außerhalb des Session-Plans (wie PR #14–#24) auf Branch `claude/cafe-game-optimization-1xjrap`, Basis `main`
+mit PR #24 (`ed483eb`). S12 bleibt die nächste Plan-Session; ihr Balancing-Teil gilt ab jetzt für die Richtwerte von Phase 3
+(GAME_DESIGN § 15).
+
+### Was sich gegenüber Phase 2 ändert (Kurzfassung)
+
+| Phase 2 (S10–S12) | Phase 3 |
+|---|---|
+| Raten pro Sekunde; Tag/Nacht nur Licht (24 min = 1 Tag) | **Spieluhr** in Spielminuten: geöffnet 1 Spielstunde = 1 Minute, geschlossen Zeitraffer ×6; **Öffnungszeiten** je Café (Standard 8–18 Uhr, einstellbar), Nachfrage nach Tageskurve; Raten pro Spielstunde |
+| Tycoon-Zahlen (Preis × Level × Meilensteine, Beträge bis 1e15 und mehr) | **Euro:** Speisekarte in fünf Stufen je Gerät (ab Level 1/5/10/15/20 ein neues Produkt), Bon 5–50 € plus Trinkgeld, Preisniveau je Stadt; Geräte und Café-Level bis 20, keine ×2-Meilensteine |
+| Einnahmen ohne Kosten | **Laufende Kosten:** Stundenlöhne (nur geöffnet), Wareneinsatz je Stück, Miete rund um die Uhr, Strom je Gerät; Abbuchung zu jeder vollen Spielstunde; **Tagesbilanz** heute/gestern; das Konto kann ins Minus gehen |
+| Personal kaufen (Wachstum 1,7), nie entlassen; Gründungsteam mit Bedienung | **Personal** mit Stundenlohn und einmaliger Einstellungsgebühr, **Entlassen** jederzeit; du selbst an der Kasse (ohne Lohn) und ein Barista; ohne Bedienung holen Gäste selbst ab |
+| Qualitätsstufen einmal kaufen | **Matcha-Einkauf:** Sorten als Ware (€/kg), Lager in Gramm, Bestellung mit Lieferung am Morgen oder Express, automatische Nachbestellung; ohne Matcha keine Matcha-Produkte |
+| Marketing-Level und Kampagne mit Abklingzeit | **Social-Media-Account:** bis zu 3 Videos am Tag in fünf Formaten, Follower, Buzz, virale Videos; der Social-Media-Manager postet selbst |
+| – | **Parkplatz** neben dem Café (Ambiente `parking`, fünf Stufen, +5 % Nachfrage je Stufe, Platzmiete), Gäste mit Rad, Roller oder Auto |
+| Abwesenheit 4–14 h, Einkommen × Zeit | **Abwesenheit in Spieltagen** (1 + Filialleiter-Stufe, max 4): Das Café läuft mit allen Kosten weiter, das Ergebnis kann ein Verlust sein |
+| Kyoto für 10 Zen | **Filialen** mit Investition aus der Kasse des Vorgängers (Kyoto 30 000 € ohne Zen, ab Tokio Zen und Euro) |
+| Baristas mit wechselnden Armen vor dem Gerät, Bedienung trägt immer dasselbe Tablett | **Arbeits-Animationen:** Arbeitsschritte je Gerät (hinstellen, aufschlagen, eingießen, tief greifen …), Tablett mit den echten Bestellungen, Geschirr auf den Tischen, Abräumen, Selbstbedienung mit Geschirr-Rückgabe, Feierabend und Lieferwagen |
+
+Unverändert bleiben die Pipeline-Struktur, Zufriedenheit, Sauberkeit, Blätter, Prestige-Mechanik, Standort-Kette, Stadt und
+Grundriss. Events ändern jetzt, was bestellt wird, statt der Preise. Formeln: GAME_DESIGN (Kopf-Hinweis Phase 3), Komponenten
+und Szene: UI_STYLE § 3.13–§ 3.17 und § 4. Save-Schema v11 migriert alte Spielstände.
+
+### Umsetzung
+
+| Commit | Bereich | Inhalt |
+|---|---|---|
+| `1c83be2` feat(core) | Kern, Daten, i18n, Tests | Spieluhr und Öffnungszeiten, Euro-Wirtschaft mit Speisekarte, Löhne, Wareneinsatz, Miete, Tagesbilanz, Matcha-Lager und -Einkauf, Social Media, Personal entlassen, Parkplatz als Ambiente, Abwesenheit in Spieltagen, Save v11 |
+| `0c6a4e5` feat(ui) | UI | Verwaltung mit fünf Reitern (Shop, Einkauf, Personal, Social Media, Betrieb), HUD mit Tag, Uhr und Geöffnet/Geschlossen, Euro-Beträge |
+| `19b1087` feat(art) | Sprites | Arbeitsposen, Werkzeug, leeres Tablett, Geschirr, Parkplatz-Sprites, Ambiente-Icon Parkplatz, Arbeits-Skripte je Gerät |
+| `31685e2` feat(scene) | Szene | Feierabend, Tür-Schild, Nachtlicht, Tablett und Geschirr, Parkplatz mit Fahrzeugen, Lieferwagen, Kosten-Popups, „Matcha leer!“ |
+| `18fc6c6` fix(core) | Kern | Nachbestellung bei knappem Geld, Reserve des Auto-Kaufs mit Matcha-Einkauf |
+| `6fdaea7` feat(balance) | Sim, Daten | Balance-Sim über die Spieluhr, Geräte-Wachstum je Level −30 %, Kyoto ohne Zen |
+| `46ca9f9` fix(scene) | Szene | Tür-Schild wächst beim Herauszoomen mit, Fahrradständer nicht hinter der Glaswand, Screenshots |
+| `a80c028`, `d15ad53` fix(ui) | UI, i18n | Tage mit richtiger Einzahl („1 Spieltag“, „1 Tag“) über `fmtDays` im Rückkehr-Dialog, HUD, Einkauf, Personal und Tutorial |
+| `10934ac` fix(ui) | Tutorial | „Die Welt wartet“ erklärt Kyoto ohne Zen (Café-Level 12 und Geld aus Berlin) |
+| `2b3407a` fix(ui) | UI | Uhr im HUD als 44-px-Touch-Ziel, Event-Karte unter allen vier Knöpfen der rechten Spalte, „Beheben für …“ in Euro, lesbarer Hinweis im Zufriedenheits-Detail (`.sheet-hint`) |
+| `c5bf161` test(e2e) | e2e | Specs für das realistische Café: HUD, Öffnungszeiten, Tagesbilanz, Personal, Social Media, Einkauf, Rückkehr-Dialog, Parkplatz, Lieferung, Feierabend, axe, Touch-Ziele, Kauf ×1/×5/Max |
+
+### Abnahme-Checkliste (Phase 3)
+
+- [x] Arbeiter tun sichtbar etwas an den Geräten: Arbeitsschritte je Gerät (`WORK_SCRIPTS`: Schale hinstellen, mit dem Bambusbesen aufschlagen, Milch eingießen, tief in Ofen, Kühlfach oder Vitrine greifen, mahlen); das Produkt steht auf dem Gerät, geht in die Hand und wird zur Ausgabe getragen.
+- [x] Bedienungen tragen die echten Bestellungen auf dem Tablett, stellen sie auf den Tisch und räumen das Geschirr ab; ohne Bedienung holen Gäste selbst ab und bringen ihr Geschirr zurück.
+- [x] Café am Anfang mit weniger Durchlauf (11 Gäste/h Grundnachfrage, ein Tisch, 13 Plätze/h) und billigeren Upgrades (Matcha-Station 41,65 €, zweiter Tisch 60 €, Deko 30 €).
+- [x] Personal entlassen können und sehen, was es kostet: Lohn je Stunde und Tag je Rolle und fürs Team, Einstellungsgebühr, Mindestbesetzung (du an der Kasse, ein Barista).
+- [x] Parkplatz neben dem Café mit Fahrradbügeln, Roller- und Auto-Plätzen, ausbaubar mit Wirkung (+5 % Nachfrage je Stufe, Platzmiete); Gäste kommen sichtbar mit Rad, Roller oder Auto und stellen sich erst an der Tür an.
+- [x] Matcha muss bestellt und geliefert werden (morgens oder Express, automatische Nachbestellung); bessere Sorte = höherer Preis, mehr Nachfrage, mehr Zufriedenheit.
+- [x] Realistische Preise: ein Gast gibt 5–50 € aus (Start 5,20 €, volle Karte mit bester Sorte 29,94 € in Berlin), Trinkgeld obendrauf; mehr Geräte → mehr Angebot → höhere Beträge; alle Kosten in Euro angepasst.
+- [x] Social-Media-Account statt Kampagnen: bis zu 3 Videos am Tag, Follower wachsen, Bonus-Videos gegen Blätter.
+- [x] Tag und Nacht mit einstellbaren Öffnungszeiten (1 Spielstunde = 1 Minute, die Nacht spult vor); Schild an der Tür, Licht aus nach Ladenschluss, das Team geht und kommt morgens wieder.
+- [x] Laufende Kosten (Stundenlöhne, Wareneinsatz, Miete & Nebenkosten) mit Tagesbilanz heute/gestern.
+- [x] Fortschritt bleibt: Save v11 mit Migration und Tests (Standorte, Zen, Franchise-Resets, Blätter, Erfolge, Meta-Upgrades bleiben; die Cafés beginnen in Euro neu).
+- [x] Kein Balancing-Wert im Code (`data/time.ts`, `matcha.ts`, `social.ts`, `parking.ts`, `staff.ts`, `stations.ts`, `balance.ts`), alle Texte DE/EN mit identischen Keys, `core` ohne Phaser/DOM, Figuren kosmetisch.
+- [x] `pnpm check` grün (553 Unit-Tests), 40 e2e grün (axe über alle Panels inkl. Einkauf und Social Media, Touch-Ziele ≥ 44 px auch in der Verwaltung), `pnpm build` grün, keine neue Abhängigkeit, Monetarisierung aus.
+- [x] Balance-Sim über die Spieluhr (`pnpm sim --hours 10`) mit Meilensteinen und Tagesbilanz je Spieltag; Richtwerte in GAME_DESIGN § 15, Ergebnis in STATUS.md.
+- [x] Doku (GAME_DESIGN, PLAN, UI_STYLE, STATUS, ASSETS, CHANGELOG, README) und Screenshots DE/EN in `docs/screenshots/realistisches-cafe/`.
+- [ ] Tutorial-Testlauf durch Vincent (10 Schritte) und Gerätetest am Handy (60 fps, Lighthouse) – offen wie S12.
 
 
 ## 4. Übergabe-Protokoll zwischen Sessions

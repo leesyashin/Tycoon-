@@ -12,6 +12,7 @@
  * aus dem Themen-Atlas).
  */
 import { BALANCE } from './balance';
+import { PARKING_LOT } from './parking';
 
 export interface GridPos {
   x: number;
@@ -88,6 +89,12 @@ export interface PickupArea {
   waiterHomes: GridPos[];
   /** Hier stellen Baristas das Fertige auf die Ausgabe (Personal-Bereich, neben den Bedienungen). */
   baristaDrop: GridPos;
+  /**
+   * Geschirr-Rückgabe (Selbstbedienung ohne Bedienungen): hier stellen Gäste ihr Geschirr auf die Theke
+   * (`returnTile`, ein Modul ohne Deko); kurz danach räumt es jemand von hinten weg.
+   */
+  returnSpot: GridPos;
+  returnTile: GridPos;
 }
 
 /** Teil des Lagers: Eckregal, Wandregal oder Ware auf der Palette. */
@@ -262,6 +269,26 @@ export const CROWD = {
   fetchSec: 1.1,
   /** Höchstens so viele Teller/Becher stehen auf der Ausgabe; Bedienungen nehmen je Auftrag einen mit. */
   passItemsMax: 4,
+  /** Bedienung stellt die Bestellung von der Ausgabe aufs Tablett … */
+  pickupSec: 0.5,
+  /** … und wartet höchstens so lange auf etwas Fertiges, bevor sie „irgendwas“ bringt (nur Optik). */
+  passWaitMaxSec: 6,
+  /**
+   * Abräumen: Geschirr eines Tischs aufs Tablett, hinter der Ausgabe in die Spüle stellen. Steht auf so vielen
+   * Tischen Geschirr, räumen Bedienungen zuerst ab, bevor sie weiter servieren.
+   */
+  clearSec: 0.9,
+  clearFirstTables: 3,
+  stashSec: 0.5,
+  /** Selbstbedienung: Gast stellt sein Geschirr auf die Rückgabe; dort steht es so lange, höchstens so viel. */
+  returnSec: 0.6,
+  returnKeepSec: 4,
+  returnItemsMax: 3,
+  /** Ohne Bedienung bleibt stehen gelassenes Geschirr höchstens so lange auf dem Tisch. */
+  dishesMaxSec: 40,
+  /** Feierabend: Putzkräfte wischen nach Ladenschluss noch so lange, dann geht das Team; morgens versetzt. */
+  cleanAfterCloseSec: 10,
+  arriveStaggerSec: 0.7,
   /** Schätzung für die Verweildauer, aus der „+N“ berechnet wird. */
   avgVisitSec: 14,
 } as const;
@@ -274,8 +301,8 @@ export const CROWD = {
 export const NAV = {
   /** Kantenlänge einer Zelle (Kacheln); Zellmitten liegen auf Vielfachen davon, also auch auf jeder Kachelmitte. */
   cell: 0.25,
-  /** Ausdehnung des Rasters in Agenten-Koordinaten. */
-  bounds: { x0: -1, y0: -4, x1: 14.5, y1: 14.5 },
+  /** Ausdehnung des Rasters in Agenten-Koordinaten (links bis über den Parkplatz). */
+  bounds: { x0: PARKING_LOT.rect.x0 - 0.5, y0: -4, x1: 14.5, y1: 14.5 },
   /** So nah kommt eine Figur einem harten Hindernis höchstens (Körper). */
   body: 0.1,
   /** Wohlfühlabstand: so weit bleiben Wege von Hindernissen und Wartenden weg, wenn es geht. */
@@ -494,10 +521,17 @@ const DEFAULT_LAYOUT: CafeLayout = {
     spreadMax: 5,
     frontWalk: 13.95,
   },
-  // Gehwege rechts und vorn bis an die Fahrbahnen (Grid 15 → Agenten 14,5), rechts auch hinter dem Café entlang.
+  // Gehwege rechts und vorn bis an die Fahrbahnen (Grid 15 → Agenten 14,5), rechts auch hinter dem Café entlang,
+  // vorn bis zum Parkplatz links neben dem Café; der Parkplatz selbst (Grid → Agenten: −0,5).
   sidewalk: [
     { x0: FRONT - 0.5, y0: -4, x1: 14.5, y1: 14.5 },
-    { x0: -1, y0: FRONT - 0.5, x1: 14.5, y1: 14.5 },
+    { x0: PARKING_LOT.rect.x0 - 0.5, y0: FRONT - 0.5, x1: 14.5, y1: 14.5 },
+    {
+      x0: PARKING_LOT.rect.x0 - 0.4,
+      y0: PARKING_LOT.rect.y0 - 0.4,
+      x1: PARKING_LOT.rect.x1 - 0.55,
+      y1: FRONT - 0.5,
+    },
   ],
   staffArea: {
     from: { x: ORIGIN.x, y: DEVICE_Y },
@@ -533,6 +567,8 @@ const DEFAULT_LAYOUT: CafeLayout = {
       { x: 5, y: 4 },
     ],
     baristaDrop: { x: 7.45, y: 3.62 },
+    returnSpot: { x: 5.2, y: 6 },
+    returnTile: { x: 5, y: COUNTER_Y },
   },
   storage: {
     pieces: [

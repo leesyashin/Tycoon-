@@ -2653,14 +2653,6 @@ function chair(c: IsoCanvas, u: number, v: number, back: 'left' | 'right', style
   c.box(bx, v, 19.4, 0.03, 0.18, 1, shade(wood, 0.95));
 }
 
-/** Tasse auf Untertasse mit Matcha-Schaum (oder Kaffee). */
-function cupOnSaucer(c: IsoCanvas, u: number, v: number, z: number, cup: string, foam: string) {
-  c.cylinder(u, v, z, 0.06, 0.6, C.white, tint(C.white, 0.3));
-  c.cylinder(u, v, z + 0.6, 0.035, 3.2, cup, foam);
-  c.disc(u - 0.008, v - 0.006, z + 3.82, 0.014, tint(foam, 0.5));
-  c.box(u + 0.032, v - 0.008, z + 1.4, 0.016, 0.016, 1.4, cup);
-}
-
 /** Runder Tisch auf Säulenfuß mit zwei Stühlen (links/rechts) je Stufe. */
 export function drawTable(c: IsoCanvas, tier: 1 | 2 | 3 | 4) {
   const style: ChairStyle =
@@ -2677,10 +2669,9 @@ export function drawTable(c: IsoCanvas, tier: 1 | 2 | 3 | 4) {
     c.cylinder(0.5, 0.5, top, 0.28, 1.6, C.stainlessDark, C.stainless);
     c.cylinder(0.5, 0.5, top + 1.6, 0.265, 0.5, C.stainless, C.stainlessLight);
     c.disc(0.44, 0.45, top + 2.11, 0.08, tint(C.stainlessLight, 0.4));
-    c.cylinder(0.43, 0.56, top + 2.1, 0.04, 5, C.cobalt, C.matchaFoam);
-    c.cylinder(0.43, 0.56, top + 7.1, 0.042, 0.8, C.white, C.white);
-    c.cylinder(0.6, 0.44, top + 2.1, 0.022, 3.6, C.glass, tint(C.glass, 0.4));
-    c.cylinder(0.6, 0.44, top + 5.7, 0.023, 1, C.stainless, C.stainlessLight);
+    // Zuckerstreuer hinten auf der Platte; Becher und Teller stellt die Szene je Gast dazu.
+    c.cylinder(0.5, 0.3, top + 2.1, 0.022, 3.6, C.glass, tint(C.glass, 0.4));
+    c.cylinder(0.5, 0.3, top + 5.7, 0.023, 1, C.stainless, C.stainlessLight);
   } else if (tier === 2) {
     // Tischdecke mit Saum über rundem Tisch, Tassen, Vase mit Kirschzweig
     c.cylinder(0.5, 0.5, 0, 0.14, 1.2, C.ink, tint(C.ink, 0.2));
@@ -2688,17 +2679,16 @@ export function drawTable(c: IsoCanvas, tier: 1 | 2 | 3 | 4) {
     c.frustum(0.5, 0.5, 10.4, 0.325, 0.295, 5.2, C.linen, C.white);
     c.cylinder(0.5, 0.5, 10.4, 0.327, 0.9, shade(C.linen, 0.88), shade(C.linen, 0.88));
     c.disc(0.5, 0.5, 15.62, 0.17, tint(C.matchaFoam, 0.35));
-    cupOnSaucer(c, 0.42, 0.56, 15.6, C.cup, C.matchaFoam);
-    cupOnSaucer(c, 0.58, 0.6, 15.6, C.cup, C.coffee);
-    c.cylinder(0.6, 0.41, 15.6, 0.028, 6, C.glass, tint(C.glass, 0.4));
-    strut(c, [0.6, 0.41, 21], [0.57, 0.4, 26], C.woodDark, 0.6);
-    strut(c, [0.6, 0.41, 21], [0.64, 0.42, 25], C.woodDark, 0.6);
+    // Vase mit Kirschzweig hinten; Becher und Teller stellt die Szene je Gast dazu.
+    c.cylinder(0.5, 0.3, 15.6, 0.028, 6, C.glass, tint(C.glass, 0.4));
+    strut(c, [0.5, 0.3, 21], [0.47, 0.29, 26], C.woodDark, 0.6);
+    strut(c, [0.5, 0.3, 21], [0.54, 0.31, 25], C.woodDark, 0.6);
     for (const [du, dv, z] of [
       [-0.03, -0.01, 26],
       [0.04, 0.01, 25],
       [0.0, 0.0, 24],
     ] as const)
-      c.dome(0.6 + du, 0.41 + dv, z, 0.02, 1.8, C.sakura);
+      c.dome(0.5 + du, 0.3 + dv, z, 0.02, 1.8, C.sakura);
   } else if (tier === 3) {
     // Marmorplatte mit Adern auf Gussfuß mit drei Füßen, Kerze im Glas, Croissant
     for (let k = 0; k < 3; k++) {
@@ -2725,13 +2715,11 @@ export function drawTable(c: IsoCanvas, tier: 1 | 2 | 3 | 4) {
       ],
     ] as const)
       strut(c, [a0[0], a0[1], top + 2.42], [a1[0], a1[1], top + 2.42], C.marbleVein, 0.6);
-    cupOnSaucer(c, 0.42, 0.57, top + 2.4, C.cup, C.matchaFoam);
-    c.cylinder(0.56, 0.62, top + 2.4, 0.07, 0.5, C.white, C.white);
-    c.dome(0.56, 0.62, top + 2.9, 0.05, 2.2, C.oakLight);
-    c.group(0.75, () => c.cylinder(0.6, 0.42, top + 2.4, 0.032, 4, C.glass, tint(C.glass, 0.4)));
-    c.cylinder(0.6, 0.42, top + 2.4, 0.02, 3, C.cream, C.white);
-    c.glowFlat(0.54, 0.36, top + 6.4, 0.12, 0.12, C.glow, 0.7, 1.2);
-    c.dome(0.6, 0.42, top + 5.4, 0.01, 2, C.glow);
+    // Kerze im Glas hinten; Becher und Teller stellt die Szene je Gast dazu.
+    c.group(0.75, () => c.cylinder(0.5, 0.3, top + 2.4, 0.032, 4, C.glass, tint(C.glass, 0.4)));
+    c.cylinder(0.5, 0.3, top + 2.4, 0.02, 3, C.cream, C.white);
+    c.glowFlat(0.44, 0.24, top + 6.4, 0.12, 0.12, C.glow, 0.7, 1.2);
+    c.dome(0.5, 0.3, top + 5.4, 0.01, 2, C.glow);
   } else {
     // Marmor mit Messingkante auf Messingsäule, Tischlampe mit Plisseeschirm, Tassen, Macarons
     c.cylinder(0.5, 0.5, 0, 0.15, 1.2, C.brass, tint(C.brass, 0.3));
@@ -2742,25 +2730,18 @@ export function drawTable(c: IsoCanvas, tier: 1 | 2 | 3 | 4) {
     c.shine(0.5, 0.5, top, 0.29, 2.6, C.brass, 0.4);
     c.disc(0.5, 0.5, top + 2.61, 0.27, C.marble);
     strut(c, [0.33, 0.45, top + 2.62], [0.62, 0.66, top + 2.62], C.marbleVein, 0.6);
-    cupOnSaucer(c, 0.42, 0.57, top + 2.6, C.white, C.matchaFoam);
-    c.cylinder(0.57, 0.63, top + 2.6, 0.065, 0.5, C.gold, tint(C.gold, 0.3));
-    for (const [du, dv, col] of [
-      [-0.02, -0.01, C.sakura],
-      [0.02, 0.01, C.matchaFoam],
-      [0.0, 0.03, C.cream],
-    ] as const)
-      c.cylinder(0.57 + du, 0.63 + dv, top + 3.1, 0.018, 1.2, col, tint(col, 0.3));
-    c.glowFlat(0.48, 0.3, top + 2.7, 0.24, 0.24, C.glow, 0.5, 2);
-    c.cylinder(0.6, 0.42, top + 2.6, 0.04, 0.8, C.brass, tint(C.brass, 0.3));
-    c.cylinder(0.6, 0.42, top + 3.4, 0.012, 7, C.brass);
-    c.glowFlat(0.52, 0.34, top + 9.5, 0.16, 0.16, C.glow, 0.55, 1.6);
-    c.frustum(0.6, 0.42, top + 9.6, 0.075, 0.04, 5.4, C.linen, tint(C.linen, 0.5));
+    // Tischlampe hinten; Becher und Teller stellt die Szene je Gast dazu.
+    c.glowFlat(0.38, 0.38, top + 2.7, 0.24, 0.24, C.glow, 0.5, 2);
+    c.cylinder(0.5, 0.3, top + 2.6, 0.04, 0.8, C.brass, tint(C.brass, 0.3));
+    c.cylinder(0.5, 0.3, top + 3.4, 0.012, 7, C.brass);
+    c.glowFlat(0.42, 0.22, top + 9.5, 0.16, 0.16, C.glow, 0.55, 1.6);
+    c.frustum(0.5, 0.3, top + 9.6, 0.075, 0.04, 5.4, C.linen, tint(C.linen, 0.5));
     for (let k = 0; k < 4; k++) {
       const a = (-0.2 + k * 0.25) * Math.PI;
       strut(
         c,
-        [0.6 + Math.cos(a) * 0.072, 0.42 + Math.sin(a) * 0.072, top + 9.8],
-        [0.6 + Math.cos(a) * 0.042, 0.42 + Math.sin(a) * 0.042, top + 14.8],
+        [0.5 + Math.cos(a) * 0.072, 0.3 + Math.sin(a) * 0.072, top + 9.8],
+        [0.5 + Math.cos(a) * 0.042, 0.3 + Math.sin(a) * 0.042, top + 14.8],
         shade(C.linen, 0.85),
         0.35,
       );

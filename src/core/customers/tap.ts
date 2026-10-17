@@ -3,22 +3,26 @@ import { getMetaUpgradeDef } from '@data/prestige';
 import { Decimal, D } from '../math/bignum';
 import { getLocation, withLocation, type ActiveBoost, type GameState } from '../GameState';
 import { computeLocationRates } from './rates';
+import { addToLedger } from '../economy/ledger';
 
 export interface TapResult {
   state: GameState;
-  /** Gutgeschriebene Münzen (0, wenn der Tap über dem Deckel lag). */
+  /** Gutgeschriebenes Geld (0, wenn der Tap über dem Deckel lag). */
   gained: Decimal;
   accepted: boolean;
   /** true, wenn dieser Tap den Hype-Balken gefüllt und den Boost gestartet hat. */
   hypeTriggered: boolean;
 }
 
-/** Münzen pro Tap: `income/s × 0.5 × (1 + tapPower × 0.5)` (GAME_DESIGN § 14). */
+/**
+ * Geld pro Tap (Trinkgeld der Anfeuerung): Umsatz/h × 0,5 Spielminuten / 60 × (1 + tapPower × 0,5)
+ * (GAME_DESIGN § 14). Nachts (geschlossen) bringt Anfeuern nichts.
+ */
 export function getTapIncome(state: GameState, locationId: string): Decimal {
   const t = BALANCE.tap;
   const power = state.meta.metaUpgrades['tapPower'] ?? 0;
   return computeLocationRates(state, locationId)
-    .incomePerSec.mul(t.incomeSeconds)
+    .incomePerHour.mul(t.incomeMinutes / 60)
     .mul(1 + power * getMetaUpgradeDef('tapPower').perLevel);
 }
 
@@ -38,6 +42,7 @@ export function tapCafe(state: GameState, locationId: string): TapResult {
     ...loc,
     coins: loc.coins.add(gained),
     earnedThisRun: loc.earnedThisRun.add(gained),
+    ledger: addToLedger(loc.ledger, { bonus: gained }),
   });
 
   let hype = state.tap.hype + 1;

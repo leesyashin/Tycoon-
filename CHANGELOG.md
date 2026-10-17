@@ -4,6 +4,29 @@ Alle nennenswerten Änderungen an Matcha Café Empire. Format angelehnt an [Keep
 
 ## [Unreleased]
 
+### Realistisches Café: Tag und Nacht, Euro-Preise, Matcha-Einkauf, Social Media, Parkplatz (2026-10-16)
+
+Vorgabe Vincent: Das Spiel in allen Hinsichten verbessern – Arbeiter, die an den Geräten wirklich etwas tun und das Tablett
+auf den Tisch stellen; ein Café, das klein und günstig anfängt; Personal, das man entlassen kann und dessen Kosten man sieht;
+ein Parkplatz mit Plätzen und Roller- und Fahrradständern; Matcha, der bestellt und geliefert werden muss; realistische
+Preise (5–50 € je Gast, Trinkgeld obendrauf); Social Media statt Kampagnen; Tag und Nacht mit Öffnungszeiten.
+
+- **Tag und Nacht:** Eine Spielstunde dauert eine Minute; nachts hat das Café zu und die Zeit spult vor. Die Öffnungszeiten stellst du selbst ein (Uhr im HUD antippen) – länger offen bringt Gäste, kostet aber Löhne. Über der Tür hängt ein Schild „Geöffnet/Geschlossen“; nach Ladenschluss geht das Licht aus und das Team geht nach Hause, morgens kommen alle wieder.
+- **Echte Preise in Euro:** Ein Gast zahlt am Anfang 5,20 € für einen Matcha-Latte, mit voller Karte und dem besten Matcha rund 30 € – Trinkgeld obendrauf. Jedes Gerät bringt alle fünf Level ein neues Produkt auf die Karte (vom Espresso bis zum Espresso-Tonic, vom Croissant bis zum Matcha-Laugencroissant). Geräte gehen bis Level 20, gekauft wird ×1, ×5 oder Max. Alle Preise und Kosten sind angepasst, jede Stadt hat ihr eigenes Preisniveau.
+- **Kleiner Start:** du selbst an der Kasse, ein Barista, ein Tisch und 600 € Startkapital. Anfangs kommen gut zehn Gäste pro Stunde, die ersten Upgrades kosten 30–90 €.
+- **Kosten und Tagesbilanz:** Löhne, Wareneinsatz, Miete und Strom gehen jede Stunde vom Konto ab (über der Kasse steht dann „−Betrag“). Unter „Betrieb“ siehst du die Tagesbilanz von heute und gestern mit allen Einnahmen und Kosten. Rutscht das Konto ins Minus, sind Käufe gesperrt, bis wieder Geld da ist.
+- **Personal mit Lohn:** Jede Kraft zeigt ihren Stundenlohn und was sie am Tag kostet; Einstellen kostet eine kleine Gebühr, entlassen kannst du jederzeit (ein Barista muss bleiben). Ohne Bedienung holen die Gäste ihre Bestellung an der Theke selbst ab; eine Bedienung bringt sie an den Tisch – das macht zufriedener und bringt mehr Trinkgeld.
+- **Matcha bestellen:** Der Matcha liegt im Lager und wird verbraucht. Im neuen Einkauf bestellst du Packungen beim Lieferanten: geliefert wird am nächsten Morgen, als Express in zwei Spielstunden, und ein Lieferwagen hält vor der Tür. Die automatische Nachbestellung ist von Anfang an eingeschaltet. Bessere Sorten bis zum Uji First Flush kosten mehr, machen die Getränke teurer, ziehen mehr Gäste an und machen sie zufriedener. Ohne Matcha gibt es keine Matcha-Getränke.
+- **Social Media statt Kampagnen:** Dein Café hat einen eigenen Account. Poste bis zu drei Videos am Tag, vom Latte-Art-Clip bis zur Influencer-Kooperation: Follower bringen dauerhaft mehr Gäste, frische Videos einen kurzen Schub, manchmal geht eins viral. Ein Social-Media-Manager postet von selbst.
+- **Parkplatz:** Neben dem Café lässt sich ein Parkplatz ausbauen – erst Fahrradbügel, dann Roller-Plätze, dann Auto-Stellplätze mit Ladesäule. Jede Stufe bringt mehr Gäste, und man sieht sie mit Rad, Roller oder Auto ankommen, parken und zu Fuß ins Café gehen.
+- **Mehr Leben bei der Arbeit:** Baristas schlagen den Matcha mit dem Bambusbesen auf, gießen Milch ein, schieben Bleche in den Ofen und holen Eis aus dem Kühlfach; das Getränk steht dabei auf dem Gerät. Bedienungen tragen die echte Bestellung auf dem Tablett, stellen sie auf den Tisch und räumen das Geschirr ab; ohne Bedienung bringen die Gäste ihr Geschirr selbst zurück.
+- **Verwaltung mit fünf Reitern:** Shop, Einkauf, Personal, Social Media und Betrieb. Im HUD stehen Tag, Uhrzeit, ob geöffnet ist, und Hinweise, wenn der Matcha knapp wird oder das Konto im Minus ist.
+- **Filialen:** Kyoto eröffnest du ab Café-Level 12 mit 30 000 € aus der Kasse von Berlin – ohne Zen. Für Tokio und die weiteren Städte brauchst du zusätzlich Zen aus Franchise-Resets; das Tutorial erklärt das.
+- **Abwesenheit:** Dein Café läuft weiter, während das Spiel zu ist – mit Gästen, Löhnen und Lieferungen, bis zu einem Spieltag lang (mit Filialleiter länger). Der Rückkehr-Dialog zeigt Gäste, Umsatz und Gewinn oder Verlust.
+- Neues Tutorial mit zehn Schritten, neue Erfolge und Tagesaufgaben für Videos, Follower und Matcha-Bestellungen. Texte sagen „1 Spieltag“ statt „1 Tage“.
+- Der Hinweis im Zufriedenheits-Detail ist gut lesbar (helle Schrift statt dunkler Schrift auf dunklem Grund), und „Beheben für …“ beim Lieferengpass nennt den Preis in Euro.
+- Spielstände werden automatisch auf Version 11 gehoben: Standorte, Zen, Franchise-Resets, Goldene Blätter, Erfolge und Meta-Upgrades bleiben, die Cafés beginnen mit Euro-Preisen neu.
+
 ### Kamera, Ruckeln, Geldscheine (2026-10-16)
 
 Vorgabe Vincent: Das Spiel ruckelt zwischendurch, beim Herauszoomen oder Schieben springt die Kamera zurück und

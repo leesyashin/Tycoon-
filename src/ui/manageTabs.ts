@@ -2,12 +2,13 @@ import { t } from '@i18n/index';
 import { h, on } from './dom';
 import { icon, type IconName } from './icons';
 
-export type ManageTab = 'shop' | 'marketing' | 'staff' | 'stats';
+export type ManageTab = 'shop' | 'supply' | 'staff' | 'social' | 'stats';
 
 const TABS: { id: ManageTab; icon: IconName }[] = [
   { id: 'shop', icon: 'storefront' },
-  { id: 'marketing', icon: 'megaphone' },
+  { id: 'supply', icon: 'package' },
   { id: 'staff', icon: 'users' },
+  { id: 'social', icon: 'video-camera' },
   { id: 'stats', icon: 'chart-bar' },
 ];
 
@@ -16,7 +17,10 @@ const TABS: { id: ManageTab; icon: IconName }[] = [
  * (eigene `data-testid`), der Screen wechselt nur den Inhalt; aktiver Reiter = `aria-current`.
  */
 export function createManageTabs(active: ManageTab, open: (tab: ManageTab) => void): HTMLElement {
-  const el = h('nav', { class: 'tabs screen-tabs panel-tabs', 'aria-label': t('manage.title') });
+  const el = h('nav', {
+    class: 'tabs screen-tabs panel-tabs manage-tabs',
+    'aria-label': t('manage.title'),
+  });
   for (const tab of TABS) {
     const btn = h(
       'button',

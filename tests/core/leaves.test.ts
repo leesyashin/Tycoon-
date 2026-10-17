@@ -11,7 +11,7 @@ import {
 } from '@core/GameState';
 import { tick } from '@core/GameLoop';
 import { D } from '@core/math';
-import { creditIncome } from '@core/economy';
+import { cafeLevelFromSum, simulateAway } from '@core/economy';
 import {
   buyLeafBoost,
   buySkin,
@@ -20,31 +20,52 @@ import {
   completeQuestWithLeaves,
   equippedSkinTints,
   previewTimeSkip,
+  profitPerRealSecond,
   toggleSkin,
 } from '@core/leaves';
 import { getBoostRemaining } from '@core/events';
-import { accrueLeafDrops, expectedLeafDrops, refreshLeafDropDay } from '@core/customers';
+import {
+  accrueLeafDrops,
+  customerTypeShares,
+  expectedLeafDrops,
+  refreshLeafDropDay,
+} from '@core/customers';
 import { claimQuest, isQuestComplete, updateQuestProgress } from '@core/progression';
 import { NoopProvider, createMonetizationProvider } from '@core/monetization';
-import { deserialize, migrate, serialize } from '@core/save';
-import { skipCampaignCooldown, startCampaign } from '@core/marketing';
-import { BALANCE } from '@data/balance';
-import { BOOSTS, LEAF_DROPS, LEAF_PRICES, SKINS, TIME_SKIPS } from '@data/leaves';
-import { MONETIZATION_ENABLED } from '@data/monetization';
-import { getQuestDef } from '@data/quests';
+import { deserialize, migrate, migrations, serialize } from '@core/save';
+import { postBonusVideo, postVideo } from '@core/social';
+import { realSecondsPerDay } from '@core/time';
+import { EVENT_CONFIG } from '@data/events';
+import { BOOSTS, BOOST_RULES, LEAF_DROPS, LEAF_PRICES, SKINS, TIME_SKIPS } from '@data/leaves';
+import { FREE_BOOST, MONETIZATION_ENABLED } from '@data/monetization';
+import { QUEST_CONFIG, getQuestDef } from '@data/quests';
+import { SOCIAL } from '@data/social';
+import { TIME } from '@data/time';
 
 const LOC = 'berlin';
 
+/** Laufendes Café: drei Geräte auf Level 10, zufriedene Gäste, `leaves` Goldene Blätter. */
 const make = (leaves = 0): GameState => {
   const s = createInitialState(0);
   const base = getLocation(s, LOC);
   const stations = { ...base.stations };
   for (const id of ['matchaStation', 'register', 'coffeeMachine'])
     stations[id] = { level: 10, unlocked: true };
-  const n = withLocation(s, LOC, { ...base, level: 5, stations, satisfaction: 70 });
+  const n = withLocation(s, LOC, {
+    ...base,
+    level: cafeLevelFromSum(30),
+    stations,
+    satisfaction: 70,
+  });
   return { ...n, meta: { ...n.meta, goldenLeaves: D(leaves) } };
 };
 const leaves = (s: GameState): number => s.meta.goldenLeaves.toNumber();
+/** Spieluhr auf eine volle Stunde des ersten Spieltags (Stunden davor schon abgerechnet). */
+const atHour = (s: GameState, hour: number): GameState => ({
+  ...s,
+  clock: hour * 60,
+  hourMark: hour,
+});
 
 describe('Blätter-Buchhaltung', () => {
   it('ausgeben nur bei genug Blättern, nie negativ', () => {
@@ -77,6 +98,7 @@ describe('Blätter-Buchhaltung', () => {
       (x: GameState) => completeQuestWithLeaves(x, 1),
       (x: GameState) => buySkin(x, 'sakuraBar'),
       (x: GameState) => buySkin(x, 'neonCheckout'),
+      (x: GameState) => postBonusVideo(x, LOC, 'latteArt'),
     ];
     let seed = 1;
     for (let i = 0; i < 200; i++) {
@@ -85,7 +107,7 @@ describe('Blätter-Buchhaltung', () => {
       if (act) s = act(s);
       expect(leaves(s)).toBeGreaterThanOrEqual(0);
     }
-    expect(leaves(s)).toBeLessThan(5);
+    expect(leaves(s)).toBeLessThan(Math.min(...TIME_SKIPS.map((x) => x.cost)));
   });
 
   it('gutschreiben zählt in der Statistik mit, 0 oder negativ ändert nichts', () => {
@@ -107,32 +129,62 @@ describe('Zeitsprung (GAME_DESIGN § 10)', () => {
     ]);
   });
 
-  it('bringt das Einkommen zu 100 % an allen Standorten, ohne Boosts', () => {
+  it('Gewinn je echter Sekunde = Geld nach einem ganzen Spieltag Betrieb, ohne Boosts, nie negativ', () => {
+    const s = buyLeafBoost(make(30));
+    const daySec = realSecondsPerDay(getLocation(s, LOC).hours);
+    const day = simulateAway(s, daySec);
+    // Ein ganzer Spieltag: die Uhr steht danach auf derselben Tageszeit.
+    expect(day.clock - s.clock).toBeCloseTo(TIME.minutesPerDay, 6);
+    const delta = getLocation(day, LOC).coins.sub(getLocation(s, LOC).coins).toNumber();
+    expect(delta).toBeGreaterThan(0);
+    const per = profitPerRealSecond(s)[LOC]?.toNumber() ?? 0;
+    expect(per).toBeCloseTo(delta / daySec, 6);
+    // Der gekaufte Boost (×2 für 30 min) zählt nicht mit.
+    const plain = { ...s, boosts: [] };
+    expect(per).toBeCloseTo(profitPerRealSecond(plain)[LOC]?.toNumber() ?? 0, 6);
+    // Ein Café, das am Tag Geld verliert (kein Matcha, nichts anderes auf der Karte), bringt 0 statt Schulden.
+    const m = getLocation(make(), LOC);
+    const broke = withLocation(make(), LOC, {
+      ...m,
+      supply: { ...m.supply, stock: m.supply.stock.map(() => 0) },
+      stations: { ...m.stations, coffeeMachine: { level: 0, unlocked: true } },
+    });
+    expect(profitPerRealSecond(broke)[LOC]?.toNumber()).toBe(0);
+  });
+
+  it('bringt den Gewinn sofort zu 100 % an allen Standorten, ohne Boosts und ohne Zeit', () => {
     let s = make(30);
     s = {
       ...s,
       meta: { ...s.meta, unlockedLocations: [LOC, 'kyoto'] },
       locations: { ...s.locations, kyoto: createLocationState('kyoto') },
     };
+    const skip = TIME_SKIPS[0];
     const boosted = buyLeafBoost(s);
-    const expected = creditIncome(s, 3600);
-    const n = buyTimeSkip(boosted, 'skip1h');
-    expect(leaves(n)).toBe(30 - LEAF_PRICES.boost - 5);
-    expect(previewTimeSkip(boosted, 'skip1h').toNumber()).toBeCloseTo(expected.earned.toNumber());
+    const per = profitPerRealSecond(s);
+    const sec = skip.hours * 3600;
+    const n = buyTimeSkip(boosted, skip.id);
+    expect(leaves(n)).toBe(30 - LEAF_PRICES.boost - skip.cost);
+    let total = 0;
     for (const id of [LOC, 'kyoto']) {
+      const expected = (per[id]?.toNumber() ?? 0) * sec;
+      expect(expected, id).toBeGreaterThan(0);
       const gain = getLocation(n, id).coins.sub(getLocation(boosted, id).coins).toNumber();
-      expect(gain).toBeCloseTo(
-        getLocation(expected.state, id).coins.sub(getLocation(s, id).coins).toNumber(),
-      );
-      expect(gain).toBeGreaterThan(0);
+      expect(gain).toBeCloseTo(expected, 6);
+      const run = getLocation(n, id).earnedThisRun.sub(getLocation(boosted, id).earnedThisRun);
+      expect(run.toNumber()).toBeCloseTo(expected, 6);
+      total += expected;
     }
-    // 100 % statt Offline-Effizienz, kein Cap, keine Zeit: Spielzeit und Boost-Timer bleiben.
+    expect(previewTimeSkip(boosted, skip.id).toNumber()).toBeCloseTo(total, 6);
+    expect(n.meta.lifetimeEarned.sub(boosted.meta.lifetimeEarned).toNumber()).toBeCloseTo(total, 6);
+    // 100 % statt Offline-Effizienz, kein Deckel, keine Zeit: Uhr, Spielzeit, Lager und Boost-Timer bleiben.
+    expect(n.clock).toBe(boosted.clock);
     expect(n.playtimeSec).toBe(boosted.playtimeSec);
+    expect(getLocation(n, LOC).supply).toEqual(getLocation(boosted, LOC).supply);
     expect(getBoostRemaining(n, 'leaf')).toBe(getBoostRemaining(boosted, 'leaf'));
-    expect(n.meta.lifetimeEarned.gt(boosted.meta.lifetimeEarned)).toBe(true);
-    expect(getLocation(n, LOC).earnedThisRun.gt(getLocation(boosted, LOC).earnedThisRun)).toBe(
-      true,
-    );
+    // Längere Sprünge bringen entsprechend mehr.
+    for (const x of TIME_SKIPS)
+      expect(previewTimeSkip(s, x.id).toNumber()).toBeCloseTo((x.hours / skip.hours) * total, 6);
   });
 
   it('zu wenig Blätter → nichts passiert', () => {
@@ -143,8 +195,9 @@ describe('Zeitsprung (GAME_DESIGN § 10)', () => {
 
 describe('Boost ×2 für Blätter', () => {
   it('kostet 8 🍃, verlängert bei erneutem Kauf', () => {
-    const a = buyLeafBoost(make(16));
-    expect(leaves(a)).toBe(8);
+    const price = LEAF_PRICES.boost;
+    const a = buyLeafBoost(make(2 * price));
+    expect(leaves(a)).toBe(price);
     expect(getBoostRemaining(a, 'leaf')).toBe(BOOSTS.leaf.durationSec);
     const b = buyLeafBoost(a);
     expect(leaves(b)).toBe(0);
@@ -170,18 +223,18 @@ describe('Sofort-Fertigstellung Quest (4 🍃)', () => {
   it('Zähler-Quest bleibt nach dem Nachziehen erledigt und ist abholbar', () => {
     const s = withQuests(make(10));
     const n = completeQuestWithLeaves(s, 0);
-    expect(leaves(n)).toBe(6);
+    expect(leaves(n)).toBe(10 - LEAF_PRICES.questComplete);
     const upd = updateQuestProgress(n);
     expect(upd.quests.items[0]?.progress).toBe(getQuestDef('serve500').target);
     const first = upd.quests.items[0];
     expect(first && isQuestComplete(first)).toBe(true);
     const claimed = claimQuest(upd, 0);
-    expect(leaves(claimed)).toBe(9);
+    expect(leaves(claimed)).toBe(10 - LEAF_PRICES.questComplete + QUEST_CONFIG.rewardEach);
   });
 
   it('Zustands-Quest (Zufriedenheit) bleibt ebenfalls erledigt', () => {
     const n = updateQuestProgress(completeQuestWithLeaves(withQuests(make(10)), 1));
-    expect(n.quests.items[1]?.progress).toBe(80);
+    expect(n.quests.items[1]?.progress).toBe(getQuestDef('satisfaction80').target);
   });
 
   it('erledigte, abgeholte oder fehlende Quests und zu wenig Blätter → nichts', () => {
@@ -189,19 +242,29 @@ describe('Sofort-Fertigstellung Quest (4 🍃)', () => {
     expect(canCompleteQuestWithLeaves(s, 2)).toBe(false);
     expect(completeQuestWithLeaves(s, 2)).toBe(s);
     expect(completeQuestWithLeaves(s, 5)).toBe(s);
-    const poor = withQuests(make(3));
+    const poor = withQuests(make(LEAF_PRICES.questComplete - 1));
     expect(completeQuestWithLeaves(poor, 0)).toBe(poor);
   });
 });
 
-describe('Kampagnen-Abklingzeit beenden (3 🍃)', () => {
-  it('nur mit genug Blättern', () => {
-    const base = withLocation(make(2), LOC, { ...getLocation(make(), LOC), coins: D(1e9) });
-    let s = startCampaign({ ...base, meta: { ...base.meta, goldenLeaves: D(2) } }, LOC);
-    s = { ...s, playtimeSec: BALANCE.marketing.campaignDurationSec + 1 };
-    expect(skipCampaignCooldown(s, LOC)).toBe(s);
-    const rich = { ...s, meta: { ...s.meta, goldenLeaves: D(3) } };
-    expect(leaves(skipCampaignCooldown(rich, LOC))).toBe(0);
+describe('Bonus-Video für Blätter (3 🍃)', () => {
+  it('über das Tageslimit hinaus, höchstens zweimal am Tag', () => {
+    const price = SOCIAL.bonusVideoLeaves;
+    let s = make(price * SOCIAL.maxBonusPerDay + price - 1);
+    for (let i = 0; i < SOCIAL.postsPerDay; i++) s = postVideo(s, LOC, 'latteArt');
+    expect(postVideo(s, LOC, 'latteArt')).toBe(s);
+    for (let i = 0; i < SOCIAL.maxBonusPerDay; i++) s = postBonusVideo(s, LOC, 'latteArt');
+    expect(s.stats.videos).toBe(SOCIAL.postsPerDay + SOCIAL.maxBonusPerDay);
+    expect(getLocation(s, LOC).social.bonusToday).toBe(SOCIAL.maxBonusPerDay);
+    expect(leaves(s)).toBe(price - 1);
+    // Tages-Deckel erreicht – und für ein weiteres reichten die Blätter auch nicht.
+    expect(postBonusVideo(grantLeaves(s, price), LOC, 'latteArt').stats.videos).toBe(
+      s.stats.videos,
+    );
+  });
+  it('zu wenig Blätter → nichts', () => {
+    const poor = make(SOCIAL.bonusVideoLeaves - 1);
+    expect(postBonusVideo(poor, LOC, 'latteArt')).toBe(poor);
   });
 });
 
@@ -209,27 +272,29 @@ describe('Skins (kosmetisch)', () => {
   it('kaufen legt an, zweimal kaufen geht nicht, an/aus', () => {
     const s = make(60);
     const a = buySkin(s, 'sakuraBar');
-    expect(leaves(a)).toBe(30);
+    expect(leaves(a)).toBe(60 - (SKINS[0]?.cost ?? 0));
     expect(equippedSkinTints(a)).toEqual({ matchaStation: SKINS[0]?.tint });
     expect(buySkin(a, 'sakuraBar')).toBe(a);
     const off = toggleSkin(a, 'sakuraBar');
     expect(equippedSkinTints(off)).toEqual({});
     expect(toggleSkin(off, 'neonCheckout')).toBe(off);
     expect(buySkin(s, 'unknown')).toBe(s);
-    expect(buySkin(make(29), 'neonCheckout').meta.skins.owned).toEqual([]);
+    expect(buySkin(make((SKINS[1]?.cost ?? 1) - 1), 'neonCheckout').meta.skins.owned).toEqual([]);
   });
   it('ändert keine Einnahmen', () => {
-    const s = make(60);
+    const s = atHour(make(60), 10);
     const a = buySkin(s, 'sakuraBar');
-    expect(tick(a, 1000).locations[LOC]?.coins.toNumber()).toBeCloseTo(
-      tick({ ...a, meta: s.meta }, 1000).locations[LOC]?.coins.toNumber() ?? 0,
-    );
+    const coins = (x: GameState): number => getLocation(tick(x, 60_000), LOC).coins.toNumber();
+    expect(coins(a)).toBeGreaterThan(getLocation(a, LOC).coins.toNumber());
+    expect(coins(a)).toBeCloseTo(coins({ ...a, meta: s.meta }), 6);
   });
 });
 
 describe('Influencer-Drops (GAME_DESIGN § 7.5)', () => {
   it('Erwartungswert = bediente × Influencer-Anteil × 1 %', () => {
-    expect(expectedLeafDrops(LOC, 1000)).toBeCloseTo(1000 * 0.1 * LEAF_DROPS.chance);
+    const share = customerTypeShares(LOC).influencer;
+    expect(share).toBeCloseTo(0.1);
+    expect(expectedLeafDrops(LOC, 1000)).toBeCloseTo(1000 * share * LEAF_DROPS.chance);
     // Tokio hat mehr Influencer.
     expect(expectedLeafDrops('tokyo', 1000)).toBeGreaterThan(expectedLeafDrops(LOC, 1000));
   });
@@ -301,8 +366,7 @@ describe('Save v6', () => {
   });
 
   it('Migration v5 → v6: Plan ab jetziger Spielzeit, leere Skins, alte Events verworfen', () => {
-    const s = { ...make(), playtimeSec: 5000 };
-    const v5 = JSON.parse(serialize(s)) as Record<string, unknown>;
+    const v5 = JSON.parse(serialize({ ...make(), playtimeSec: 5000 })) as Record<string, unknown>;
     v5['schemaVersion'] = 5;
     delete v5['calendarEvents'];
     delete v5['eventSchedule'];
@@ -310,15 +374,24 @@ describe('Save v6', () => {
     delete v5['leafDrops'];
     delete (v5['meta'] as Record<string, unknown>)['skins'];
     v5['activeEvents'] = [{ id: 'x', until: 9, spawnMult: 2, incomeMult: 2 }];
-    const m = migrate(v5);
-    expect(m['schemaVersion']).toBe(SCHEMA_VERSION);
-    const back = deserialize(JSON.stringify(m));
+    const step = migrations[5];
+    if (!step) throw new Error('Migration v5 → v6 fehlt');
+    const m = step(v5);
+    expect(m['schemaVersion']).toBe(6);
+    expect(m['activeEvents']).toEqual([]);
+    expect(m['calendarEvents']).toEqual([]);
+    expect((m['meta'] as Record<string, unknown>)['skins']).toEqual({ owned: [], equipped: [] });
+    expect(m['freeBoostAt']).toBe(5000 + FREE_BOOST.intervalSec);
+    // Bis zur aktuellen Version überlebt das alles (Phase 3 räumt nur Events und Boosts ab).
+    expect(migrate(v5)['schemaVersion']).toBe(SCHEMA_VERSION);
+    const back = deserialize(JSON.stringify(v5));
     expect(back.activeEvents).toEqual([]);
     expect(back.calendarEvents).toEqual([]);
     expect(back.meta.skins).toEqual({ owned: [], equipped: [] });
     expect(back.eventSchedule.count).toBe(0);
-    expect(back.eventSchedule.nextAt).toBeGreaterThanOrEqual(5000 + 20 * 60);
-    expect(back.freeBoostAt).toBe(5000 + 20 * 60);
+    expect(back.eventSchedule.nextAt).toBeGreaterThanOrEqual(5000 + EVENT_CONFIG.intervalMinSec);
+    expect(back.eventSchedule.nextAt).toBeLessThanOrEqual(5000 + EVENT_CONFIG.intervalMaxSec);
+    expect(back.freeBoostAt).toBe(5000 + FREE_BOOST.intervalSec);
     expect(back.leafDrops).toEqual({ date: '', count: 0, fraction: 0 });
   });
 
@@ -346,7 +419,7 @@ describe('Save v6', () => {
     expect(s.activeEvents).toEqual([{ id: 'rainyDay', locationId: LOC, startedAt: 10, until: 10 }]);
     expect(s.calendarEvents).toEqual(['hanami']);
     expect(s.boosts).toEqual([
-      { id: 'leaf', until: 10, incomeMult: 12, spawnMult: 1, speedMult: 1 },
+      { id: 'leaf', until: 10, incomeMult: BOOST_RULES.maxMult, spawnMult: 1, speedMult: 1 },
     ]);
     expect(s.leafDrops).toEqual({ date: '', count: LEAF_DROPS.maxPerDay, fraction: 1 });
     expect(s.eventSchedule.count).toBe(0);

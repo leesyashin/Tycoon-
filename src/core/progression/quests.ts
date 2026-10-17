@@ -37,8 +37,10 @@ export function questStat(state: GameState, kind: QuestKind): number {
       return st.customersServed;
     case 'levelsBought':
       return st.levelsBought;
-    case 'campaigns':
-      return st.campaigns;
+    case 'videos':
+      return st.videos;
+    case 'matchaOrders':
+      return st.matchaOrders;
     case 'events':
       return st.events;
     case 'taps':

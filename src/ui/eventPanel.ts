@@ -4,7 +4,7 @@ import type { Store } from '@core/store';
 import { getEventResolveCost, isEventRunning, resolveEvent } from '@core/events';
 import { getCalendarEventDef, getRandomEventDef } from '@data/events';
 import { h, on, setDisabled, setText, type View } from './dom';
-import { fmt, fmtTime } from './format';
+import { fmtMoney, fmtTime } from './format';
 import type { PanelContent } from './panel';
 import { icon, setIcon, type IconName } from './icons';
 
@@ -121,7 +121,7 @@ export function createEventPanel(store: Store): PanelContent {
         if (btn) {
           const cost = getEventResolveCost(x, i);
           const coins = x.locations[cur.locationId] ? getLocation(x, cur.locationId).coins : null;
-          setText(btn, t('event.resolve', { cost: cost ? fmt(x, cost) : '–' }));
+          setText(btn, t('event.resolve', { cost: cost ? fmtMoney(cost) : '–' }));
           setDisabled(btn, !cost || !coins || coins.lt(cost));
         }
       };

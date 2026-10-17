@@ -18,7 +18,9 @@ import { createMonetizationProvider } from '@core/monetization';
 import { getRandomEventDef } from '@data/events';
 import { createLocationsPanel } from './locationsPanel';
 import { achievementName, claimableQuests, createProgressPanel } from './progressPanel';
-import { createMarketingPanel } from './marketingPanel';
+import { createSocialPanel } from './socialPanel';
+import { createSupplyPanel } from './supplyPanel';
+import { gradeInUse } from '@core/supply';
 import { createSatisfactionPanel } from './satisfactionPanel';
 import { createStaffPanel } from './staffPanel';
 import { createNav, type Nav, type NavTarget } from './nav';
@@ -35,7 +37,7 @@ import { createToaster } from './toast';
 import { createTutorial } from './tutorial';
 import type { PwaHooks } from './pwa';
 import { restartTutorial } from '@core/tutorial';
-import { fmt, fmtTime } from './format';
+import { fmt, fmtDays, fmtMoney, fmtTime } from './format';
 import type { OfflineResult } from '@core/economy';
 import { UI_CONFIG } from '@data/ui';
 import type { SfxId } from '@data/audio';
@@ -109,16 +111,24 @@ export function startApp(o: AppOptions): App {
     key,
     create: () => ({ ...create(), variant: 'screen' }),
   });
-  const shopTabReq = (tab: 'stations' | 'ambience' | 'quality'): PanelRequest =>
+  const shopTabReq = (tab: 'stations' | 'ambience'): PanelRequest =>
     manage('shop', tab === 'stations' ? 'shop' : `shop:${tab}`, () =>
       createShopPanel(store, (id) => panels.open(stationReq(id)), tab),
     );
   const manageReqs: Record<ManageTab, PanelRequest> = {
     shop: shopTabReq('stations'),
-    marketing: manage('marketing', 'marketing', () =>
-      createMarketingPanel(store, () => toaster.show(t('toast.campaignStarted'), 'success')),
-    ),
+    supply: manage('supply', 'supply', () => createSupplyPanel(store)),
     staff: manage('staff', 'staff', () => createStaffPanel(store)),
+    social: manage('social', 'social', () =>
+      createSocialPanel(store, (views, viral) =>
+        toaster.show(
+          t(viral ? 'toast.videoViral' : 'toast.videoPosted', {
+            views: fmt(store.getState(), views),
+          }),
+          'success',
+        ),
+      ),
+    ),
     stats: manage('stats', 'stats', () => createStatsPanel(store)),
   };
   const settingsReq = screen('settings', () =>
@@ -189,7 +199,8 @@ export function startApp(o: AppOptions): App {
         onSatisfaction: () => toggle(satisfactionReq),
         openLeafShop: () => toggle(leafShopReq),
         claimFreeBoost: () => void doFreeBoost(),
-        openQuality: () => panels.open(shopTabReq('quality')),
+        openSupply: () => panels.open(manageReqs.supply),
+        openHours: () => panels.open(manageReqs.stats),
       }),
       store,
     );
@@ -382,13 +393,14 @@ export function startApp(o: AppOptions): App {
     notifyProgress(before, s);
   });
 
+  /** Alles, was ein Kauf erhöht (Geräte, Ambiente, Personal, Bestellungen, Videos) – für den Kauf-Klang. */
   const levelSum = (s: GameState): number => {
     const loc = getLocation(s, s.activeLocationId);
     let n = 0;
     for (const st of Object.values(loc.stations)) n += st.level;
     for (const a of Object.values(loc.ambience)) n += a;
     for (const r of Object.values(loc.staff)) n += r;
-    return n + loc.quality + loc.marketing.level;
+    return n + s.stats.matchaOrders + s.stats.videos;
   };
 
   /** Klänge aus dem Zustandsvergleich (S8): Kauf, Freischaltung, Events, Blätter, Boosts. */
@@ -463,6 +475,23 @@ export function startApp(o: AppOptions): App {
     }
   }
 
+  /** Lieferung angekommen, Matcha ausverkauft, Nachbestellung gescheitert, Konto ins Minus gerutscht. */
+  function notifySupply(before: GameState, s: GameState, locId: string): void {
+    const was = getLocation(before, locId);
+    const loc = getLocation(s, locId);
+    if (loc.supply.delivered > was.supply.delivered) {
+      toaster.show(t('toast.delivery'), 'success');
+    }
+    if (gradeInUse(was.supply) >= 0 && gradeInUse(loc.supply) < 0) {
+      o.sfx?.('error');
+      toaster.show(t('toast.matchaOut'), 'error');
+    }
+    if (loc.supply.reorderFailed && !was.supply.reorderFailed) {
+      toaster.show(t('toast.reorderFailed'), 'error');
+    }
+    if (loc.coins.lt(0) && !was.coins.lt(0)) toaster.show(t('toast.debt'), 'error');
+  }
+
   /** Toasts für Café-Level, Freischaltungen, Erfolge, Tagesaufgaben – aus dem Zustandsvergleich. */
   function notifyProgress(before: GameState, s: GameState): void {
     const locId = s.activeLocationId;
@@ -485,13 +514,7 @@ export function startApp(o: AppOptions): App {
         }
       }
     }
-    const quality = getLocation(s, locId).quality;
-    if (quality > getLocation(before, locId).quality) {
-      toaster.show(
-        t('toast.quality', { name: t(`quality.tier.${String(quality)}.name`) }),
-        'success',
-      );
-    }
+    notifySupply(before, s, locId);
     for (const id of Object.keys(s.meta.achievements)) {
       if (before.meta.achievements[id]) continue;
       const def = getAchievementDef(id);
@@ -520,14 +543,27 @@ export function startApp(o: AppOptions): App {
       ),
     showOffline(result) {
       const elapsedSec = result.elapsedMs / 1000;
-      if (elapsedSec < UI_CONFIG.offlineDialogMinSec || result.earned.lte(0)) return;
+      if (elapsedSec < UI_CONFIG.offlineDialogMinSec) return;
+      if (result.guests < 1 && result.earned.abs().lt(0.01)) return;
       const s = store.getState();
+      // Ohne Tageswechsel keine Tages-Angabe.
+      const days = fmtDays(result.days, 'gameDay', 0);
       const body = [
-        t('dialog.offline.body', { time: fmtTime(elapsedSec), amount: fmt(s, result.earned) }),
+        t(result.days > 0 ? 'dialog.offline.body' : 'dialog.offline.bodyToday', {
+          time: fmtTime(elapsedSec),
+          days,
+          guests: fmt(s, Math.round(result.guests)),
+          revenue: fmtMoney(result.revenue),
+        }),
+        t(result.earned.lt(0) ? 'dialog.offline.loss' : 'dialog.offline.profit', {
+          amount: fmtMoney(result.earned.abs()),
+        }),
       ];
       if (result.creditedMs < result.elapsedMs) {
         body.push(t('dialog.offline.capped', { time: fmtTime(result.creditedMs / 1000) }));
       }
+      const loc = getLocation(s, s.activeLocationId);
+      if (gradeInUse(loc.supply) < 0) body.push(t('dialog.offline.matchaOut'));
       void showDialog(root, {
         title: t('dialog.offline.title'),
         body,

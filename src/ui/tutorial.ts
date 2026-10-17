@@ -4,8 +4,10 @@ import type { Store } from '@core/store';
 import { advanceTutorial, currentTutorialStep, skipTutorial } from '@core/tutorial';
 import { TUTORIAL_STEPS } from '@data/tutorial';
 import { PRESTIGE } from '@data/prestige';
-import { getOfflineCapMs, getOfflineEfficiency } from '@core/economy';
+import { LOCATIONS } from '@data/locations';
+import { getOfflineCapDays, getOfflineEfficiency } from '@core/economy';
 import { h, on, setText, type View } from './dom';
+import { fmtDays } from './format';
 
 /**
  * Onboarding-Overlay (PLAN S9): Ring um das Ziel-Element und eine Sprechblase. Blockiert nichts außer der
@@ -53,9 +55,10 @@ export function createTutorial(store: Store, isPanelOpen: () => boolean): View {
       setText(
         text,
         t(`tutorial.${def.id}.text`, {
-          hours: getOfflineCapMs(s) / 3_600_000,
+          days: fmtDays(getOfflineCapDays(s), 'gameDay', 0),
           pct: Math.round(getOfflineEfficiency(s) * 100),
           level: PRESTIGE.resetMinCafeLevel,
+          branchLevel: LOCATIONS[1]?.unlock?.cafeLevel ?? PRESTIGE.resetMinCafeLevel,
         }),
       );
       setText(skip, t('tutorial.skip'));

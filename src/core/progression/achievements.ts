@@ -1,5 +1,5 @@
 import { ACHIEVEMENTS, NIGHT_SHIFT_HOURS, SPOTLESS, type AchievementDef } from '@data/achievements';
-import { MAX_QUALITY } from '@data/quality';
+import { MAX_GRADE } from '@data/matcha';
 import { STAFF_ROLES } from '@data/staff';
 import { STATIONS } from '@data/stations';
 import { grantLeaves, type GameState, type LocationState } from '../GameState';
@@ -37,8 +37,8 @@ export function achievementValue(
         : 0;
     case 'quality':
       return Math.min(
-        MAX_QUALITY,
-        maxOf(state, (l) => l.quality),
+        MAX_GRADE,
+        maxOf(state, (l) => l.supply.bestGrade),
       );
     case 'highSatisfaction':
       return st.highSatisfactionBestSec;
@@ -59,12 +59,12 @@ export function achievementValue(
       return st.events;
     case 'playtime':
       return state.playtimeSec;
-    case 'campaigns':
-      return st.campaigns;
+    case 'videos':
+      return st.videos;
     case 'quests':
       return st.questsCompleted;
-    case 'marketingLevel':
-      return maxOf(state, (l) => l.marketing.level);
+    case 'followers':
+      return maxOf(state, (l) => l.social.followers);
     case 'nightShift': {
       if (!ctx) return 0;
       const h = ctx.localHour;

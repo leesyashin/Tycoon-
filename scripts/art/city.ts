@@ -2885,6 +2885,144 @@ function bistro(variant: number): string {
   return c.svg();
 }
 
+// ---------------------------------------------------------------------------------------------
+// Parkplatz neben dem Café (`data/parking.ts`): einzelnes Rad, Anlehnbügel, Motorroller, Schild, Ladesäule,
+// Bauzaun. Rad und Roller stehen entlang u (die Szene spiegelt sie quer zum Gehweg), Schild und Säule zeigen nach +u.
+// ---------------------------------------------------------------------------------------------
+const LOT_BIKES: readonly BicycleLook[] = [
+  { frame: C.teal, low: true, basket: true },
+  { frame: C.carRed, crate: C.matchaDeep },
+  { frame: C.cream, low: true },
+  { frame: C.carNavy },
+];
+
+/** Ein geparktes Fahrrad (ohne Fahrer), Kontaktschatten. */
+function lotBike(look: BicycleLook): string {
+  const c = small();
+  c.shadow(-0.32, -0.04, 0, 0.66, 0.08, 0.22);
+  bicycle(c, 0, 0, 1, look);
+  return c.svg();
+}
+
+/** Anlehnbügel aus Edelstahl, neben dem Rad (Ebene v = 0,12). */
+function lotLoop(): string {
+  const c = small();
+  standLoop(c, 0.12);
+  return c.svg();
+}
+
+interface MopedLook {
+  body: string;
+  seat: string;
+}
+const LOT_MOPEDS: readonly MopedLook[] = [
+  { body: C.carMint, seat: C.cream },
+  { body: C.carRed, seat: C.ink },
+  { body: C.cream, seat: C.woodDark },
+];
+
+/** Motorroller (Vespa-Stil): gerundete Heckverkleidung, Trittbrett, Beinschild, Lenker mit Scheinwerfer. */
+function moped(m: MopedLook): string {
+  const c = small();
+  c.shadow(-0.34, -0.09, 0, 0.7, 0.18, 0.24, 1.2);
+  const wz = 2.4;
+  for (const u of [-0.24, 0.26]) {
+    c.poly(ringPts('v', u, -0.02, wz, 0.075, 14), shade(C.rubber, 0.8));
+    c.poly(ringPts('v', u, 0.03, wz, 0.075, 14), C.rubber);
+    c.disc(u, 0.031, wz, 0.03, C.galvanized);
+  }
+  // Heck mit Motor (gerundet), Sitzbank, Gepäckträger
+  c.bevel(-0.3, -0.07, 2.4, 0.3, 0.14, 5.4, m.body, { b: 1.2 });
+  c.bevel(-0.27, -0.06, 7.8, 0.26, 0.12, 1.6, m.seat, { b: 0.6 });
+  c.bevel(-0.33, -0.05, 8, 0.07, 0.1, 0.8, C.galvanized, { b: 0.3 });
+  // Trittbrett und Beinschild
+  c.bevel(0.0, -0.06, 2.6, 0.16, 0.12, 1.2, shade(m.body, 0.9), { b: 0.4 });
+  c.bevel(0.15, -0.075, 2.6, 0.06, 0.15, 7.6, m.body, { b: 0.6 });
+  // Lenksäule, Lenker, Scheinwerfer, Rücklicht
+  strut(c, [0.19, 0, 10], [0.22, 0, 14.2], shade(m.body, 0.85), 1.6);
+  strut(c, [0.21, -0.1, 14.4], [0.21, 0.1, 14.4], C.rubber, 1.2);
+  c.disc(0.24, 0.0, 13.2, 0.026, C.led);
+  c.disc(-0.31, 0.0, 6.2, 0.018, C.signalRed);
+  // Spiegel
+  strut(c, [0.21, -0.08, 14.4], [0.2, -0.1, 16.2], C.galvanized, 0.6);
+  return c.svg();
+}
+
+/** Parkplatz-Schild: blaues Feld mit weißem „P“ auf einer Stange (Schild zeigt nach +u). */
+function parkingSign(): string {
+  const c = small();
+  c.shadowDisc(0, 0, 0, 0.04, 0.3, 0.6);
+  c.cylinder(0, 0, 0, 0.022, 26, C.galvanized, tint(C.galvanized, 0.3));
+  const u = 0.03;
+  // Feld (Ebene u) mit hellem Rand
+  c.wallU(u, -0.13, 22, 0.26, 10, C.white);
+  c.wallU(u + 0.002, -0.115, 22.8, 0.23, 8.4, C.cobalt);
+  // „P“: Stamm, oberer und mittlerer Balken, rechte Seite des Bogens
+  const glyph = (v0: number, v1: number, z0: number, z1: number) =>
+    c.wallU(u + 0.004, v0, z0, v1 - v0, z1 - z0, C.white);
+  glyph(-0.06, -0.025, 24, 30);
+  glyph(-0.06, 0.05, 29, 30);
+  glyph(-0.06, 0.05, 26.6, 27.6);
+  glyph(0.035, 0.06, 26.6, 30);
+  return c.svg();
+}
+
+/** Ladesäule für Elektroautos: weiße Säule mit Display und grünem Leuchtband, Kabel im Bogen. */
+function charger(): string {
+  const c = small();
+  c.shadow(-0.1, -0.1, 0, 0.2, 0.2, 0.3);
+  c.bevel(-0.08, -0.08, 0, 0.16, 0.16, 1.2, C.galvanized, { b: 0.3 });
+  c.bevel(-0.07, -0.07, 1.2, 0.14, 0.14, 19, C.white, { b: 0.8 });
+  c.wallU(0.072, -0.045, 13, 0.09, 4, C.ink);
+  c.wallU(0.073, -0.035, 14, 0.07, 2, '#5fd38a');
+  c.wallU(0.072, -0.06, 4, 0.12, 0.8, '#5fd38a');
+  polyline(
+    c,
+    [
+      [0.072, 0.05, 10],
+      [0.12, 0.08, 6],
+      [0.14, 0.04, 3],
+      [0.1, -0.02, 2.6],
+      [0.08, -0.06, 4],
+    ],
+    C.ink,
+    1.1,
+  );
+  return c.svg();
+}
+
+/** Bauzaun-Element entlang u (Gitter in Rahmen, Betonfüße), solange der Parkplatz nicht ausgebaut ist. */
+function fence(): string {
+  const c = small();
+  for (const u of [-0.48, 0.48]) {
+    c.shadow(u - 0.08, -0.06, 0, 0.16, 0.12, 0.2);
+    c.bevel(u - 0.07, -0.05, 0, 0.14, 0.1, 1.6, '#c9c4ba', { b: 0.4 });
+  }
+  c.group(0.45, () => c.wallV(-0.48, 0, 1.6, 0.96, 12, '#dfe5ec'));
+  const grid: Vec3[][] = [];
+  for (let k = 0; k <= 8; k++) {
+    const u = -0.48 + k * 0.12;
+    grid.push([
+      [u, 0, 1.6],
+      [u, 0, 13.6],
+    ]);
+  }
+  for (const z of [4.6, 7.6, 10.6]) {
+    grid.push([
+      [-0.48, 0, z],
+      [0.48, 0, z],
+    ]);
+  }
+  for (const line of grid) polyline(c, line, C.galvanized, 0.45);
+  for (const u of [-0.48, 0.48]) strut(c, [u, 0, 1.6], [u, 0, 13.8], C.stainlessDark, 1.2);
+  strut(c, [-0.48, 0, 13.8], [0.48, 0, 13.8], C.stainlessDark, 1.1);
+  strut(c, [-0.48, 0, 1.6], [0.48, 0, 1.6], C.stainlessDark, 0.9);
+  // Rot-weißes Warnband in der Mitte
+  for (let k = 0; k < 4; k++)
+    c.wallV(-0.4 + k * 0.2, 0.002, 7, 0.1, 1.2, k % 2 ? C.white : C.signalRed);
+  return c.svg();
+}
+
 /** Straßen-Objekte und Fahrzeuge (`city`-Atlas). */
 export function citySprites(): SpriteDef[] {
   const out: SpriteDef[] = [
@@ -2924,6 +3062,12 @@ export function citySprites(): SpriteDef[] {
     { name: 'scooters', svg: scooters() },
     { name: 'bistro-0', svg: bistro(0) },
     { name: 'bistro-1', svg: bistro(1) },
+    ...LOT_BIKES.map((b, i) => ({ name: `lot-bike-${String(i)}`, svg: lotBike(b) })),
+    { name: 'lot-loop', svg: lotLoop() },
+    ...LOT_MOPEDS.map((m, i) => ({ name: `lot-moped-${String(i)}`, svg: moped(m) })),
+    { name: 'lot-sign', svg: parkingSign() },
+    { name: 'lot-charger', svg: charger() },
+    { name: 'lot-fence', svg: fence() },
   ];
   CARS.forEach((s, i) => {
     out.push({ name: `car-${String(i)}-f`, svg: car(s, 'f') });
