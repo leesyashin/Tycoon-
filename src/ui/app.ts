@@ -41,6 +41,7 @@ import { fmt, fmtDays, fmtMoney, fmtTime } from './format';
 import type { OfflineResult } from '@core/economy';
 import { UI_CONFIG } from '@data/ui';
 import type { SfxId } from '@data/audio';
+import type { SceneCover } from '@scenes/registry';
 
 export interface AppOptions {
   root: HTMLElement;
@@ -60,6 +61,8 @@ export interface App {
   /** Nach einem kaputten Spielstand: neueste lesbare Sicherung anbieten (PLAN S9 „Robustheit“). */
   offerBackupAfterLoadFailure(): Promise<void>;
   pwa: PwaHooks;
+  /** Was HUD, Panel, Leiste oder ein Dialog gerade von der Szene verdecken. */
+  sceneCover(): SceneCover;
 }
 
 export function applyDocumentLang(lang: Lang): void {
@@ -536,7 +539,29 @@ export function startApp(o: AppOptions): App {
     }
   }
 
+  /**
+   * Vollbild-Screen oder Dialog: Die Szene ist nicht zu sehen. Sonst verdecken das HUD oben, die Leiste unten und ein
+   * Panel – im Hochformat als Sheet über die ganze Breite (unten), ab Tablet-Breite als Karte rechts.
+   */
+  const sceneCover = (): SceneCover => {
+    const full = { full: true, top: 0, right: 0, bottom: 0 };
+    if (root.querySelector('dialog[open], .panel--screen')) return full;
+    const w = window.innerWidth;
+    const hgt = window.innerHeight;
+    const top = Math.max(0, hudSlot.getBoundingClientRect().bottom);
+    const bar = root.querySelector('[data-testid="actionbar"]')?.getBoundingClientRect();
+    let bottom = bar && bar.height > 0 ? Math.max(0, hgt - bar.top) : 0;
+    let right = 0;
+    const panel = panels.el.querySelector('.panel')?.getBoundingClientRect();
+    if (panel && panel.height > 0) {
+      if (panel.left <= 1 && panel.right >= w - 1) bottom = Math.max(bottom, hgt - panel.top);
+      else right = Math.max(0, w - panel.left);
+    }
+    return { full: false, top, right, bottom };
+  };
+
   return {
+    sceneCover,
     openStation: (id) =>
       panels.open(
         id.startsWith('ambience:') ? ambienceReq(id.slice('ambience:'.length)) : stationReq(id),

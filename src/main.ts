@@ -5,6 +5,7 @@ import { progressionStep } from '@core/progression';
 import { skipTutorial } from '@core/tutorial';
 import { UI_CONFIG } from '@data/ui';
 import type { GameHandle } from './game';
+import type { SceneCover } from '@scenes/registry';
 import { SAVE_KEY, loadWithOffline, serialize } from '@core/save';
 import type { OfflineResult } from '@core/economy';
 import { applyDocumentLang, startApp } from '@ui/app';
@@ -86,6 +87,7 @@ gameEl?.setAttribute('aria-label', t('scene.label'));
 let game: GameHandle | null = null;
 const root = document.getElementById('ui');
 let openStation: (id: string) => void = () => undefined;
+let sceneCover: () => SceneCover = () => ({ full: false, top: 0, right: 0, bottom: 0 });
 if (root) {
   const app = startApp({
     root,
@@ -99,6 +101,7 @@ if (root) {
     },
   });
   openStation = (id) => app.openStation(id);
+  sceneCover = () => app.sceneCover();
   // Nicht im Dev-Server: dort gibt es keinen Service Worker (und e2e soll nichts cachen).
   if (import.meta.env.PROD) startPwa(app.pwa);
   if (loadFailed) {
@@ -125,6 +128,7 @@ whenIdle(() => {
       onSfx: (id) => audio.play(id),
       onOpenStation: (id) => openStation(id),
       onReady: hideSplash,
+      sceneCover: () => sceneCover(),
     });
   });
 });

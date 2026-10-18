@@ -78,7 +78,7 @@ import { CityView } from './city/CityView';
 import { ParkingView } from './city/ParkingView';
 import { TILE_H, TILE_W, isoDepth, toGrid, toScreen } from './iso/iso';
 import { ART_SCALE, ATLAS, CHAR_FOOT_ORIGIN_Y, CHAR_OVERLAY_Y, FRAME, atlasUrls } from './art';
-import { REGISTRY, UI_EVENTS, getStore } from './registry';
+import { REGISTRY, UI_EVENTS, getSceneCover, getStore } from './registry';
 
 const WALL_H = 64;
 const FRONT_WALL_H = 16;
@@ -220,6 +220,8 @@ export class CafeScene extends Phaser.Scene {
   private crowd!: CustomerCrowd;
   private city!: CityView;
   private controls!: CameraControls;
+  /** Neue Parkplatz-Stufe, die noch gezeigt werden will (Mitte des Platzes in Weltkoordinaten). */
+  private parkingReveal: { x: number; y: number } | null = null;
   private stations: StationView[] = [];
   private tables: TableView[] = [];
   private counters: CounterView[] = [];
@@ -364,6 +366,7 @@ export class CafeScene extends Phaser.Scene {
     this.lastDelivered = 0;
     this.lastBills = 0;
     this.matchaOut = null;
+    this.parkingReveal = null;
   }
 
   /** Themen-Atlas nur für den aktiven Standort laden (Lazy-Loading je Standort). */
@@ -534,6 +537,7 @@ export class CafeScene extends Phaser.Scene {
       this.refreshNight(state);
       this.refreshBoard();
     }
+    if (this.parkingReveal) this.revealParking();
     const loc = getLocation(state, this.locationId);
     this.watchSupplyAndBills(loc);
     // Mit Debug-Spawn kommen mehr Figuren, als `core` bucht: dann bezahlen sie im eigenen Takt (nur Optik).
@@ -641,6 +645,7 @@ export class CafeScene extends Phaser.Scene {
 
   /** Ganzer Raum sichtbar, auch im Hochformat. */
   private fitCamera(): void {
+    this.controls.cancelTour();
     const r = this.room;
     const zoom = Math.min(
       this.scale.width / (r.width + TILE_W),
@@ -660,6 +665,8 @@ export class CafeScene extends Phaser.Scene {
    */
   private onResize(size: Phaser.Structs.Size, prevWidth: number, prevHeight: number): void {
     if (size.width === prevWidth && size.height === prevHeight) return;
+    // Ein laufender Schwenk endet am Ausschnitt von vorher, sonst bliebe die Kamera am Parkplatz stehen.
+    this.controls.cancelTour(true);
     if (this.controls.userMoved()) this.controls.keepCenter(prevWidth, prevHeight);
     else this.fitCamera();
   }
@@ -1358,13 +1365,33 @@ export class CafeScene extends Phaser.Scene {
     this.city.setNight(night);
   }
 
-  /** Parkplatz-Ausbau: neue Stufe mit Funken über dem Platz. */
+  /** Parkplatz-Ausbau: Die neue Stufe zeigt `revealParking`, sobald die Szene zu sehen ist. */
   private refreshParking(state: GameState): void {
     const level = getLocation(state, this.locationId).ambience['parking'] ?? 0;
-    if (this.parking.setLevel(level) && !reducedMotion()) {
-      const c = this.parking.center();
-      this.sparkles.explode(SCENE_FX.newLookSparkles, c.x, c.y - 10);
-    }
+    if (this.parking.setLevel(level) && !reducedMotion())
+      this.parkingReveal = this.parking.center();
+  }
+
+  /**
+   * Gekauft wird meist im Shop, der die Szene ganz verdeckt: Erst wenn sie wieder zu sehen ist, schwenkt die Kamera
+   * kurz zum Parkplatz (mitten in den freien Teil neben HUD und Panel), Funken über der neuen Stufe, dann zurück an
+   * den Ausschnitt des Spielers (Vorgabe Vincent).
+   */
+  private revealParking(): void {
+    const c = this.parkingReveal;
+    const cover = getSceneCover(this);
+    if (!c || cover.full) return;
+    this.parkingReveal = null;
+    const cam = this.cameras.main;
+    const view = new Phaser.Geom.Rectangle(
+      0,
+      cover.top,
+      Math.max(1, cam.width - cover.right),
+      Math.max(1, cam.height - cover.top - cover.bottom),
+    );
+    this.controls.showAndReturn(c, view, () =>
+      this.sparkles.explode(SCENE_FX.newLookSparkles, c.x, c.y - 10),
+    );
   }
 
   /** Neue Lieferungen: der Wagen fährt vor; neue Kosten-Abbuchungen: „−Betrag“ über der Kasse. */
