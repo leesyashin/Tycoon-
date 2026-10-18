@@ -1,5 +1,5 @@
 /**
- * Wetter (GAME_DESIGN § 12.1): rein kosmetisch, ändert keine Rate. Jeder Spieltag hat je Standort eine feste Art –
+ * Wetter (GAME_DESIGN § 12.4): rein kosmetisch, ändert keine Rate. Jeder Spieltag hat je Standort eine feste Art –
  * Sonne, Wolken oder Regen –, an Regentagen mit einem Schauer, der sanft einsetzt und aufhört. Events legen das
  * Wetter fest (Regentag, Hitzewelle).
  */
@@ -51,8 +51,8 @@ export const WEATHER_FX = {
   rainDensity: 0.0009,
   /** Wolkenschatten an bewölkten Tagen: Anzahl, Größe (Welt-Pixel), Deckkraft, Wind (Welt-Pixel je Sekunde). */
   shadows: 4,
-  shadowSize: { w: 1100, h: 560 },
-  shadowAlpha: 0.13,
+  shadowSize: { w: 900, h: 460 },
+  shadowAlpha: 0.24,
   shadowWind: { x: 16, y: 6 },
   /** Ab dieser Regenstärke spannen Gäste draußen den Schirm auf und meiden die Terrasse. */
   umbrellaFrom: 0.25,

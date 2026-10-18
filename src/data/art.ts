@@ -336,6 +336,9 @@ export const CHATTER: {
   readonly sideOffset: number;
   readonly popSec: number;
   readonly fadeSec: number;
+  readonly bubblePx: number;
+  readonly bubbleScale: number;
+  readonly zoomScaleMax: number;
 } = {
   bubbleSec: 1.7,
   /** Blasen gleichzeitig (über alle Figuren), damit es nicht wimmelt. */
@@ -358,6 +361,13 @@ export const CHATTER: {
   /** Aufploppen (Sekunden) und Ausblenden am Ende. */
   popSec: 0.16,
   fadeSec: 0.3,
+  /**
+   * Größe: Emote-Sprites sind `bubblePx` logische Pixel groß, Gesprächsblasen etwas größer (`bubbleScale`) und wachsen
+   * beim Herauszoomen bis `zoomScaleMax` mit (Handy-Startansicht ≈ 0,5: gut 17 px auf dem Bildschirm).
+   */
+  bubblePx: 14,
+  bubbleScale: 1.25,
+  zoomScaleMax: 2.2,
 };
 
 /** Frames der Gäste: Stehen, Laufen, mit Becher/Teller/Geschirr in der Hand (Selbstbedienung); dazu die Sitzpose. */

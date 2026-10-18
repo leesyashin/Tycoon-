@@ -3,7 +3,7 @@ import type { GameState } from './GameState';
 import { isEventRunning } from './events/effects';
 import { dayOf, minuteOfDay } from './time/clock';
 
-/** Wetter zu einer Spieluhr-Zeit (rein kosmetisch, GAME_DESIGN § 12.1). */
+/** Wetter zu einer Spieluhr-Zeit (rein kosmetisch, GAME_DESIGN § 12.4). */
 export interface Weather {
   kind: WeatherKind;
   /** Regenstärke 0..1: Schauer setzen sanft ein und hören sanft auf. */

@@ -662,6 +662,37 @@ und Szene: UI_STYLE § 3.13–§ 3.17 und § 4. Save-Schema v11 migriert alte Sp
 - [x] Doku (GAME_DESIGN, PLAN, UI_STYLE, STATUS, ASSETS, CHANGELOG, README) und Screenshots DE/EN in `docs/screenshots/realistisches-cafe/`.
 - [ ] Tutorial-Testlauf durch Vincent (10 Schritte) und Gerätetest am Handy (60 fps, Lighthouse) – offen wie S12.
 
+### Phase 3b – Leben in der Szene (Folgerunde, 2026-10-18)
+
+> Vincents Antworten (Pop-up-Fragen nach PR #25): Abwesenheit „2 Spieltage Basis (Empfohlen)“ – „Ohne Filialleiter
+> 2 Spieltage, mit Filialleiter bis 6. Nach einer Nacht weg bringt das etwa einen Tagesgewinn.“; Tempo „Erst testen“;
+> Kamera „Kurz hin und zurück (Empfohlen)“ – „Schwenk zum Parkplatz, dann zurück an deine Position.“; als Nächstes
+> „Feinschliff nach deinem Test“ und „Mehr Leben in der Szene“ – „Z. B. Gäste unterhalten sich, Stammgäste, Wetter,
+> Lieferant mit Sackkarre.“
+
+Branch `claude/cafe-game-optimization-1xjrap`, neu ab `main` mit PR #25 (`908a831`), PR #26. Das Tempo des Spiels bleibt
+unverändert, bis Vincent getestet hat; der Feinschliff nach seinem Test ist die nächste Runde.
+
+| Commit | Bereich | Inhalt |
+|---|---|---|
+| `72f2859` feat(offline) | Kern, Daten, i18n, Tests | Abwesenheit als Tabelle je Filialleiter-Stufe (2/4/5/6 Spieltage), Effekt-Text aus den Daten |
+| `c78c1a4` feat(scene) | Szene, UI, e2e | Kamera-Schwenk zum Parkplatz nach dem Ausbau und zurück (wartet, bis die Szene zu sehen ist; `SceneCover`) |
+| `6dacf1a` feat(scene) | Kern, Daten, Szene, Sprites, HUD | Wetter (`core/weather.ts`), Gespräche (`Chatter`), Stammgäste (`data/regulars.ts`), Lieferant mit Sackkarre (`COURIER`), Schirme, HUD-Himmel |
+| `8c4a80a` perf(scene) | Szene | Regen als Partikel statt bildschirmfüllender Ebenen, grauer Himmel im Nachtfilter |
+| `c4a4478` test(e2e) | e2e | Schwenk-Test wartet auf die Halt-Phase, axe scannt fertig eingeblendete Toasts (beides war auf dem CI-Runner rot) |
+
+### Abnahme-Checkliste (Phase 3b)
+
+- [x] Abwesenheit: ohne Filialleiter 2 Spieltage, mit Filialleiter 4/5/6 (`BALANCE.offline.capDaysByManagerLevel`); Sim: 8 h weg nach 1 h Spielzeit = 0,93× eines Tagesgewinns.
+- [x] Kamera schwenkt nach dem Parkplatz-Ausbau kurz zum Parkplatz (sobald die Szene nicht mehr vom Shop verdeckt ist, mitten in den freien Bildteil, leicht heran) und kehrt an Ausschnitt und Zoom des Spielers zurück; Ziehen oder Zoomen bricht ab (e2e).
+- [x] Gäste unterhalten sich: Paare am Tisch und auf den Barhockern abwechselnd in Sprechblasen, Allein-Sitzende mit Handy oder Matcha, Plausch in der Schlange; Wetter als Thema, Herzen nach Zufriedenheit; höchstens 6 Blasen (Unit-Tests).
+- [x] Stammgäste: vier feste Figuren mit Namen je Stadt, einmal am Tag zu ihrer Stunde; winken an der Tür, Name über dem Kopf, die Kasse grüßt zurück (Unit-Tests, e2e).
+- [x] Wetter je Stadt und Spieltag (Sonne, Wolken, Regen mit Schauer), Events legen es fest; Regen, grauer Himmel, Wolkenschatten, Schirme, keine neuen Terrassen-Gäste bei Regen; HUD zeigt den Himmel; keine Rate ändert sich (Unit-Tests, e2e).
+- [x] Lieferant schiebt die Kartons der Lieferung (1–3 nach Gramm) auf der Sackkarre zur Tür und die leere Karre zurück (e2e).
+- [x] Sprites selbst gezeichnet (CC0, ASSETS.md), Farben über Tokens (`--c-overcast`, `--c-rain`), alle Texte DE/EN, kein Balancing-Wert im Code, keine neue Abhängigkeit, Save-Schema unverändert (Wetter ohne Zustand).
+- [x] `pnpm check` grün (572 Unit-Tests), 44 e2e grün, `pnpm build` grün; „weniger Bewegung“ ohne Regen-Partikel und Schwenk.
+- [ ] Vincent testet (Tempo, Gefühl am Handy) – danach Feinschliff.
+
 
 ## 4. Übergabe-Protokoll zwischen Sessions
 

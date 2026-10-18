@@ -39,7 +39,7 @@ function ensureTextures(scene: Phaser.Scene): void {
       const r = SHADOW_TEX / 2;
       const g = ctx.createRadialGradient(r, r, 0, r, r, r);
       g.addColorStop(0, rgba(UI_THEME.surface, 1));
-      g.addColorStop(0.55, rgba(UI_THEME.surface, 0.75));
+      g.addColorStop(0.6, rgba(UI_THEME.surface, 0.9));
       g.addColorStop(1, rgba(UI_THEME.surface, 0));
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, SHADOW_TEX, SHADOW_TEX);
@@ -60,7 +60,7 @@ export interface WeatherDepths {
 }
 
 /**
- * Wetter in der Szene (rein kosmetisch, GAME_DESIGN § 12.1, UI_STYLE § 4 „Wetter“): Regentropfen als Partikel – nur
+ * Wetter in der Szene (rein kosmetisch, GAME_DESIGN § 12.4, UI_STYLE § 4 „Wetter“): Regentropfen als Partikel – nur
  * die Streifen werden gezeichnet, keine bildschirmfüllende Ebene – und Wolkenschatten, die an bewölkten Tagen über
  * die Dächer ziehen. Der Regen lebt in Bildschirm-Pixeln (Emitter ohne Scroll, Maßstab 1/Zoom): Tropfen sind in
  * jeder Zoomstufe gleich groß und gleich dicht. Bei „weniger Bewegung“ fällt kein Regen und die Schatten stehen; den
@@ -73,6 +73,7 @@ export class WeatherView {
   private readonly shadows: Phaser.GameObjects.Image[] = [];
   private viewKey = '';
   private shadowAlpha = -1;
+  private shadowsPlaced = false;
   private raining = false;
 
   constructor(
@@ -97,15 +98,11 @@ export class WeatherView {
       })
       .setScrollFactor(0)
       .setDepth(depth.rain);
-    const b = bounds;
     const s = fx.shadowSize;
     for (let i = 0; i < fx.shadows; i++) {
-      // Gleichmäßig über das Viertel verteilt, leicht versetzt in der Höhe.
-      const x = b.x + ((i + 0.5) / fx.shadows) * b.width;
-      const y = b.y + (((i * 0.618034) % 1) * 0.8 + 0.1) * b.height;
       this.shadows.push(
         scene.add
-          .image(x, y, SHADOW_KEY)
+          .image(0, 0, SHADOW_KEY)
           .setDisplaySize(s.w, s.h)
           .setTint(UI_THEME.ink)
           .setDepth(depth.shadows)
@@ -140,17 +137,49 @@ export class WeatherView {
       this.shadowAlpha = shadow;
       for (const s of this.shadows) s.setAlpha(shadow).setVisible(shadow > 0.002);
     }
-    if (still || !this.shadows[0]?.visible) return;
-    const b = this.bounds;
+    if (!this.shadows[0]?.visible) return;
+    const r = this.shadowArea();
     const hw = fx.shadowSize.w / 2;
     const hh = fx.shadowSize.h / 2;
-    for (const s of this.shadows) {
-      s.x += fx.shadowWind.x * dt;
-      s.y += fx.shadowWind.y * dt;
-      // Rechts bzw. unten hinaus, links bzw. oben wieder herein.
-      if (s.x - hw > b.right) s.x = b.left - hw;
-      if (s.y - hh > b.bottom) s.y = b.top - hh;
+    if (!this.shadowsPlaced) {
+      // Zu Beginn über den Ausschnitt verteilt, damit gleich einer zu sehen ist.
+      this.shadowsPlaced = true;
+      this.shadows.forEach((s, i) =>
+        s.setPosition(
+          r.left + ((i + 0.5) / this.shadows.length) * r.width,
+          r.top + (((i * 0.618034) % 1) * 0.8 + 0.1) * r.height,
+        ),
+      );
     }
+    for (const s of this.shadows) {
+      if (!still) {
+        s.x += fx.shadowWind.x * dt;
+        s.y += fx.shadowWind.y * dt;
+      }
+      // Hinausgezogen (oder die Kamera ist weitergewandert): gegen den Wind neben dem Ausschnitt neu ansetzen.
+      if (s.x - hw > r.right || s.y - hh > r.bottom || s.x + hw < r.left || s.y + hh < r.top) {
+        s.setPosition(r.left - hw * 0.9, r.top + Math.random() * r.height);
+      }
+    }
+  }
+
+  /**
+   * Gebiet, in dem Wolkenschatten ziehen: der Kamera-Ausschnitt plus eine Schattengröße ringsum, innerhalb des
+   * Viertels. So sind an bewölkten Tagen immer ein paar im Bild, egal wohin geschoben wurde.
+   */
+  private shadowArea(): Phaser.Geom.Rectangle {
+    const v = this.scene.cameras.main.worldView;
+    const s = WEATHER_FX.shadowSize;
+    const r = new Phaser.Geom.Rectangle(
+      v.x - s.w / 2,
+      v.y - s.h / 2,
+      v.width + s.w,
+      v.height + s.h,
+    );
+    const b = this.bounds;
+    // Der schlanke Phaser-Build hat keine Rechteck-Helfer (`Intersection`): Überlappung von Hand.
+    const overlaps = r.right > b.left && r.left < b.right && r.bottom > b.top && r.top < b.bottom;
+    return overlaps ? r : b;
   }
 
   /**

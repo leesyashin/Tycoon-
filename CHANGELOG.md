@@ -4,6 +4,19 @@ Alle nennenswerten Änderungen an Matcha Café Empire. Format angelehnt an [Keep
 
 ## [Unreleased]
 
+### Leben in der Szene: Wetter, Gespräche, Stammgäste, Lieferant (2026-10-18)
+
+Vincents Antworten auf die Rückfragen: Abwesenheit „2 Spieltage Basis“, Kamera nach dem Parkplatz-Ausbau „kurz hin und
+zurück“, als Nächstes „mehr Leben in der Szene“ (Gäste unterhalten sich, Stammgäste, Wetter, Lieferant mit Sackkarre); das
+Tempo bleibt, bis er getestet hat.
+
+- **Länger weg:** Ohne Filialleiter läuft dein Café jetzt bis zu zwei Spieltage ohne dich weiter (vorher einen) – nach einer Nacht weg bringt das etwa einen Tagesgewinn. Mit Filialleiter bis zu vier, fünf bzw. sechs Spieltage.
+- **Kamera-Schwenk zum Parkplatz:** Nach dem Ausbau des Parkplatzes schwenkt die Kamera kurz hin, zeigt die neue Stufe mit Funken und kehrt dann genau an deinen Ausschnitt zurück. Wer währenddessen selbst zieht oder zoomt, übernimmt die Kamera sofort.
+- **Wetter:** Jeder Tag hat in jeder Stadt sein Wetter – Sonne, Wolken oder Regen mit einem Schauer, der sanft einsetzt. Bei Regen fallen Tropfen über der ganzen Stadt, der Himmel wird grau, Gäste draußen spannen Schirme auf und niemand setzt sich auf die Terrasse; an bewölkten Tagen ziehen Wolkenschatten über die Dächer. Im HUD zeigt die Uhr Sonne, Mond, Wolke oder Regen. Das Wetter ist nur zum Anschauen und ändert keine Einnahmen; beim Regentag-Event regnet es den ganzen Tag, bei der Hitzewelle scheint die Sonne.
+- **Gäste unterhalten sich:** Wer zu zweit am Tisch oder nebeneinander an der Theke sitzt, redet in Sprechblasen – Lachen, Matcha, Handy-Fotos, das Wetter, Herzen, wenn es ihnen gefällt. Wer allein sitzt, schaut ab und zu aufs Handy, in der Schlange plaudern Nachbarn.
+- **Stammgäste:** Jede Stadt hat vier Stammgäste mit Namen, die jeden Tag zu ihrer Uhrzeit kommen – in Berlin Lena um 8, Jonas um 11, Ali um 13 und Mila um 16 Uhr. An der Tür winken sie, ihr Name steht kurz über ihnen, und an der Kasse wird mit einem Herz zurückgegrüßt.
+- **Lieferant mit Sackkarre:** Bei jeder Matcha-Lieferung steigt der Fahrer aus, schiebt die Kartons auf der Sackkarre zur Tür (je nach Bestellung einer bis drei) und die leere Karre zurück.
+
 ### Realistisches Café: Tag und Nacht, Euro-Preise, Matcha-Einkauf, Social Media, Parkplatz (2026-10-16)
 
 Vorgabe Vincent: Das Spiel in allen Hinsichten verbessern – Arbeiter, die an den Geräten wirklich etwas tun und das Tablett

@@ -2394,9 +2394,9 @@ export class CafeScene extends Phaser.Scene {
 
   /** Sprechblasen der Gespräche (`Chatter`): ploppen auf, folgen der Figur, blenden am Ende aus. */
   private syncChat(): void {
-    const f = Phaser.Math.Clamp(1 / this.cameras.main.zoom, 1, LABEL_MAX_SCALE);
-    const still = reducedMotion();
     const c = CHATTER;
+    const f = Phaser.Math.Clamp(1 / this.cameras.main.zoom, 1, c.zoomScaleMax);
+    const still = reducedMotion();
     let used = 0;
     for (const b of this.chatter.bubbles) {
       if (b.age < 0) continue;
@@ -2409,8 +2409,8 @@ export class CafeScene extends Phaser.Scene {
       const pop = still ? 1 : Math.min(1, b.age / c.popSec);
       const fade = Phaser.Math.Clamp((b.life - b.age) / c.fadeSec, 0, 1);
       img
-        .setPosition(at.x + c.sideOffset, at.y)
-        .setScale(ART_SCALE * f * (0.55 + 0.45 * pop))
+        .setPosition(at.x + c.sideOffset * f, at.y)
+        .setScale(ART_SCALE * c.bubbleScale * f * (0.55 + 0.45 * pop))
         .setAlpha(fade * at.alpha)
         .setVisible(true);
     }
@@ -2420,6 +2420,9 @@ export class CafeScene extends Phaser.Scene {
     }
     const now = this.time.now;
     for (const l of this.regularLabels) {
+      // An der Kasse blendet der Name aus, sonst läge er auf dem „+Betrag“ beim Bezahlen.
+      if (this.crowd.agents[l.agent]?.phase === 'order')
+        l.until = Math.min(l.until, now + c.fadeSec * 1000);
       const at = l.until > now ? this.bubbleAnchor(l.agent) : null;
       if (!at) {
         if (l.text.visible) l.text.setVisible(false);
@@ -2427,9 +2430,10 @@ export class CafeScene extends Phaser.Scene {
       }
       // Über der Blase, damit Name und Winken zusammen zu lesen sind.
       const left = (l.until - now) / 1000;
+      const label = Math.min(f, LABEL_MAX_SCALE);
       l.text
-        .setScale(f)
-        .setPosition(at.x, at.y - 15 * f)
+        .setScale(label)
+        .setPosition(at.x, at.y - (c.bubblePx * c.bubbleScale + 2) * f)
         .setAlpha(Math.min(1, left / c.fadeSec) * at.alpha)
         .setVisible(true);
     }

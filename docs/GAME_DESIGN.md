@@ -7,6 +7,8 @@
 > Social Media statt Kampagnen, Parkplatz. § 1–§ 18 beschreiben jetzt dieses Spiel; neu sind § 7.6 (Spieluhr und Öffnungszeiten)
 > und § 7.7 (laufende Kosten und Tagesbilanz), § 8 (Matcha-Einkauf) und § 9 (Social Media) ersetzen Qualitätsstufen und Marketing.
 > Was ersetzt wurde, steht je Abschnitt in einer Zeile „Bis Phase 2“. PLAN.md „Phase 3“ erklärt den Wechsel.
+> Phase 3b (2026-10-18, Leben in der Szene): Abwesenheit 2 Spieltage, mit Filialleiter bis 6 (§ 6, § 14); neu § 7.8 (Gespräche,
+> Stammgäste, Lieferant) und § 12.4 (Wetter) – alles kosmetisch, keine Rate ändert sich.
 > Code-Bezeichner sind englisch, Spieltexte kommen aus `de.json`/`en.json`.
 
 ---
@@ -354,7 +356,7 @@ erzwingen.
 |---|---|---|---|
 | Student | 40 % | Rucksack, Laptop | neutral |
 | Tourist | 25 % | Kamera, Hut | Kuchenvitrine: `attach × (1 + 0,5 × Touristen-Anteil)` |
-| Stammgast | 20 % | wiederkehrendes Sprite | +10 % Trinkgeld |
+| Stammgast | 20 % | wiederkehrendes Sprite; dazu vier feste Stammgäste mit Namen je Stadt (§ 7.8) | +10 % Trinkgeld |
 | Influencer | 10 % | Handy, Ringlicht | löst 5 s „Hype“ aus (×1,5 Nachfrage, echte Sekunden), 1 % Chance auf 1 Goldenes Blatt |
 | Kritiker | 5 % | Notizbuch | Zufriedenheit zählt doppelt beim Trinkgeld (positiv wie negativ) |
 
@@ -407,6 +409,24 @@ Trinkgeld, 269,62 € Kosten, 481,35 € Gewinn (dazu 149,62 € Boni); Tag 29 (
 10 835 € Kosten, 31 295 € Gewinn.
 
 ---
+
+### 7.8 Leben in der Szene (Phase 3b, kosmetisch)
+
+Die Figuren bleiben Optik; gerechnet wird nur im Rate-Modell (§ 7.2). Was die Szene lebendiger macht:
+
+- **Gespräche** (`scenes/agents/chatter.ts`, `CHATTER` in `data/art.ts`): Zwei Gäste am selben Tisch oder auf benachbarten
+  Barhockern reden abwechselnd in Sprechblasen (Pünktchen, Lachen, Matcha, Handy, Note, Herz; alle 1,2–2,6 s ein Beitrag, ab
+  und zu eine längere Pause). Wer allein sitzt, schaut alle 12–24 s aufs Handy oder freut sich über den Matcha; in der Schlange
+  plaudern alle 6–13 s zwei Nachbarn kurz. Das Wetter ist Thema (Sonne bzw. Regen, § 12.4), Herzen gibt es umso öfter, je
+  zufriedener die Gäste sind (unter 20 % keine). Höchstens 6 Blasen gleichzeitig.
+- **Stammgäste** (`data/regulars.ts`): je Stadt vier feste Figuren mit Namen, Aussehen und Uhrzeit (Berlin: Lena 8 Uhr, Jonas
+  11 Uhr, Ali 13 Uhr, Mila 16 Uhr; Kyoto, Tokio, Seoul, New York und Bali eigene). Kommt in den ersten 50 Spielminuten ihrer
+  Stunde ein neuer Gast, ist es der Stammgast – höchstens einmal am Spieltag und nur, wenn das Café dann geöffnet hat. An der
+  Tür winkt er, „Stammgast Lena“ steht 3 s über ihm, die Kasse grüßt mit einem Herz zurück. Wer beim Szenenstart schon ansteht,
+  ist kein Stammgast (er soll sichtbar hereinkommen).
+- **Lieferant mit Sackkarre** (`COURIER`): Bei jeder Matcha-Lieferung steigt der Fahrer aus dem Lieferwagen, schiebt die Kartons
+  (bis 500 g einer, bis 2 kg zwei, darüber drei) auf der Sackkarre zur Tür, gibt sie ab („Matcha geliefert!“) und schiebt die
+  leere Karre zurück; dann fährt der Wagen weiter.
 
 ## 8. Matcha-Einkauf und Sorten (Phase 3)
 
@@ -567,6 +587,15 @@ Kalender-Events sind rein lokal und bewusst ohne Serverzeit; Manipulation durch 
 ### 12.3 Boost-Stacking
 Boost-Typen: `income`, `spawn`, `speed`. Gleicher Typ aus gleicher Quelle verlängert statt zu stapeln. Verschiedene Quellen (Event, Blätter-Boost, Hype) multiplizieren sich. Maximaler Gesamt-Multiplikator pro Typ: ×12 (Schutz vor Exploits).
 
+### 12.4 Wetter (Phase 3b, kosmetisch)
+`core/weather.ts` (rein, ohne Zustand, nichts im Spielstand) bestimmt aus Standort und Spieltag das Wetter: Sonne, Wolken oder
+Regen nach dem Klima der Stadt (`CLIMATE` in `data/weather.ts`, Berlin 40/35/25 %, Bali 50/15/35 %; derselbe Tag hat immer
+dasselbe Wetter). Regentage haben einen Schauer, der zwischen 7 und 16 Uhr beginnt, 2–6 Spielstunden dauert und über 25
+Spielminuten sanft einsetzt und aufhört; davor und danach ist es bewölkt. Der erste Spieltag ist immer sonnig. Events legen das
+Wetter fest: Beim Regentag regnet es durchgehend, bei der Hitzewelle scheint die Sonne. Das Wetter ändert **keine Rate** – die
+Wirkung des Regentags bleibt beim Event (§ 12.1). Die Szene zeigt Regentropfen, grauen Himmel, Wolkenschatten, Schirme für Gäste
+draußen und lässt bei Regen niemanden neu auf die Terrasse; das HUD zeigt Sonne, Mond, Wolke oder Regen (UI_STYLE § 4).
+
 ---
 
 ## 13. Achievements und Quests
@@ -669,7 +698,7 @@ Sim ab Tag 1 durchgehend). Noch ohne Richtwert und im Sim nicht geprüft: die Ab
 
 ## 16. UI-Screens
 
-1. **Café-Ansicht** (Phaser) + **HUD** (DOM): Geld in €, 🍃, Spieltag und Uhr mit „Geöffnet/Geschlossen“ (antippen → Betrieb), Umsatz pro Stunde bzw. Gewinn heute, Zufriedenheit, Standort, Matcha-Sorte, Hinweise (Engpass, Matcha knapp/aus, Konto im Minus), Boost-Timer, Event-Banner
+1. **Café-Ansicht** (Phaser) + **HUD** (DOM): Geld in €, 🍃, Spieltag und Uhr mit Wetter-Symbol (Sonne, Mond, Wolke, Regen) und „Geöffnet/Geschlossen“ (antippen → Betrieb), Umsatz pro Stunde bzw. Gewinn heute, Zufriedenheit, Standort, Matcha-Sorte, Hinweise (Engpass, Matcha knapp/aus, Konto im Minus), Boost-Timer, Event-Banner
 2. **Stations-Panel** (Bottom-Sheet): Ausstattung mit Bereich, Produkt auf der Karte und nächstes Produkt, Preis je Stück, Bestellungen je 100 Gäste, Zubereitungszeit, Umsatz/h, Kapazität und Auslastung der Stufe, Kosten, ×1/×5/Max, Optik-Vorschau, Personal-Hinweis
 3. **Shop-Übersicht**: Tabs Stationen / Ambiente (die Matcha-Sorten stehen im Einkauf)
 4. **Personal**: Teamkosten, Pipeline-Karte zur Hauptzeit (vier Stufen, Engpass), Liste mit Köpfen/Stufen, Lohn je Stunde und Tag, Effekt in Zahlen, Einstellen und Entlassen, Auto-Kauf
