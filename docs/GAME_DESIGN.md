@@ -230,7 +230,7 @@ Einarbeitung; Tagesbilanz „Einstellungen“); **Entlassen** geht jederzeit und
 | `waiter` | Bedienung | Anzahl | 1 | 4 | 13,90 € | 40 € | 0 | 0 | Übergabe und Tischservice: bis zu +6 Zufriedenheit und +3 % Trinkgeld, entlastet die Baristas (§ 7.2) |
 | `cleaner` | Putzkraft | Anzahl | 2 | 3 | 14,20 € | 40 € | 0 | 0 | putzt 5 Punkte/h × 2 × (1 − Sauberkeit/100) (§ 7.3) |
 | `socialMedia` | Social-Media-Manager | Stufe | 3 | 3 | 17 € + 4 € je weitere Stufe | 120 € je Stufe | 0 | 0 | postet täglich ein Video je Stufe (10, 14, 18 Uhr), +15 % Video-Reichweite je Stufe (§ 9) |
-| `manager` | Filialleiter | Stufe | 5 | 3 | 24 € + 5 € je weitere Stufe | 250 € je Stufe | 0 | 0 | +1 Spieltag Abwesenheit je Stufe (§ 14), ab Stufe 1 Auto-Kauf |
+| `manager` | Filialleiter | Stufe | 5 | 3 | 24 € + 5 € je weitere Stufe | 250 € je Stufe | 0 | 0 | Abwesenheit 4/5/6 statt 2 Spieltage (§ 14), ab Stufe 1 Auto-Kauf |
 
 **Gründungsteam** (Start, jede neue Filiale, jeder Franchise-Reset): **du selbst an der Kasse** (`owner: 1`, ohne Lohn, nicht
 kündbar) und **ein Barista**. Eine Bedienung gehört nicht mehr dazu: Ohne Bedienung holen die Gäste an der Theke selbst ab (§ 7.2).
@@ -611,7 +611,7 @@ costs/h               = wages (geöffnet) + served × goodsPerGuest + rent/24 + 
 matchaGrams/h         = served × Σ_i attach_i × matchaGrams_i
 dirt/h                = cleanliness.decayPerHour (2) + served × dirtPerCustomer (0.03)
 clean/h               = cleaners × cleanPerCleanerPerHour (5) × dirtFactor (2) × (1 − cleanliness/100)
-offlineCapDays        = min(4, 1 + manager.level)              (bester Filialleiter aller Standorte)
+offlineCapDays        = [2, 4, 5, 6][manager.level]            (bester Filialleiter aller Standorte; ohne 2, mit bis 6)
 offlineCap            = offlineCapDays × realSecondsPerDay(Öffnungszeiten des aktiven Cafés)    echte Zeit
 offlineRun            = min(elapsed, offlineCap) × offlineEfficiency    so viel echte Zeit läuft das Café (direkt gebucht)
 offlineEfficiency     = 0.5 + offlineEfficiency.level × 0.05          (max 1.0)

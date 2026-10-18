@@ -58,7 +58,7 @@
   "staff.cleaner.name": "Putzkraft",
   "staff.cleaner.effect": "Wischt Tische und Boden; je mehr Gäste, desto mehr Dreck.",
   "staff.manager.name": "Filialleiter",
-  "staff.manager.effect": "+1 Spieltag Abwesenheit je Stufe; ab Stufe 1 Auto-Kauf.",
+  "staff.manager.effect": "Hält das Café länger ohne dich am Laufen: bis {max} statt {base} Abwesenheit; ab Stufe 1 Auto-Kauf.",
   "staff.socialMedia.name": "Social-Media-Manager",
   "staff.socialMedia.effect": "Postet automatisch Videos (eins je Stufe am Tag) und macht jedes Video bekannter (+15 % Reichweite je Stufe).",
   "locations.title": "Standorte",

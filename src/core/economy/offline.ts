@@ -9,12 +9,12 @@ import { dayOf, realSecondsPerDay } from '../time/clock';
 
 /** Höchstens so viele Spieltage läuft das Café ohne dich (bester Filialleiter aller Standorte). */
 export function getOfflineCapDays(state: GameState): number {
-  const o = BALANCE.offline;
+  const table = BALANCE.offline.capDaysByManagerLevel;
   const manager = Object.values(state.locations).reduce(
     (m, l) => Math.max(m, l.staff['manager'] ?? 0),
     0,
   );
-  return Math.min(o.maxCapDays, o.baseCapDays + manager * o.perManagerDays);
+  return table[Math.min(table.length - 1, Math.max(0, Math.floor(manager)))] ?? table[0];
 }
 
 /** Deckel der Abwesenheit in echter Zeit: so lange dauern diese Spieltage mit den Öffnungszeiten des aktiven Cafés. */

@@ -58,7 +58,7 @@
   "staff.cleaner.name": "Cleaner",
   "staff.cleaner.effect": "Wipes tables and floors; more guests mean more dirt.",
   "staff.manager.name": "Branch manager",
-  "staff.manager.effect": "+1 game day away per level; auto-buy from level 1.",
+  "staff.manager.effect": "Keeps the café running longer without you: up to {max} away instead of {base}; auto-buy from level 1.",
   "staff.socialMedia.name": "Social media manager",
   "staff.socialMedia.effect": "Posts videos automatically (one per level each day) and boosts every video (+15 % reach per level).",
   "locations.title": "Locations",

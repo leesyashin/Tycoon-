@@ -119,14 +119,14 @@ export const BALANCE = {
   },
 
   /**
-   * Abwesenheit: Das Café läuft weiter, höchstens so viele Spieltage (Filialleiter je Stufe einen mehr) und zu
-   * diesem Anteil der Zeit (Zen). In Spieltagen statt Stunden, weil eine Spielstunde nur eine Minute dauert: Acht
-   * Stunden Schlaf wären sonst Wochen ohne Chef, mit leerem Lager und Löhnen.
+   * Abwesenheit: Das Café läuft weiter, höchstens so viele Spieltage und zu diesem Anteil der Zeit (Zen). In
+   * Spieltagen statt Stunden, weil eine Spielstunde nur eine Minute dauert: Acht Stunden Schlaf wären sonst Wochen
+   * ohne Chef, mit leerem Lager und Löhnen. Vorgabe Vincent: ohne Filialleiter 2 Spieltage – nach einer Nacht weg
+   * bringt das bei 50 % etwa einen Tagesgewinn –, mit Filialleiter bis 6.
    */
   offline: {
-    baseCapDays: 1,
-    perManagerDays: 1,
-    maxCapDays: 4,
+    /** Deckel in Spieltagen je Stufe des besten Filialleiters (Index = Stufe 0 … 3); die erste Stufe zählt doppelt. */
+    capDaysByManagerLevel: [2, 4, 5, 6],
     baseEfficiency: 0.5,
     maxEfficiency: 1,
   },

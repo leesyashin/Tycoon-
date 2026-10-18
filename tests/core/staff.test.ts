@@ -583,22 +583,25 @@ describe('Abnahme: Putzkräfte halten Zufriedenheit und Einnahmen stabil', () =>
 });
 
 describe('Filialleiter', () => {
-  it('Offline-Deckel in Spieltagen: + perManagerDays je Stufe, gedeckelt; der beste Filialleiter zählt', () => {
-    const o = BALANCE.offline;
-    expect(getOfflineCapDays(make())).toBe(o.baseCapDays);
-    expect(getOfflineCapDays(make({ staff: team({ manager: 1 }) }))).toBe(
-      o.baseCapDays + o.perManagerDays,
-    );
+  it('Offline-Deckel in Spieltagen: 2 ohne, bis 6 mit Filialleiter; der beste Filialleiter zählt', () => {
+    const table = BALANCE.offline.capDaysByManagerLevel;
     const max = getStaffDef('manager').maxLevel;
-    // Mit dem besten Filialleiter ist der Höchstwert genau erreichbar.
-    expect(getOfflineCapDays(make({ staff: team({ manager: max }) }))).toBe(o.maxCapDays);
-    expect(getOfflineCapDays(make({ staff: team({ manager: 100 }) }))).toBe(o.maxCapDays);
+    // Vorgabe Vincent: ohne Filialleiter 2 Spieltage, mit Filialleiter bis 6; jede Stufe bringt mehr.
+    expect(table).toHaveLength(max + 1);
+    expect(table[0]).toBe(2);
+    expect(table[max]).toBe(6);
+    for (let lvl = 1; lvl <= max; lvl++) {
+      expect(table[lvl]).toBeGreaterThan(table[lvl - 1] ?? Infinity);
+      expect(getOfflineCapDays(make({ staff: team({ manager: lvl }) }))).toBe(table[lvl]);
+    }
+    expect(getOfflineCapDays(make())).toBe(table[0]);
+    expect(getOfflineCapDays(make({ staff: team({ manager: 100 }) }))).toBe(table[max]);
     const s = make();
     const two = withLocation(s, 'kyoto', { ...loc(s), staff: team({ manager: 2 }) });
-    expect(getOfflineCapDays(two)).toBe(o.baseCapDays + 2 * o.perManagerDays);
+    expect(getOfflineCapDays(two)).toBe(table[2]);
     // In echter Zeit: so lange dauern die Spieltage mit den Öffnungszeiten des aktiven Cafés.
     const day = realSecondsPerDay(loc(s).hours) * 1000;
-    expect(getOfflineCapMs(s)).toBeCloseTo(o.baseCapDays * day, 6);
+    expect(getOfflineCapMs(s)).toBeCloseTo(table[0] * day, 6);
   });
 
   it('Auto-Kauf-Schalter geht nur mit Filialleiter an', () => {

@@ -20,6 +20,7 @@ import {
   setAutoBuy,
 } from '@core/staff';
 import { openHoursPerDay } from '@core/time/clock';
+import { BALANCE } from '@data/balance';
 import { SOCIAL } from '@data/social';
 import { STAFF_ROLES, type StaffRoleDef } from '@data/staff';
 import { h, on, setDisabled, setText, type View } from './dom';
@@ -54,6 +55,16 @@ function nowText(role: StaffRoleDef, s: GameState, loc: LocationState, r: Locati
         posts: Math.min(count, SOCIAL.managerPostHours.length),
       });
   }
+}
+
+/** Beschreibung der Rolle; beim Filialleiter mit den Spieltagen der Abwesenheit aus den Daten. */
+function effectText(role: StaffRoleDef): string {
+  if (role.id !== 'manager') return t(`staff.${role.id}.effect`);
+  const days = BALANCE.offline.capDaysByManagerLevel;
+  return t('staff.manager.effect', {
+    base: fmtDays(days[0], 'gameDay', 0),
+    max: fmtDays(days[days.length - 1] ?? days[0], 'gameDay', 0),
+  });
 }
 
 /** Was die nächste Kraft bringt; Umsatz zuerst, sonst der rollen-typische Effekt. */
@@ -115,7 +126,7 @@ function staffRow(store: Store, locId: string, role: StaffRoleDef): Row {
     'div',
     { class: 'row-text' },
     h('strong', { text: name }),
-    h('span', { class: 'muted', text: t(`staff.${role.id}.effect`) }),
+    h('span', { class: 'muted', text: effectText(role) }),
     status,
     wage,
     now,
