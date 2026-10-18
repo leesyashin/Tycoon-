@@ -135,3 +135,110 @@ test('Geldschein ist am Handy gut zu sehen und fliegt ins Geld-Feld', async ({ p
   expect(toHud(last)).toBeLessThan(toHud(first) * 0.8);
   expect(last.y).toBeLessThan(first.y);
 });
+
+test('Parkplatz-Ausbau: Kamera schwenkt kurz zum Parkplatz und dann zurück an den Ausschnitt des Spielers', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('?lang=de&tutorial=0');
+  await expect(page.getByTestId('hud')).toBeVisible();
+  // Café-Level 5 und genug Geld: Der Parkplatz lässt sich ausbauen.
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event('pagehide'));
+    const key = Object.keys(localStorage).find((k) => /^mce\.save\.v\d+$/.test(k));
+    if (!key) throw new Error('no save');
+    const save = JSON.parse(localStorage.getItem(key) ?? '{}') as {
+      locations: Record<string, { coins: string; level: number }>;
+    };
+    const berlin = save.locations['berlin'];
+    if (!berlin) throw new Error('no berlin');
+    berlin.level = 5;
+    berlin.coins = '100000';
+    localStorage.setItem(key, JSON.stringify(save));
+    Storage.prototype.setItem = () => undefined;
+  });
+  await page.reload();
+  await page.waitForFunction(
+    () => (window as Win).__mceGame?.scene.getScene('CafeScene')?.sys.settings.status === 5,
+  );
+  await page.waitForTimeout(500);
+  // Wo steht die Mitte des Parkplatzes auf dem Bildschirm, in welchem Abschnitt ist der Schwenk?
+  const lot = () =>
+    page.evaluate(() => {
+      const scene = (window as Win).__mceGame?.scene.getScene('CafeScene');
+      if (!scene) throw new Error('keine Szene');
+      const s = scene as unknown as {
+        parking: { center(): { x: number; y: number } };
+        controls: { touring(): boolean; tourPhase(): string | null };
+      };
+      const c = scene.cameras.main;
+      const p = s.parking.center();
+      return {
+        x: (p.x - c.worldView.x) * c.zoom,
+        y: (p.y - c.worldView.y) * c.zoom,
+        touring: s.controls.touring(),
+        phase: s.controls.tourPhase(),
+      };
+    });
+  const start = await camera(page);
+  const before = await lot();
+  // In der Startansicht liegt der Parkplatz am Rand.
+  expect(before.x < 80 || before.x > 310).toBe(true);
+
+  // Gekauft im Shop, der die Szene ganz verdeckt: Die Kamera wartet, bis sie wieder zu sehen ist.
+  await page.getByTestId('nav-build').click();
+  await page.getByTestId('shop-ambience-parking').click();
+  await page.waitForTimeout(600);
+  expect(await lot()).toEqual(before);
+  await page.getByTestId('panel-close').click();
+
+  // Dann: hin, bis der Parkplatz mitten im freien Bild steht, und etwas heran …
+  await expect.poll(async () => (await lot()).phase, { timeout: 10_000 }).toBe('hold');
+  const shown = await lot();
+  expect(shown.touring).toBe(true);
+  expect(shown.x).toBeGreaterThan(120);
+  expect(shown.x).toBeLessThan(270);
+  expect((await camera(page)).zoom).toBeGreaterThan(start.zoom);
+  // … und zurück an Ausschnitt und Zoom von vorher.
+  await expect.poll(async () => (await lot()).touring, { timeout: 10_000 }).toBe(false);
+  const end = await camera(page);
+  expect(end.zoom).toBeCloseTo(start.zoom, 6);
+  expect(end.cx).toBeCloseTo(start.cx, 3);
+  expect(end.cy).toBeCloseTo(start.cy, 3);
+});
+
+test('Schwenk zum Parkplatz endet, sobald der Spieler die Kamera selbst zieht', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await ready(page);
+  const touring = () =>
+    page.evaluate(() => {
+      const scene = (window as Win).__mceGame?.scene.getScene('CafeScene') as unknown as {
+        controls: { touring(): boolean };
+      };
+      return scene.controls.touring();
+    });
+  // Neue Stufe wie nach einem Kauf (ohne den Spielstand zu ändern).
+  await page.evaluate(() => {
+    const scene = (window as Win).__mceGame?.scene.getScene('CafeScene') as unknown as {
+      parkingReveal: { x: number; y: number } | null;
+      parking: { center(): { x: number; y: number } };
+    };
+    scene.parkingReveal = scene.parking.center();
+  });
+  await expect.poll(touring).toBe(true);
+  await page.waitForTimeout(400);
+  await page.mouse.move(200, 520);
+  await page.mouse.down();
+  for (let i = 1; i <= 10; i++) await page.mouse.move(200 - i * 10, 520);
+  await page.mouse.up();
+  const dragged = await camera(page);
+  expect(await touring()).toBe(false);
+  // Die Kamera bleibt, wo der Spieler sie hingezogen hat, statt zurückzuschwenken.
+  await page.waitForTimeout(3500);
+  const later = await camera(page);
+  expect(later.cx).toBeCloseTo(dragged.cx, 3);
+  expect(later.cy).toBeCloseTo(dragged.cy, 3);
+  expect(later.zoom).toBeCloseTo(dragged.zoom, 6);
+});

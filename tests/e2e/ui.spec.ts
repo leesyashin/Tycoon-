@@ -404,6 +404,13 @@ test('Barrierefreiheit: keine axe-Verstöße (WCAG 2 A/AA) in HUD und allen Pane
   await reloadWithSave(page, { clock: 10 * 60 });
   // Weich: alle Screens scannen und alle Verstöße auf einmal melden, jeweils mit dem Ort.
   const scan = async (where: string): Promise<void> => {
+    // Toasts blenden 0,25 s ein: Mitten im Einblenden ist die Schrift halb durchsichtig, axe würde das als
+    // Kontrastfehler werten (auf dem langsameren CI-Runner passiert das). Gescannt wird der fertige Zustand.
+    await page.waitForFunction(() =>
+      [...document.querySelectorAll('.toast')].every((t) =>
+        t.getAnimations().every((a) => a.playState === 'finished'),
+      ),
+    );
     const r = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
     expect
       .soft(

@@ -10,6 +10,8 @@ import {
 import type { CustomerTypeId } from '@data/customerTypes';
 import { CUSTOMER_LOOKS, PASS_ITEMS } from '@data/art';
 import { PARKING_CROWD, PARKING_LOT, parkingExit, type ParkingSlot } from '@data/parking';
+import { REGULAR_FX, regularsOf, type RegularDef } from '@data/regulars';
+import { TIME } from '@data/time';
 import { customerTypeShares, pickCustomerType } from '@core/customers/types';
 import { CafeNav, pathLength } from './nav';
 import { parkSec } from './parking';
@@ -84,6 +86,10 @@ export interface Agent {
   carry: string | null;
   /** Platz auf dem Parkplatz, wenn der Gast mit dem Fahrzeug gekommen ist, sonst −1. */
   vehicle: number;
+  /** Stammgast (Index in `regularsOf(standort)`), sonst −1. */
+  regular: number;
+  /** Stammgast hat an der Tür schon gewinkt. */
+  greeted: boolean;
 }
 
 /** Fahrzeug auf einem Parkplatz-Platz: frei, fährt ein, steht, fährt weg. */
@@ -250,6 +256,10 @@ export interface CrowdInput {
    * hinaus (Putzkräfte wischen noch `CROWD.cleanAfterCloseSec`), und morgens kommt es wieder.
    */
   onDuty?: boolean;
+  /** Es regnet (Wetter, kosmetisch): Neue Gäste setzen sich nicht auf die Terrasse. */
+  rain?: boolean;
+  /** Spieluhr in Spielminuten (`GameState.clock`): Stammgäste kommen zu ihrer Stunde. Ohne: keine Stammgäste. */
+  clock?: number;
 }
 
 export interface CrowdUpdate {
@@ -263,6 +273,8 @@ export interface CrowdUpdate {
    */
   payments: number;
   spawned: number;
+  /** Stammgäste, die gerade durch die Tür gekommen sind (winken, Name über dem Kopf). */
+  greetings: Agent[];
 }
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
@@ -334,6 +346,13 @@ export class CustomerCrowd {
   private tablesVisible = 0;
   /** Sichtbar je Tisch-Index (Raum nach `seats`, Terrasse nach Terrassen-Stufe). */
   private tableShown: boolean[] = [];
+  /** Regen (`CrowdInput.rain`): Terrassen-Tische bekommen keine neuen Gäste. */
+  private raining = false;
+  /** Stammgäste dieses Standorts und an welchem Spieltag jeder zuletzt kam. */
+  private readonly regulars: readonly RegularDef[];
+  private readonly regularDay: number[];
+  /** Spieluhr dieses Schritts (`CrowdInput.clock`), −1 ohne Uhr. */
+  private clock = -1;
   private nextSpot = 0;
   private readonly nav: CafeNav;
   /** Stehende Figuren dieses Schritts (wartende Abholer, servierende Bedienungen, wischende Putzkräfte). */
@@ -355,6 +374,8 @@ export class CustomerCrowd {
     private readonly rng: () => number = Math.random,
   ) {
     this.shares = customerTypeShares(locationId);
+    this.regulars = regularsOf(locationId);
+    this.regularDay = this.regulars.map(() => -1);
     this.seatTaken = layout.tables.map(() => [false, false]);
     this.tableItems = layout.tables.map(() => [null, null]);
     this.stoolTaken = layout.bar.stools.map(() => false);
@@ -388,6 +409,8 @@ export class CustomerCrowd {
         item: null,
         carry: null,
         vehicle: -1,
+        regular: -1,
+        greeted: false,
       });
     }
     for (let i = 0; i < CROWD.maxWaiters; i++) {
@@ -489,6 +512,8 @@ export class CustomerCrowd {
     this.totalRate = onDuty ? Math.max(0, input.served) : 0;
     const shown = new Set(visibleTables(this.layout, input.tables, input.terrace ?? 0));
     this.tableShown = this.layout.tables.map((t) => shown.has(t));
+    this.raining = input.rain ?? false;
+    this.clock = input.clock ?? -1;
     this.tablesVisible = shown.size;
     this.nav.setVisible(this.tableShown, input.ambience);
     this.collectStanding();
@@ -527,9 +552,19 @@ export class CustomerCrowd {
     this.payRemaining =
       till && this.totalRate > 0 ? Math.max(0, 1 - till.progress) / this.totalRate : Infinity;
     this.replans = CROWD.replansPerFrame;
+    const greetings: Agent[] = [];
     for (const a of this.agents) {
       if (!a.active) continue;
       this.advance(a, step * a.pace, dt, input.orderCap, purchases, orders, !!till);
+      if (
+        a.regular >= 0 &&
+        !a.greeted &&
+        (a.phase === 'walkIn' || a.phase === 'queue') &&
+        inRoom(this.layout, Math.round(a.x), Math.round(a.y))
+      ) {
+        a.greeted = true;
+        greetings.push(a);
+      }
     }
     // Gebuchte Zahlungen: Wer an der Kasse steht, hat bezahlt (es steht immer nur einer dort); weitere Zahlungen
     // (mehr Gäste, als Figuren an die Kasse passen) zeigt die Szene nur an der Kasse.
@@ -547,7 +582,31 @@ export class CustomerCrowd {
     this.updateCashiers(dt, onDuty ? (input.cashiers ?? 0) : 0);
     this.ageDishes(dt);
     this.first = false;
-    return { purchases, orders, payments, spawned };
+    return { purchases, orders, payments, spawned, greetings };
+  }
+
+  /** Die sichtbaren Wartenden in der Schlange, vorn zuerst (Plausch in der Schlange). */
+  visibleQueue(): Agent[] {
+    return this.queue.slice(0, CROWD.maxQueue).filter((a) => a.phase === 'queue');
+  }
+
+  /**
+   * Stammgast, der jetzt dran ist (Index), sonst −1: seine Stunde hat begonnen, ist höchstens
+   * `REGULAR_FX.windowMin` Spielminuten her, und heute war er noch nicht da. Er gilt damit als gekommen.
+   */
+  private dueRegular(): number {
+    if (this.clock < 0) return -1;
+    const day = Math.floor(this.clock / TIME.minutesPerDay);
+    const minute = this.clock - day * TIME.minutesPerDay;
+    for (let i = 0; i < this.regulars.length; i++) {
+      const r = this.regulars[i];
+      if (!r || this.regularDay[i] === day) continue;
+      const since = minute - r.hour * 60;
+      if (since < 0 || since > REGULAR_FX.windowMin) continue;
+      this.regularDay[i] = day;
+      return i;
+    }
+    return -1;
   }
 
   /**
@@ -775,7 +834,8 @@ export class CustomerCrowd {
 
   /** `inQueue`: gleich auf dem eigenen Schlangenplatz (Szenenstart), sonst vom Gehweg her. */
   private spawn(inQueue = false): boolean {
-    const free = this.newGuest(true);
+    // Wer beim Szenenstart schon ansteht, ist kein Stammgast: der soll sichtbar durch die Tür kommen.
+    const free = this.newGuest(true, !inQueue);
     if (!free) return false;
     this.queue.push(free);
     // Zum eigenen Platz; die Wegsuche führt neben der Schlange heran (niemand läuft durch Wartende).
@@ -796,13 +856,22 @@ export class CustomerCrowd {
   /**
    * Freie Figur als neuer Gast (Typ, Aussehen, Tempo; unsichtbar, ohne Weg), `null` bei vollem Pool.
    * `fromSidewalk`: taucht seitlich auf dem Gehweg auf und geht direkt durch die Tür zum eigenen Platz.
+   * `regulars`: Ein Stammgast, der gerade dran ist, darf es sein.
    */
-  private newGuest(fromSidewalk: boolean): Agent | null {
+  private newGuest(fromSidewalk: boolean, regulars = true): Agent | null {
     const free = this.agents.find((a) => !a.active);
     if (!free || this.totalRate <= 0) return null;
     free.active = true;
     free.type = pickCustomerType(this.shares, this.rng());
     free.look = pickLook(free.type, this.rng());
+    // Ist gerade ein Stammgast dran, ist es er (ohne weitere Zufallszahlen: die Folge bleibt gleich).
+    free.regular = regulars ? this.dueRegular() : -1;
+    free.greeted = false;
+    const regular = this.regulars[free.regular];
+    if (regular) {
+      free.type = regular.type;
+      free.look = regular.look;
+    }
     free.phase = 'walkIn';
     if (fromSidewalk) {
       const start = this.sidewalkPoint();
@@ -1044,13 +1113,14 @@ export class CustomerCrowd {
     return this.nextSpot++ % spots.length;
   }
 
-  /** Freier Platz an einem sichtbaren Tisch, lieber einer ohne stehengelassenes Geschirr. */
+  /** Freier Platz an einem sichtbaren Tisch, lieber einer ohne stehengelassenes Geschirr; bei Regen nur drinnen. */
   private pickSeat(): { table: number; seat: 0 | 1 } | null {
     const clean: { table: number; seat: 0 | 1 }[] = [];
     const any: { table: number; seat: 0 | 1 }[] = [];
     for (let t = 0; t < this.layout.tables.length; t++) {
       const taken = this.seatTaken[t];
       if (!taken || !this.tableShown[t]) continue;
+      if (this.raining && this.layout.tables[t]?.outside) continue;
       for (const s of [0, 1] as const) {
         if (taken[s]) continue;
         any.push({ table: t, seat: s });

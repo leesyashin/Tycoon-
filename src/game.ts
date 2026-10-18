@@ -4,7 +4,7 @@ import { UI_CONFIG, UI_THEME } from '@data/ui';
 import type { SfxId } from '@data/audio';
 import { BootScene } from '@scenes/BootScene';
 import { CafeScene } from '@scenes/CafeScene';
-import { REGISTRY, UI_EVENTS } from '@scenes/registry';
+import { REGISTRY, UI_EVENTS, type SceneCover } from '@scenes/registry';
 
 export interface GameHandle {
   /** Szene soll ihre Texte neu setzen (Sprachwechsel). */
@@ -18,6 +18,8 @@ export interface GameOptions {
   onOpenStation(id: string): void;
   /** Die Café-Szene steht (Atlas geladen). */
   onReady(): void;
+  /** Was die UI gerade verdeckt (die Szene zeigt Neues erst, wenn es zu sehen ist). */
+  sceneCover(): SceneCover;
 }
 
 /**
@@ -69,6 +71,7 @@ export function startGame(o: GameOptions): GameHandle {
   if (import.meta.env.DEV) (window as unknown as { __mceGame?: Phaser.Game }).__mceGame = game;
   // Nur kosmetisch: `?debugSpawn=100` zeigt so viele Kunden/s, um die Agenten-Grenze zu prüfen.
   game.registry.set(REGISTRY.debugSpawn, o.debugSpawn);
+  game.registry.set(REGISTRY.sceneCover, o.sceneCover);
   game.events.once(Phaser.Core.Events.READY, () => {
     // Ohne GPU schafft kein Gerät 60 fps; 30 fps halbieren den Readback pro Sekunde und lassen dem
     // Haupt-Thread Luft für HUD und Eingaben.

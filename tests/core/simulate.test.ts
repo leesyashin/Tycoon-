@@ -537,7 +537,7 @@ describe('Offline (Abwesenheit)', () => {
     const active = s.locations[s.activeLocationId];
     if (!active) throw new Error('no active café');
     expect(getOfflineCapMs(s)).toBeCloseTo(
-      o.baseCapDays * realSecondsPerDay(active.hours) * 1000,
+      o.capDaysByManagerLevel[0] * realSecondsPerDay(active.hours) * 1000,
       6,
     );
     expect(getOfflineEfficiency(s)).toBe(o.baseEfficiency);
@@ -615,7 +615,8 @@ describe('Offline (Abwesenheit)', () => {
   });
 
   it('Abwesenheit kann Geld kosten: ohne Matcha laufen Löhne und Miete weiter', () => {
-    const s = patch(at(fresh(), PEAK), { supply: stock(fresh(), 0) });
+    // Ohne Nachbestellung: Sonst käme über die Nacht Nachschub und am zweiten Spieltag wieder Umsatz.
+    const s = patch(at(fresh(), PEAK), { supply: { ...stock(fresh(), 0), autoReorder: false } });
     const r = applyOffline(s, HOUR_MS);
     expect(r.guests).toBe(0);
     expect(r.revenue.eq(0)).toBe(true);

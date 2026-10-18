@@ -20,6 +20,7 @@ import {
   CHAR_WHISK,
   CHAR_WORK,
   HOLD_POINTS,
+  CHATTER,
   figureOffset,
   workStepAt,
   type WorkPose,
@@ -48,7 +49,7 @@ import {
 } from '@data/art';
 import type { StaffRoleId } from '@data/staff';
 import { DAY_CYCLE, UI_THEME } from '@data/ui';
-import { getLocation, type GameState, type LocationState } from '@core/GameState';
+import { getLocation, type GameState, type LocationState, type SupplyOrder } from '@core/GameState';
 import type { Store } from '@core/store';
 import { computeLocationRates, mood, tapCafe, type LocationRates } from '@core/customers';
 import { buyStation, getBulkCost, isStationUnlocked, needsTerrace } from '@core/economy';
@@ -58,6 +59,9 @@ import { TIME } from '@data/time';
 import { getEventOverlay } from '@core/events';
 import { equippedSkinTints } from '@core/leaves';
 import { getCafeClock } from '@core/time/dayCycle';
+import { currentWeather, type Weather } from '@core/weather';
+import { WEATHER_FX } from '@data/weather';
+import { REGULAR_FX, regularsOf } from '@data/regulars';
 import { isOpenAt } from '@core/time/clock';
 import { gradeInUse } from '@core/supply/stock';
 import type { EventOverlay } from '@data/events';
@@ -71,14 +75,17 @@ import {
   type WaiterPhase,
 } from './agents/crowd';
 import { CafeItems, ITEM_ORIGIN_Y } from './cafeItems';
-import { CafeStreet, formatHour } from './cafeStreet';
+import { CafeStreet, boxesFor, formatHour } from './cafeStreet';
 import { CameraControls } from './cameraControls';
 import { TAP_TARGET_KEY, ambienceTarget, pickTapTarget, tableTarget } from './tapTarget';
 import { CityView } from './city/CityView';
 import { ParkingView } from './city/ParkingView';
 import { TILE_H, TILE_W, isoDepth, toGrid, toScreen } from './iso/iso';
 import { ART_SCALE, ATLAS, CHAR_FOOT_ORIGIN_Y, CHAR_OVERLAY_Y, FRAME, atlasUrls } from './art';
-import { REGISTRY, UI_EVENTS, getStore } from './registry';
+import { REGISTRY, UI_EVENTS, getSceneCover, getStore } from './registry';
+import { WeatherView, gloomOf } from './weatherView';
+import { facing, walkFacing, type Look } from './facing';
+import { Chatter } from './agents/chatter';
 
 const WALL_H = 64;
 const FRONT_WALL_H = 16;
@@ -90,6 +97,11 @@ const STATION_TOP = 40;
 const RATES_REFRESH_MS = 200;
 const POPUP_POOL = 24;
 const EMOTE_POOL = 8;
+/** Höchstens so viele Lieferungen auf einmal fahren vor (nach langer Abwesenheit kommen sonst Dutzende). */
+const MAX_VANS_AT_ONCE = 3;
+/** Regenschirm: Griff in der Hand (Höhe über den Füßen), Ursprung am unteren Ende des Stocks im Sprite. */
+const UMBRELLA_HAND_Z = 13;
+const UMBRELLA_ORIGIN_Y = 31 / 34;
 const LABEL_MAX_SCALE = 1.8;
 /**
  * Rückwand-Geräte stehen dicht. In Originalgröße stehen ihre Labels als Treppe (je Kachel 16 px tiefer) frei;
@@ -184,31 +196,20 @@ const reducedMotion = (): boolean => motionQuery.matches;
 /** Rate pro Spielstunde → je echter Sekunde (geöffnet vergeht eine Spielminute je Sekunde). */
 const perRealSec = (perHour: number): number => (perHour * TIME.openMinutesPerSec) / 60;
 
+/** Farbe zwischen `a` (t = 0) und `b` (t = 1), je Kanal linear. */
+function mixColor(a: number, b: number, t: number): number {
+  const k = Phaser.Math.Clamp(t, 0, 1);
+  const ch = (shift: number) => {
+    const x = (a >> shift) & 0xff;
+    const y = (b >> shift) & 0xff;
+    return Math.round(x + (y - x) * k) << shift;
+  };
+  return ch(16) | ch(8) | ch(0);
+}
+
 /** Lager-Stufe 1..3 aus einer Mindest-Stufe des Grundrisses. */
 function storageTierAt(tier: number): StorageTier {
   return Math.min(3, Math.max(1, Math.trunc(tier))) as StorageTier;
-}
-
-type Look = { dir: 'front' | 'back'; flip: boolean };
-
-/** Blickrichtung einer Figur aus einem Bewegungs-/Blickvektor im Grid. */
-function facing(dx: number, dy: number): Look {
-  if (Math.abs(dx) > Math.abs(dy)) return { dir: dx > 0 ? 'front' : 'back', flip: true };
-  return { dir: dy >= 0 ? 'front' : 'back', flip: false };
-}
-
-/**
- * Blickrichtung beim Gehen mit Hysterese: Die Figuren haben nur vier Ansichten (entlang der Raster-Achsen); auf
- * schrägen Wegen und in Kurven bleibt die bisherige Ansicht, solange die Figur in diese Richtung vorankommt und die
- * andere Achse nicht deutlich überwiegt – sonst flackert sie auf jeder Diagonale zwischen zwei Ansichten.
- */
-function walkFacing(prev: Look | null, dx: number, dy: number): Look {
-  if (!prev) return facing(dx, dy);
-  const sign = prev.dir === 'front' ? 1 : -1;
-  const along = (prev.flip ? dx : dy) * sign;
-  const across = Math.abs(prev.flip ? dy : dx);
-  if (along > 0 && across < along * SCENE_FX.facingKeep) return prev;
-  return facing(dx, dy);
 }
 
 export class CafeScene extends Phaser.Scene {
@@ -220,6 +221,18 @@ export class CafeScene extends Phaser.Scene {
   private crowd!: CustomerCrowd;
   private city!: CityView;
   private controls!: CameraControls;
+  /** Wolken, Regen und Wolkenschatten; dazu das Wetter dieses Frames (aus `core`, rein kosmetisch). */
+  private weather!: WeatherView;
+  private weatherNow: Weather = { kind: 'sun', rain: 0, clouds: 0 };
+  /** Regenschirm je Gast-Figur (nur draußen bei Regen sichtbar). */
+  private umbrellas: Phaser.GameObjects.Image[] = [];
+  /** Gespräche der Gäste und Grüße an der Kasse (kosmetisch) und ihre Sprechblasen. */
+  private chatter!: Chatter;
+  private chatSprites: Phaser.GameObjects.Image[] = [];
+  /** Name eines Stammgasts über seinem Kopf, sichtbar bis `until` (Szenen-Zeit, ms). */
+  private regularLabels: { text: Phaser.GameObjects.Text; agent: number; until: number }[] = [];
+  /** Neue Parkplatz-Stufe, die noch gezeigt werden will (Mitte des Platzes in Weltkoordinaten). */
+  private parkingReveal: { x: number; y: number } | null = null;
   private stations: StationView[] = [];
   private tables: TableView[] = [];
   private counters: CounterView[] = [];
@@ -285,7 +298,7 @@ export class CafeScene extends Phaser.Scene {
   private eventTint!: Phaser.GameObjects.Rectangle;
   private nightTint!: Phaser.GameObjects.Rectangle;
   private glows: Phaser.GameObjects.Image[] = [];
-  private shownNight = -1;
+  private shownNight = '';
   private board: { text: Phaser.GameObjects.Text; bg: Phaser.GameObjects.Graphics } | null = null;
   private shownQueue = -1;
   private walkClock = 0;
@@ -301,6 +314,8 @@ export class CafeScene extends Phaser.Scene {
   private parking!: ParkingView;
   /** Zuletzt gezeigte Lieferungen und Kosten-Abbuchungen (neue zeigen Wagen bzw. „−Betrag“). */
   private lastDelivered = 0;
+  /** Offene Bestellungen beim letzten Frame (welche angekommen ist, bestimmt die Kartons auf der Karre). */
+  private lastOrders: readonly SupplyOrder[] = [];
   private lastBills = 0;
   /** Hinweis über der Matcha-Station, wenn kein Matcha mehr da ist. */
   private matchaOut: Phaser.GameObjects.Text | null = null;
@@ -355,15 +370,21 @@ export class CafeScene extends Phaser.Scene {
     this.shownTables = -1;
     this.moodSprites = [];
     this.glows = [];
-    this.shownNight = -1;
+    this.shownNight = '';
     this.board = null;
     this.shownQueue = -1;
     this.walkClock = 0;
     this.fx = {};
     this.overlayKey = '';
     this.lastDelivered = 0;
+    this.lastOrders = [];
     this.lastBills = 0;
     this.matchaOut = null;
+    this.parkingReveal = null;
+    this.weatherNow = { kind: 'sun', rain: 0, clouds: 0 };
+    this.umbrellas = [];
+    this.chatSprites = [];
+    this.regularLabels = [];
   }
 
   /** Themen-Atlas nur für den aktiven Standort laden (Lazy-Loading je Standort). */
@@ -407,6 +428,11 @@ export class CafeScene extends Phaser.Scene {
         .setOrigin(0.5, CHAR_FOOT_ORIGIN_Y)
         .setVisible(false),
     );
+    this.umbrellas = this.crowd.agents.map((a) =>
+      this.sprite(0, 0, FRAME.umbrella(a.id % WEATHER_FX.umbrellaColors))
+        .setOrigin(0.5, UMBRELLA_ORIGIN_Y)
+        .setVisible(false),
+    );
     this.agentPrev = this.crowd.agents.map(() => ({ x: 0, y: 0 }));
     this.agentLook = this.crowd.agents.map(() => null);
     this.moodSprites = this.crowd.agents.map(() =>
@@ -424,6 +450,19 @@ export class CafeScene extends Phaser.Scene {
           .setDepth(DEPTH.overlay),
       );
     }
+    this.chatter = new Chatter();
+    // Gesprächsblasen plus Platz für Grüße (die nicht mitzählen).
+    this.chatSprites = Array.from({ length: CHATTER.maxBubbles + 3 }, () =>
+      this.sprite(0, 0, FRAME.emote('chat'))
+        .setOrigin(0.5, 1)
+        .setVisible(false)
+        .setDepth(DEPTH.overlay),
+    );
+    this.regularLabels = [0, 1].map(() => ({
+      text: this.makeText(12, UI_THEME.goldCss).setDepth(DEPTH.overlay).setVisible(false),
+      agent: -1,
+      until: 0,
+    }));
     const e = this.world(this.layout.entrance);
     this.moreText = this.makeText(14, UI_THEME.textCss)
       .setPosition(e.x, e.y + TILE_H)
@@ -457,8 +496,13 @@ export class CafeScene extends Phaser.Scene {
     this.updateRoomBounds(getLocation(state, this.locationId).ambience['terrace'] ?? 0);
     this.createEventFx();
     this.createNight();
+    this.weather = new WeatherView(this, CityView.viewLimits(), {
+      shadows: DEPTH.label - 9,
+      rain: DEPTH.label - 7,
+    });
     const startLoc = getLocation(state, this.locationId);
     this.lastDelivered = startLoc.supply.delivered;
+    this.lastOrders = startLoc.supply.orders;
     this.lastBills = startLoc.bills.count;
     this.street = new CafeStreet(
       this,
@@ -534,12 +578,15 @@ export class CafeScene extends Phaser.Scene {
       this.refreshNight(state);
       this.refreshBoard();
     }
+    if (this.parkingReveal) this.revealParking();
+    this.weatherNow = currentWeather(state, this.locationId);
+    this.weather.update(dt, this.weatherNow, getCafeClock(state.clock).night, reducedMotion());
     const loc = getLocation(state, this.locationId);
     this.watchSupplyAndBills(loc);
     // Mit Debug-Spawn kommen mehr Figuren, als `core` bucht: dann bezahlen sie im eigenen Takt (nur Optik).
     const till = this.tillInput(loc);
     const open = isOpenAt(loc, state.clock);
-    const { purchases, orders, payments } = this.crowd.update(dt, {
+    const { purchases, orders, payments, greetings } = this.crowd.update(dt, {
       served: this.visibleServed(this.rates),
       orderCap: perRealSec(this.rates.stages.order),
       waiters: getStaffLevel(loc, 'waiter'),
@@ -554,6 +601,18 @@ export class CafeScene extends Phaser.Scene {
       baristas: this.baristaPosts,
       prepSec: this.prepSec(this.rates),
       till: this.debugSpawn > 0 ? undefined : till,
+      rain: this.weatherNow.rain >= WEATHER_FX.umbrellaFrom,
+      clock: state.clock,
+    });
+    for (const a of greetings) this.greet(a);
+    this.chatter.update(dt, this.crowd.agents, this.crowd.visibleQueue(), {
+      weather:
+        this.weatherNow.rain >= WEATHER_FX.umbrellaFrom
+          ? 'rain'
+          : this.weatherNow.clouds >= 0.5
+            ? 'clouds'
+            : 'sun',
+      satisfaction: loc.satisfaction,
     });
     this.syncAgents(mood(loc.satisfaction));
     this.syncStaffFigures();
@@ -571,6 +630,7 @@ export class CafeScene extends Phaser.Scene {
     this.parking.sync(this.crowd.vehicles);
     this.syncStationFx(dt);
     this.drawRings();
+    this.syncChat();
     if (payments > 0) this.onPayments(payments, orders);
     this.flushCashPopup();
     this.syncDrawer();
@@ -641,6 +701,7 @@ export class CafeScene extends Phaser.Scene {
 
   /** Ganzer Raum sichtbar, auch im Hochformat. */
   private fitCamera(): void {
+    this.controls.cancelTour();
     const r = this.room;
     const zoom = Math.min(
       this.scale.width / (r.width + TILE_W),
@@ -660,6 +721,8 @@ export class CafeScene extends Phaser.Scene {
    */
   private onResize(size: Phaser.Structs.Size, prevWidth: number, prevHeight: number): void {
     if (size.width === prevWidth && size.height === prevHeight) return;
+    // Ein laufender Schwenk endet am Ausschnitt von vorher, sonst bliebe die Kamera am Parkplatz stehen.
+    this.controls.cancelTour(true);
     if (this.controls.userMoved()) this.controls.keepCenter(prevWidth, prevHeight);
     else this.fitCamera();
   }
@@ -972,7 +1035,7 @@ export class CafeScene extends Phaser.Scene {
     }
     this.refreshRoomLook(decor, !first);
     if (!first) this.plop(this.ambienceImages[this.ambienceImages.length - 1]);
-    this.shownNight = -1;
+    this.shownNight = '';
   }
 
   /** Warmer Lichtkegel auf dem Boden unter einer Pendelleuchte (additiv, Stärke folgt der Tageszeit). */
@@ -1076,7 +1139,7 @@ export class CafeScene extends Phaser.Scene {
   /** Nach Sprachwechsel alle Stations-Texte neu setzen. */
   private relabel(): void {
     this.matchaOut?.setText(t('scene.matchaOut'));
-    this.shownNight = -1;
+    this.shownNight = '';
     for (const v of this.stations) v.shownLevel = -1;
     this.refreshStations(this.store.getState(), false);
   }
@@ -1266,21 +1329,11 @@ export class CafeScene extends Phaser.Scene {
       .setVisible(false);
     const zone = new Phaser.Geom.Rectangle(c.x, c.y - c.height * 0.2, c.width, c.height * 0.2);
     const emitZone = { type: 'random' as const, source: zone, quantity: 1 };
-    const fallLife = Math.max(800, (c.height * 1.2 * 1000) / 420);
     const particles = (
       frame: string,
       cfg: Phaser.Types.GameObjects.Particles.ParticleEmitterConfig,
     ) => this.add.particles(0, 0, ATLAS.common, { frame, emitting: false, ...cfg });
     this.fx = {
-      rain: particles(FRAME.rain, {
-        emitZone,
-        speedY: { min: 380, max: 460 },
-        speedX: { min: -30, max: -10 },
-        lifespan: fallLife,
-        frequency: 25,
-        scale: ART_SCALE,
-        alpha: { start: 0.7, end: 0.2 },
-      }),
       petals: particles(FRAME.petal, {
         emitZone,
         speedY: { min: 40, max: 80 },
@@ -1344,12 +1397,23 @@ export class CafeScene extends Phaser.Scene {
         : t('scene.sign.closed', { time: formatHour(loc.hours.open, lang) }),
     );
     const night = Math.round(getCafeClock(state.clock).night * 100) / 100;
-    const key = night + (open ? 10 : 0);
+    const gloom = Math.round(gloomOf(this.weatherNow) * 100) / 100;
+    const key = `${String(night)}:${String(gloom)}:${open ? 'o' : 'c'}`;
     if (key === this.shownNight) return;
     this.shownNight = key;
-    // Multiply mit Alpha mischt Richtung Indigo; 0 = Tag.
-    this.nightTint.setAlpha(night * DAY_CYCLE.nightAlpha);
-    this.nightTint.setVisible(night > 0);
+    // Ein Multiply-Filter für Nacht (Indigo) und grauen Himmel (Wolken, Regen): zwei Filter übereinander kosten am
+    // Handy eine zweite bildschirmfüllende Fläche. 0 = klarer Tag.
+    const nightAlpha = night * DAY_CYCLE.nightAlpha;
+    const alpha = 1 - (1 - nightAlpha) * (1 - gloom);
+    const color = mixColor(
+      UI_THEME.overcast,
+      UI_THEME.night,
+      nightAlpha / Math.max(1e-6, nightAlpha + gloom),
+    );
+    this.nightTint
+      .setFillStyle(color, 1)
+      .setAlpha(alpha)
+      .setVisible(alpha > 0.002);
     // Nach Ladenschluss ist drinnen das Licht aus (nur ein Rest brennt).
     const lit = open ? 1 : SCENE_FX.closedLight;
     for (const g of this.glows) g.setAlpha(night * 0.8 * lit);
@@ -1358,23 +1422,52 @@ export class CafeScene extends Phaser.Scene {
     this.city.setNight(night);
   }
 
-  /** Parkplatz-Ausbau: neue Stufe mit Funken über dem Platz. */
+  /** Parkplatz-Ausbau: Die neue Stufe zeigt `revealParking`, sobald die Szene zu sehen ist. */
   private refreshParking(state: GameState): void {
     const level = getLocation(state, this.locationId).ambience['parking'] ?? 0;
-    if (this.parking.setLevel(level) && !reducedMotion()) {
-      const c = this.parking.center();
-      this.sparkles.explode(SCENE_FX.newLookSparkles, c.x, c.y - 10);
-    }
+    if (this.parking.setLevel(level) && !reducedMotion())
+      this.parkingReveal = this.parking.center();
   }
 
-  /** Neue Lieferungen: der Wagen fährt vor; neue Kosten-Abbuchungen: „−Betrag“ über der Kasse. */
+  /**
+   * Gekauft wird meist im Shop, der die Szene ganz verdeckt: Erst wenn sie wieder zu sehen ist, schwenkt die Kamera
+   * kurz zum Parkplatz (mitten in den freien Teil neben HUD und Panel), Funken über der neuen Stufe, dann zurück an
+   * den Ausschnitt des Spielers (Vorgabe Vincent).
+   */
+  private revealParking(): void {
+    const c = this.parkingReveal;
+    const cover = getSceneCover(this);
+    if (!c || cover.full) return;
+    this.parkingReveal = null;
+    const cam = this.cameras.main;
+    const view = new Phaser.Geom.Rectangle(
+      0,
+      cover.top,
+      Math.max(1, cam.width - cover.right),
+      Math.max(1, cam.height - cover.top - cover.bottom),
+    );
+    this.controls.showAndReturn(c, view, () =>
+      this.sparkles.explode(SCENE_FX.newLookSparkles, c.x, c.y - 10),
+    );
+  }
+
+  /**
+   * Neue Lieferungen: der Wagen fährt vor, der Lieferant bringt so viele Kartons, wie die angekommene Bestellung
+   * wiegt (Bestellungen, die seit dem letzten Frame aus der Liste verschwunden sind); neue Kosten-Abbuchungen:
+   * „−Betrag“ über der Kasse.
+   */
   private watchSupplyAndBills(loc: LocationState): void {
     const delivered = loc.supply.delivered;
     if (delivered < this.lastDelivered) this.lastDelivered = delivered;
     if (delivered > this.lastDelivered) {
-      this.street.deliver(Math.min(3, delivered - this.lastDelivered));
+      const arrived = this.lastOrders.filter((o) => !loc.supply.orders.includes(o));
+      const count = Math.min(MAX_VANS_AT_ONCE, delivered - this.lastDelivered);
+      this.street.deliver(
+        Array.from({ length: count }, (_, i) => boxesFor(arrived[i]?.grams ?? 0)),
+      );
       this.lastDelivered = delivered;
     }
+    this.lastOrders = loc.supply.orders;
     const bills = loc.bills.count;
     if (bills < this.lastBills) this.lastBills = bills;
     if (bills > this.lastBills) {
@@ -2043,15 +2136,18 @@ export class CafeScene extends Phaser.Scene {
   private syncAgents(currentMood: string): void {
     const agents = this.crowd.agents;
     const moodFrame = FRAME.mood(currentMood);
+    const rainy = this.weatherNow.rain >= WEATHER_FX.umbrellaFrom;
     for (let i = 0; i < agents.length; i++) {
       const a = agents[i];
       const s = this.agentSprites[i];
       const m = this.moodSprites[i];
       const prev = this.agentPrev[i];
       if (!a || !s || !m || !prev) continue;
+      const u = this.umbrellas[i];
       if (!a.active) {
         s.setVisible(false);
         m.setVisible(false);
+        u?.setVisible(false);
         this.agentLook[i] = null;
         this.items.hold({ sprite: s, dir: 'front' }, [], HOLD_POINTS.carry);
         continue;
@@ -2101,6 +2197,13 @@ export class CafeScene extends Phaser.Scene {
         .setAlpha(a.fade)
         .setPosition(x, onStool ? y - STOOL_SEAT_LIFT : y)
         .setDepth(isoDepth(a.x, a.y, 6));
+      // Draußen bei Regen mit aufgespanntem Schirm (drinnen und am Tisch zu).
+      const wet = rainy && !seated && !inRoom(this.layout, Math.round(a.x), Math.round(a.y));
+      u?.setVisible(wet);
+      if (wet)
+        u?.setPosition(x, y - UMBRELLA_HAND_Z)
+          .setAlpha(a.fade)
+          .setDepth(isoDepth(a.x, a.y, 6.5));
       // Becher, Teller oder Geschirr in der Hand (Selbstbedienung, Abholer mit dem Becher hinaus).
       this.items.hold(
         { sprite: s, dir: this.agentLook[i]?.dir ?? 'front' },
@@ -2266,6 +2369,95 @@ export class CafeScene extends Phaser.Scene {
         bill.destroy();
         this.cashFlying--;
       },
+    });
+  }
+
+  /**
+   * Wo die Blase einer Figur sitzt (über dem Kopf, Weltkoordinaten) und wie sichtbar die Figur ist. `agent` ≥ 0:
+   * Gast; < 0: Verkäufer (−1 = erste Figur an der Kasse). `null`, wenn die Figur gerade nicht da ist.
+   */
+  private bubbleAnchor(agent: number): { x: number; y: number; alpha: number } | null {
+    if (agent < 0) {
+      const c = this.crowd.cashiers[-agent - 1];
+      const f = this.cashierFigures[-agent - 1];
+      if (!c?.active || !f?.sprite.visible) return null;
+      const p = toScreen(c.x, c.y);
+      return { x: p.x, y: p.y + TILE_H / 2 - CHAR_OVERLAY_Y, alpha: 1 };
+    }
+    const a = this.crowd.agents[agent];
+    if (!a?.active || a.fade <= 0) return null;
+    const p = toScreen(a.x, a.y);
+    const seated = a.phase === 'consume' || (a.phase === 'waitServe' && a.table >= 0);
+    const drop = seated ? CHATTER.seatedDrop - (a.stool >= 0 ? STOOL_SEAT_LIFT : 0) : 0;
+    return { x: p.x, y: p.y + TILE_H / 2 - CHAR_OVERLAY_Y + drop, alpha: a.fade };
+  }
+
+  /** Sprechblasen der Gespräche (`Chatter`): ploppen auf, folgen der Figur, blenden am Ende aus. */
+  private syncChat(): void {
+    const c = CHATTER;
+    const f = Phaser.Math.Clamp(1 / this.cameras.main.zoom, 1, c.zoomScaleMax);
+    const still = reducedMotion();
+    let used = 0;
+    for (const b of this.chatter.bubbles) {
+      if (b.age < 0) continue;
+      const at = this.bubbleAnchor(b.agent);
+      const img = at ? this.chatSprites[used] : undefined;
+      if (!at || !img) continue;
+      used++;
+      const frame = FRAME.emote(b.kind);
+      if (img.frame.name !== frame) img.setFrame(frame);
+      const pop = still ? 1 : Math.min(1, b.age / c.popSec);
+      const fade = Phaser.Math.Clamp((b.life - b.age) / c.fadeSec, 0, 1);
+      img
+        .setPosition(at.x + c.sideOffset * f, at.y)
+        .setScale(ART_SCALE * c.bubbleScale * f * (0.55 + 0.45 * pop))
+        .setAlpha(fade * at.alpha)
+        .setVisible(true);
+    }
+    for (let i = used; i < this.chatSprites.length; i++) {
+      const img = this.chatSprites[i];
+      if (img?.visible) img.setVisible(false);
+    }
+    const now = this.time.now;
+    for (const l of this.regularLabels) {
+      // An der Kasse blendet der Name aus, sonst läge er auf dem „+Betrag“ beim Bezahlen.
+      if (this.crowd.agents[l.agent]?.phase === 'order')
+        l.until = Math.min(l.until, now + c.fadeSec * 1000);
+      const at = l.until > now ? this.bubbleAnchor(l.agent) : null;
+      if (!at) {
+        if (l.text.visible) l.text.setVisible(false);
+        continue;
+      }
+      // Über der Blase, damit Name und Winken zusammen zu lesen sind.
+      const left = (l.until - now) / 1000;
+      const label = Math.min(f, LABEL_MAX_SCALE);
+      l.text
+        .setScale(label)
+        .setPosition(at.x, at.y - (c.bubblePx * c.bubbleScale + 2) * f)
+        .setAlpha(Math.min(1, left / c.fadeSec) * at.alpha)
+        .setVisible(true);
+    }
+  }
+
+  /** Stammgast an der Tür: winkt, sein Name steht kurz über ihm, die Kasse grüßt zurück. */
+  private greet(a: Agent): void {
+    const def = regularsOf(this.locationId)[a.regular];
+    if (!def) return;
+    this.chatter.say(a.id, 'wave');
+    const now = this.time.now;
+    const label =
+      this.regularLabels.find((l) => l.until <= now) ??
+      this.regularLabels.reduce<(typeof this.regularLabels)[number] | undefined>(
+        (first, l) => (!first || l.until < first.until ? l : first),
+        undefined,
+      );
+    if (label) {
+      label.agent = a.id;
+      label.until = now + REGULAR_FX.labelSec * 1000;
+      label.text.setText(t('scene.regular', { name: t(`regular.${this.locationId}.${def.id}`) }));
+    }
+    this.time.delayedCall(REGULAR_FX.replySec * 1000, () => {
+      if (this.crowd.cashiers[0]?.active) this.chatter.say(-1, 'heart');
     });
   }
 

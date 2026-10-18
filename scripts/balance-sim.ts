@@ -636,7 +636,7 @@ console.log('');
 if (offlineProbe) {
   const p = offlineProbe;
   console.log(
-    `Offline nach 1 h, 8 h weg: ${euro(p.earned)} netto in ${String(p.days)} Spieltag(en) = ${(p.earned / Math.max(1, p.dayProfit)).toFixed(2)}× eines eingeschwungenen Tagesgewinns (${euro(p.dayProfit)}; Deckel ${String(BALANCE.offline.baseCapDays)} Spieltag, ${String(BALANCE.offline.baseEfficiency * 100)} % Effizienz)`,
+    `Offline nach 1 h, 8 h weg: ${euro(p.earned)} netto in ${String(p.days)} Spieltag(en) = ${(p.earned / Math.max(1, p.dayProfit)).toFixed(2)}× eines eingeschwungenen Tagesgewinns (${euro(p.dayProfit)}; Deckel ${String(BALANCE.offline.capDaysByManagerLevel[0])} Spieltage ohne Filialleiter, ${String(BALANCE.offline.baseEfficiency * 100)} % Effizienz)`,
   );
 }
 console.log(

@@ -334,6 +334,12 @@ export const CAMERA = {
   wheelStep: 0.0015,
   /** Ab dieser Zeigerbewegung (px) gilt ein Tap als Drag. */
   dragThresholdPx: 8,
+  /**
+   * Kurzer Schwenk zu etwas Neuem (Parkplatz-Ausbau) und zurück: hin, stehen bleiben (Funken), zurück. Dabei
+   * mindestens auf `minZoom` heran, damit es am Handy zu erkennen ist. Steht das Ziel schon mindestens `marginPx`
+   * innerhalb des freien Bildausschnitts, bleibt die Kamera stehen.
+   */
+  tour: { panMs: 900, holdMs: 1500, backMs: 1000, marginPx: 40, minZoom: 0.75 },
 } as const;
 
 /** Vordere Fassaden (Ecke an der Kreuzung, wie im 12×12-Grundriss) und hintere Raumecke. */

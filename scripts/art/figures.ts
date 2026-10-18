@@ -12,6 +12,7 @@
 import {
   CHAR_FRAMES,
   CHAR_SPRITE,
+  COURIER,
   CUSTOMER_FRAMES,
   CUSTOMER_LOOKS,
   HOLD_POINTS,
@@ -30,6 +31,21 @@ const CHAR_CANVAS = {
   ox: CHAR_SPRITE.w / 2,
   oy: CHAR_SPRITE.footY,
 } as const;
+
+/** Lieferant: breiter und tiefer, weil die Sackkarre vor ihm steht. */
+const COURIER_CANVAS = {
+  w: COURIER.sprite.w,
+  h: COURIER.sprite.h,
+  ox: COURIER.sprite.w / 2,
+  oy: COURIER.sprite.footY,
+} as const;
+
+interface FigCanvas {
+  w: number;
+  h: number;
+  ox: number;
+  oy: number;
+}
 
 type Dir = 'front' | 'back';
 
@@ -91,8 +107,11 @@ const K = {
 class Fig extends IsoCanvas {
   /** Hebt bzw. senkt alles, was danach gezeichnet wird (Kopfnicken bei der Arbeit). */
   lift = 0;
-  constructor(readonly dir: Dir) {
-    super(CHAR_CANVAS.w, CHAR_CANVAS.h, CHAR_CANVAS.ox, CHAR_CANVAS.oy);
+  constructor(
+    readonly dir: Dir,
+    canvas: FigCanvas = CHAR_CANVAS,
+  ) {
+    super(canvas.w, canvas.h, canvas.ox, canvas.oy);
   }
   override p([u, v, z]: readonly [number, number, number]): [number, number] {
     return super.p([u, v, z + this.lift]);
@@ -207,7 +226,8 @@ type PropKind =
   | 'headphones'
   | 'hoops'
   | 'chain'
-  | 'tattoos';
+  | 'tattoos'
+  | 'handTruck';
 
 interface Prop {
   kind: PropKind;
@@ -215,6 +235,8 @@ interface Prop {
   accent?: string;
   /** Linke Hand (nur Becher): liegt hinter dem Körper, guckt links heraus. */
   left?: boolean;
+  /** Sackkarre: so viele Kartons stehen darauf. */
+  count?: number;
 }
 
 export interface Look {
@@ -1090,12 +1112,19 @@ interface ArmPose {
   crouch: number;
   /** Requisit in der rechten Hand. */
   tool?: 'chasen' | 'pitcher';
+  /** Beine laufen trotzdem (Sackkarre schieben); sonst stehen sie bei Arm-Posen. */
+  walk?: boolean;
 }
 
 /** Hand, die einen Becher, Teller oder Geschirr trägt (oben auf der Hand steht das Ding, `HOLD_POINTS.carry`). */
 const CARRY_HAND_Z = HOLD_POINTS.carry.z - 1.8;
 
+/** Hände am Griff der Sackkarre (`handTruck`). */
+const TRUCK_HAND_Z = 14.2;
+
 function armPose(look: Look, frame: number): ArmPose | null {
+  if (has(look, 'handTruck'))
+    return { l: { z: TRUCK_HAND_Z }, r: { z: TRUCK_HAND_Z }, nod: 0, crouch: 0, walk: true };
   const mops = !!has(look, 'mop');
   const work = (CHAR_FRAMES.work as readonly number[]).indexOf(frame);
   if (work >= 0 && !mops) {
@@ -1702,8 +1731,15 @@ const HELD: readonly PropKind[] = [
   'yogaMat',
 ];
 
-function figure(look: Look, dir: Dir, frame: number, shadow = true, seated = false): string {
-  const f = new Fig(dir);
+function figure(
+  look: Look,
+  dir: Dir,
+  frame: number,
+  shadow = true,
+  seated = false,
+  canvas: FigCanvas = CHAR_CANVAS,
+): string {
+  const f = new Fig(dir, canvas);
   const work = (CHAR_FRAMES.work as readonly number[]).indexOf(frame);
   const carry = (CHAR_FRAMES.carry as readonly number[]).indexOf(frame);
   const mops = !!has(look, 'mop');
@@ -1718,7 +1754,7 @@ function figure(look: Look, dir: Dir, frame: number, shadow = true, seated = fal
   // Arbeiten mit beiden Händen: gehaltene Dinge (Tablet) liegen solange weg; das Tablett der Bedienung bleibt.
   else if (arms && !(trays && frame === CHAR_FRAMES.place))
     look = { ...look, props: (look.props ?? []).filter((q) => !HELD.includes(q.kind)) };
-  const walkPose = carry >= 0 ? carry : arms ? 0 : frame;
+  const walkPose = carry >= 0 ? carry : arms && !arms.walk ? 0 : frame;
   const pose = POSES[walkPose] ?? POSES[0];
   if (!pose) throw new Error('no pose');
   const holds = (look.props ?? []).some((q) => !q.left && HELD.includes(q.kind));
@@ -1739,6 +1775,8 @@ function figure(look: Look, dir: Dir, frame: number, shadow = true, seated = fal
       `<ellipse cx="${sx.toFixed(2)}" cy="${sy.toFixed(2)}" rx="9.2" ry="4.2" fill="${C.ink}" fill-opacity="0.18"/>`,
     );
   }
+  // Sackkarre von hinten gesehen: liegt hinter der Figur.
+  if (!f.facingCamera) handTruck(f, look);
   // Tief greifen: alles über den Beinen sitzt etwas tiefer (in die Knie gehen).
   f.lift = crouch;
   if (f.facingCamera) {
@@ -1793,7 +1831,125 @@ function figure(look: Look, dir: Dir, frame: number, shadow = true, seated = fal
   if (!f.facingCamera) backItems(f, look);
   overheadProps(f, look);
   f.lift = 0;
+  if (f.facingCamera) handTruck(f, look);
   return f.svg();
+}
+
+/** Sackkarre (Lieferant): Maße in Figur-Koordinaten, die Griffe liegen an den Händen. */
+const TRUCK = {
+  /** Holme in Schulterbreite: genau unter den Händen (`armX`). */
+  railX: 0.152,
+  /** Rahmen: unten an der Schaufel, oben am Griff (y vor der Figur, z in Pixeln). */
+  railBottom: { y: 0.235, z: 0.9 },
+  railTop: { y: 0.185, z: 15 },
+  plate: { x: 0.13, y0: 0.235, y1: 0.36, z: 0.9 },
+  wheelX: 0.172,
+  wheelY: 0.232,
+  wheelR: 2.1,
+  /** Kartons übereinander auf der Schaufel: halbe Breite, y-Bereich, Höhe. */
+  boxes: [
+    { x: 0.125, y0: 0.245, y1: 0.36, z0: 0.9, z1: 6.6 },
+    { x: 0.115, y0: 0.25, y1: 0.355, z0: 6.6, z1: 11.6 },
+    { x: 0.105, y0: 0.255, y1: 0.35, z0: 11.6, z1: 15.8 },
+  ],
+} as const;
+
+/**
+ * Sackkarre vor der Figur: Rahmen mit Griff an den Händen, Schaufel auf dem Boden, zwei Räder und 0–3 Kartons
+ * mit Klebeband und grünem Etikett. Gezeichnet von hinten nach vorn: in der Vorderansicht Rahmen → Kartons, von
+ * hinten Kartons → Rahmen (dann folgt die Figur).
+ */
+function handTruck(f: Fig, look: Look) {
+  const q = has(look, 'handTruck');
+  if (!q) return;
+  const steel = q.color ?? K.coal;
+  const kraft = q.accent ?? '#c99f63';
+  const n = (v: number) => v.toFixed(2);
+  const T = TRUCK;
+  const [sx, sy] = f.at(0, (T.plate.y0 + T.plate.y1) / 2, 0);
+  f.raw(
+    `<ellipse cx="${n(sx)}" cy="${n(sy)}" rx="6" ry="2.8" fill="${C.ink}" fill-opacity="0.16"/>`,
+  );
+  const rod = (x: number, w: number, color: string) => {
+    const [ax, ay] = f.at(x, T.railBottom.y, T.railBottom.z);
+    const [bx, by] = f.at(x, T.railTop.y, T.railTop.z);
+    f.raw(
+      `<polygon points="${n(ax - w)},${n(ay)} ${n(ax + w)},${n(ay)} ${n(bx + w)},${n(by)} ${n(bx - w)},${n(by)}" fill="${color}"/>`,
+    );
+  };
+  const frame = () => {
+    rod(-T.railX, 0.55, shade(steel, SHADE.left));
+    rod(T.railX, 0.55, steel);
+    // Querstreben und Griff
+    for (const t of [0.35, 0.7]) {
+      const y = T.railBottom.y + (T.railTop.y - T.railBottom.y) * t;
+      const z = T.railBottom.z + (T.railTop.z - T.railBottom.z) * t;
+      f.cube(-T.railX, T.railX, y - 0.006, y + 0.006, z - 0.4, z + 0.4, steel);
+    }
+    f.cube(
+      -T.railX - 0.012,
+      T.railX + 0.012,
+      T.railTop.y - 0.01,
+      T.railTop.y + 0.01,
+      T.railTop.z - 1,
+      T.railTop.z + 0.2,
+      K.coal,
+    );
+  };
+  const plate = () =>
+    f.cube(-T.plate.x, T.plate.x, T.plate.y0, T.plate.y1, 0, T.plate.z, shade(steel, 1.15));
+  const wheel = (x: number) => {
+    const pts: string[] = [];
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * Math.PI * 2;
+      const [px, py] = f.at(x, T.wheelY + Math.cos(a) * 0.066, T.wheelR + Math.sin(a) * T.wheelR);
+      pts.push(`${n(px)},${n(py)}`);
+    }
+    f.raw(`<polygon points="${pts.join(' ')}" fill="${C.rubber}"/>`);
+    const [hx, hy] = f.at(x, T.wheelY, T.wheelR);
+    f.raw(`<circle cx="${n(hx)}" cy="${n(hy)}" r="0.75" fill="${C.galvanized}"/>`);
+  };
+  const boxes = () => {
+    T.boxes.slice(0, Math.max(0, q.count ?? 0)).forEach((b, i) => {
+      const c = i % 2 ? tint(kraft, 0.08) : kraft;
+      f.cube(-b.x, b.x, b.y0, b.y1, b.z0, b.z1, c);
+      const ym = (b.y0 + b.y1) / 2;
+      f.cube(-b.x, b.x, ym - 0.012, ym + 0.012, b.z1, b.z1 + 0.15, tint(kraft, 0.5));
+      f.onSide(b.x, b.y0 + 0.025, b.y0 + 0.06, b.z0 + 1.4, b.z0 + 3.6, C.matcha);
+    });
+  };
+  if (f.facingCamera) {
+    frame();
+    plate();
+    wheel(-T.wheelX);
+    boxes();
+    wheel(T.wheelX);
+    return;
+  }
+  plate();
+  wheel(-T.wheelX);
+  boxes();
+  frame();
+  wheel(T.wheelX);
+}
+
+/** Lieferant des Matcha-Großhandels: Kappe und Polo in Grün, Cargo-Shorts, schiebt die Sackkarre. */
+function courierLook(boxes: number): Look {
+  return {
+    skin: K.skin3,
+    hair: K.dark,
+    hairStyle: 'short',
+    hat: C.matchaDeep,
+    hatStyle: 'capBack',
+    top: C.matcha,
+    topStyle: 'tee',
+    bottom: K.khaki,
+    bottomStyle: 'cargo',
+    shoes: K.coal,
+    shoeStyle: 'sneaker',
+    socks: K.white,
+    props: [{ kind: 'handTruck', color: K.coal, count: boxes }],
+  };
 }
 
 function lookFrames(
@@ -1801,11 +1957,15 @@ function lookFrames(
   look: Look,
   frames: readonly number[],
   sits = false,
+  canvas: FigCanvas = CHAR_CANVAS,
 ): SpriteDef[] {
   const out: SpriteDef[] = [];
   for (const dir of ['front', 'back'] as const) {
     for (const frame of frames)
-      out.push({ name: `${prefix}-${dir}-${String(frame)}`, svg: figure(look, dir, frame) });
+      out.push({
+        name: `${prefix}-${dir}-${String(frame)}`,
+        svg: figure(look, dir, frame, true, false, canvas),
+      });
     if (sits)
       out.push({
         name: `${prefix}-sit-${dir}`,
@@ -1835,6 +1995,17 @@ export function characterSprites(): SpriteDef[] {
       if (!look) throw new Error(`No staff look: ${role}-${id}`);
       out.push(...lookFrames(`staff-${role}-${id}`, look, STAFF_FRAMES[role as StaffRoleId]));
     }
+  // Lieferant mit 0 … maxBoxes Kartons: `courier-<n>-<dir>-<frame>`.
+  for (let boxes = 0; boxes <= COURIER.maxBoxes; boxes++)
+    out.push(
+      ...lookFrames(
+        `courier-${String(boxes)}`,
+        courierLook(boxes),
+        COURIER.frames,
+        false,
+        COURIER_CANVAS,
+      ),
+    );
   return out;
 }
 

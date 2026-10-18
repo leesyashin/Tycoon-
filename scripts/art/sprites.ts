@@ -5,7 +5,7 @@
  */
 import { FRONT_PLANTER_H, SCENE_FX } from '@data/art';
 import { STATION_CANVAS, drawTable } from './equipment';
-import { IsoCanvas, Z_PER_TILE, shade, tint, type Vec3 } from './iso';
+import { IsoCanvas, SHADE, Z_PER_TILE, shade, tint, type Vec3 } from './iso';
 import { C } from './palette';
 import { flatLeaf, polyline, strut, umbrella } from './shapes';
 
@@ -423,10 +423,6 @@ export function fxSprites(): SpriteDef[] {
       ),
     },
     {
-      name: 'fx-rain',
-      svg: flat(2, 10, `<rect width="2" height="10" rx="1" fill="#bcd8ff" fill-opacity="0.85"/>`),
-    },
-    {
       name: 'fx-petal',
       svg: flat(6, 4, `<ellipse cx="3" cy="2" rx="3" ry="1.8" fill="${C.sakura}"/>`),
     },
@@ -514,6 +510,8 @@ export function fxSprites(): SpriteDef[] {
         `<rect x="0.5" y="0.5" width="13" height="11" rx="5" fill="${C.white}"/><polygon points="5,11 7,14 9,11" fill="${C.white}"/><path d="M7 2.2 L8.2 4.8 L11 5.1 L8.9 7 L9.5 9.7 L7 8.3 L4.5 9.7 L5.1 7 L3 5.1 L5.8 4.8 Z" fill="${C.gold}"/>`,
       ),
     },
+    ...chatEmotes(),
+    ...handUmbrellas(),
     {
       // Warmes Licht für Fenster/Lampen nachts (additiv geblendet)
       name: 'glow',
@@ -524,6 +522,121 @@ export function fxSprites(): SpriteDef[] {
       ),
     },
   ];
+}
+
+/** Sprechblase wie die Emotes (13×11 mit Spitze unten), `icon` im Feld um (7, 6). */
+function bubble(icon: string): string {
+  return flat(
+    14,
+    14,
+    `<rect x="0.5" y="0.5" width="13" height="11" rx="5" fill="${C.white}"/><polygon points="5,11 7,14 9,11" fill="${C.white}"/>${icon}`,
+  );
+}
+
+/**
+ * Gesprächsblasen (`emote-<id>`, kosmetisch): Gäste unterhalten sich am Tisch, auf den Barhockern und in der
+ * Schlange (Pünktchen, Lachen, Matcha, Handy, Wetter), Stammgäste winken an der Tür.
+ */
+function chatEmotes(): SpriteDef[] {
+  const sunRays = Array.from({ length: 8 }, (_, i) => {
+    const a = (i / 8) * Math.PI * 2;
+    const p = (r: number) =>
+      `${(7 + Math.cos(a) * r).toFixed(2)},${(6 + Math.sin(a) * r * 0.92).toFixed(2)}`;
+    return `<polyline points="${p(3)} ${p(4.4)}" stroke="${C.gold}" stroke-width="0.9" stroke-linecap="round" fill="none"/>`;
+  }).join('');
+  return [
+    {
+      name: 'emote-chat',
+      svg: bubble(
+        `<circle cx="4.1" cy="6" r="1.15" fill="${C.ink}"/><circle cx="7" cy="6" r="1.15" fill="${C.ink}"/><circle cx="9.9" cy="6" r="1.15" fill="${C.ink}"/>`,
+      ),
+    },
+    {
+      name: 'emote-laugh',
+      svg: bubble(
+        `<circle cx="7" cy="6" r="4" fill="${C.gold}"/><path d="M4.7 5.3 Q5.4 4.4 6.1 5.3 M7.9 5.3 Q8.6 4.4 9.3 5.3" stroke="${C.ink}" stroke-width="0.7" stroke-linecap="round" fill="none"/><path d="M4.9 6.5 H9.1 A2.1 2.1 0 0 1 4.9 6.5 Z" fill="${C.ink}"/><path d="M5.9 7.6 Q7 8.5 8.1 7.6" fill="${C.red}"/>`,
+      ),
+    },
+    {
+      name: 'emote-matcha',
+      svg: bubble(
+        `<path d="M3.4 5 H10.6 A3.6 3.8 0 0 1 3.4 5 Z" fill="${C.matchaDeep}"/><ellipse cx="7" cy="5" rx="3.6" ry="1.1" fill="${C.matchaFoam}"/><path d="M5.6 4.7 Q7 4.1 8.4 4.7" stroke="${C.white}" stroke-width="0.5" fill="none"/>`,
+      ),
+    },
+    {
+      name: 'emote-phone',
+      svg: bubble(
+        `<rect x="4.9" y="1.9" width="4.2" height="8.2" rx="0.9" fill="${C.ink}"/><rect x="5.5" y="2.8" width="3" height="5.9" rx="0.3" fill="${C.waterLight}"/><path d="M7 7.7 C5.4 6.6 5.5 5.2 6.3 5.1 C6.7 5.05 6.95 5.35 7 5.6 C7.05 5.35 7.3 5.05 7.7 5.1 C8.5 5.2 8.6 6.6 7 7.7 Z" fill="${C.pink}"/>`,
+      ),
+    },
+    {
+      name: 'emote-sun',
+      svg: bubble(`${sunRays}<circle cx="7" cy="6" r="2.4" fill="${C.gold}"/>`),
+    },
+    {
+      name: 'emote-rain',
+      svg: bubble(
+        `<path d="M3.6 6.2 A1.7 1.7 0 0 1 4.6 3.2 A2.4 2.4 0 0 1 9.1 3 A1.8 1.8 0 0 1 10.4 6.2 Z" fill="${C.steel}"/><path d="M4.9 7.3 L4.3 9.2 M7.1 7.3 L6.5 9.2 M9.3 7.3 L8.7 9.2" stroke="${C.water}" stroke-width="0.9" stroke-linecap="round"/>`,
+      ),
+    },
+    {
+      name: 'emote-wave',
+      svg: bubble(
+        `<g transform="rotate(-14 7 6.5)"><rect x="4.6" y="5.2" width="4.8" height="4.4" rx="1.6" fill="${C.skin}"/><rect x="4.7" y="2.3" width="1.1" height="3.8" rx="0.55" fill="${C.skin}"/><rect x="5.95" y="1.7" width="1.1" height="4.2" rx="0.55" fill="${C.skin}"/><rect x="7.2" y="1.9" width="1.1" height="4" rx="0.55" fill="${C.skin}"/><rect x="8.4" y="2.6" width="1" height="3.6" rx="0.5" fill="${C.skin}"/><rect x="9.1" y="5.4" width="2" height="1.1" rx="0.55" transform="rotate(-35 9.1 5.4)" fill="${C.skin}"/></g><path d="M2.4 3.6 Q1.8 5 2.4 6.4 M11.5 2.8 Q12.2 4.2 11.6 5.6" stroke="${C.steel}" stroke-width="0.6" stroke-linecap="round" fill="none"/>`,
+      ),
+    },
+  ];
+}
+
+/**
+ * Regenschirme für Gäste draußen bei Regen (`umbrella-<n>`): achteckiger Schirm von schräg oben wie die
+ * Terrassenschirme, mit Stock bis zur Hand. Ursprung = untere Spitze des Stocks (die Szene setzt sie auf Handhöhe).
+ */
+function handUmbrellas(): SpriteDef[] {
+  const colors: readonly [string, string][] = [
+    [C.red, C.white],
+    [C.blue, C.blue],
+    [C.matcha, C.matchaFoam],
+    [C.gold, C.ink],
+  ];
+  const f = (n: number) => n.toFixed(2);
+  return colors.map(([a, b], n) => {
+    const w = 28;
+    const h = 34;
+    const cx = 14;
+    const cy = 9;
+    const r = 11.5;
+    const parts: string[] = [];
+    // Stock und Griff (Krücke) zuerst: der Schirm liegt darüber.
+    parts.push(
+      `<path d="M${f(cx)} ${f(cy)} L${f(cx)} 31.2 Q${f(cx)} 33 ${f(cx - 1.6)} 33 Q${f(cx - 3)} 33 ${f(cx - 3)} 31.6" stroke="${C.ink}" stroke-width="1" fill="none" stroke-linecap="round"/>`,
+    );
+    const rim = (t: number): [number, number] => [
+      cx + Math.cos(t) * r,
+      cy + 3 + Math.sin(t) * r * 0.5,
+    ];
+    for (let i = 0; i < 8; i++) {
+      const a0 = (i / 8) * Math.PI * 2;
+      const a1 = ((i + 1) / 8) * Math.PI * 2;
+      const lit = Math.cos((a0 + a1) / 2) < 0.2;
+      const col = i % 2 ? b : a;
+      const [x0, y0] = rim(a0);
+      const [x1, y1] = rim(a1);
+      parts.push(
+        `<polygon points="${f(cx)},${f(cy - 3.6)} ${f(x0)},${f(y0)} ${f(x1)},${f(y1)}" fill="${lit ? col : shade(col, SHADE.left)}"/>`,
+      );
+      if (Math.sin((a0 + a1) / 2) > 0) {
+        // Saum: kleine Bögen zwischen den Speichen
+        const mx = (x0 + x1) / 2;
+        const my = (y0 + y1) / 2 + 1.4;
+        parts.push(
+          `<path d="M${f(x0)} ${f(y0)} Q${f(mx)} ${f(my)} ${f(x1)} ${f(y1)} Z" fill="${shade(col, 0.78)}"/>`,
+        );
+      }
+    }
+    parts.push(`<circle cx="${f(cx)}" cy="${f(cy - 4)}" r="0.9" fill="${C.ink}"/>`);
+    return { name: `umbrella-${String(n)}`, svg: flat(w, h, parts.join('')) };
+  });
 }
 
 // ---------------------------------------------------------------------------------------------
