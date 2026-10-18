@@ -54,6 +54,8 @@ export const UI_THEME = {
   surface: 0xffffff,
   ink: 0x1b2340,
   night: 0x3a3f8f,
+  /** Graue Tönung bei Wolken und Regen (§ 2.1 `--c-overcast`, Multiply). */
+  overcast: 0x8a96ad,
   /** Warmes Fenster-/Lampenlicht nachts (§ 4 „Tag/Nacht“). */
   lampGlow: 0xffd27a,
   /** Als CSS-String für Phaser-Texte. */

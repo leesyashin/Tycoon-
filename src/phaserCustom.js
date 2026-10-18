@@ -29,6 +29,7 @@ import Graphics from 'phaser/src/gameobjects/graphics/Graphics.js';
 import Image from 'phaser/src/gameobjects/image/Image.js';
 import Layer from 'phaser/src/gameobjects/layer/Layer.js';
 import Text from 'phaser/src/gameobjects/text/Text.js';
+import TileSprite from 'phaser/src/gameobjects/tilesprite/TileSprite.js';
 import Particles from 'phaser/src/gameobjects/particles/index.js';
 import Rectangle from 'phaser/src/gameobjects/shape/rectangle/Rectangle.js';
 import InputPlugin from 'phaser/src/input/InputPlugin.js';
@@ -53,6 +54,7 @@ import 'phaser/src/gameobjects/graphics/GraphicsFactory.js';
 import 'phaser/src/gameobjects/image/ImageFactory.js';
 import 'phaser/src/gameobjects/layer/LayerFactory.js';
 import 'phaser/src/gameobjects/text/TextFactory.js';
+import 'phaser/src/gameobjects/tilesprite/TileSpriteFactory.js';
 import 'phaser/src/gameobjects/particles/ParticleEmitterFactory.js';
 import 'phaser/src/gameobjects/shape/rectangle/RectangleFactory.js';
 import 'phaser/src/loader/filetypes/AtlasJSONFile.js';
@@ -100,6 +102,7 @@ const Phaser = Extend(
       Image,
       Layer,
       Text,
+      TileSprite,
       Particles,
       Rectangle,
     },

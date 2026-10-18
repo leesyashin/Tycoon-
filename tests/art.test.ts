@@ -9,6 +9,7 @@ import {
   CHAR_WORK,
   COUNTER_LOOK_CAFE_LEVELS,
   COUNTER_PROPS,
+  COURIER,
   CUSTOMER_FRAMES,
   CUSTOMER_LOOKS,
   STAFF_FRAMES,
@@ -26,8 +27,10 @@ import {
   stationLookTier,
   tableLookTier,
   workStepAt,
+  type EmoteId,
   type WorkPose,
 } from '@data/art';
+import { WEATHER_FX } from '@data/weather';
 import { MENU_LEVELS, PRODUCT_LINES, STATIONS, menuTierIndex } from '@data/stations';
 import { AMBIENCE, getAmbienceDef } from '@data/ambience';
 import { BALANCE } from '@data/balance';
@@ -302,7 +305,40 @@ describe('Figuren (scripts/art/figures.ts)', () => {
       expect(s.svg).not.toBe(svg.get(s.name.replace(/-sit-(front|back)$/, '-$1-0')));
   });
   it('Atlas ist aktuell (nach Änderungen an Figuren `pnpm art`)', () => {
-    const inAtlas = Object.keys(common.frames).filter((k) => /^(customer|staff)-/.test(k));
+    const inAtlas = Object.keys(common.frames).filter((k) => /^(customer|staff|courier)-/.test(k));
     expect(inAtlas.sort()).toEqual([...svg.keys()].sort());
+  });
+});
+
+describe('Leben in der Szene: Sprites (pnpm art)', () => {
+  it('Gesprächsblasen für jedes Thema, Regenschirme in allen Farben', () => {
+    const emotes: EmoteId[] = [
+      'heart',
+      'note',
+      'star',
+      'chat',
+      'laugh',
+      'matcha',
+      'phone',
+      'sun',
+      'rain',
+      'wave',
+    ];
+    for (const id of emotes) expect(common.frames[`emote-${id}`], id).toBeDefined();
+    for (let n = 0; n < WEATHER_FX.umbrellaColors; n++)
+      expect(common.frames[`umbrella-${String(n)}`]).toBeDefined();
+  });
+  it('Lieferant mit 0 bis maxBoxes Kartons, beide Richtungen, Stehen und Laufen; mehr Kartons, anderes Bild', () => {
+    const svg = new Map(characterSprites().map((s) => [s.name, s.svg]));
+    for (let boxes = 0; boxes <= COURIER.maxBoxes; boxes++)
+      for (const dir of ['front', 'back'] as const)
+        for (const f of COURIER.frames) {
+          const name = `courier-${String(boxes)}-${dir}-${String(f)}`;
+          expect(common.frames[name], name).toBeDefined();
+          if (boxes > 0)
+            expect(svg.get(name)).not.toBe(
+              svg.get(`courier-${String(boxes - 1)}-${dir}-${String(f)}`),
+            );
+        }
   });
 });

@@ -46,6 +46,7 @@ export type IconName =
   | 'fast-forward'
   | 'paint-brush'
   | 'close'
+  | 'cloud'
   | 'cloud-rain'
   | 'flower-lotus'
   | 'confetti'

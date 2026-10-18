@@ -285,6 +285,81 @@ export const CHAR_WHISK = { cycle: [9, 10], stepSec: 0.09 } as const;
 /** Tief greifen: langsamer Wechsel (Blech schieben, Eis schöpfen, Kuchen heben). */
 export const CHAR_LOW = { cycle: [11, 12], stepSec: 0.32 } as const;
 
+/**
+ * Lieferant mit Sackkarre (§ 4, kosmetisch): schiebt die Kartons einer Lieferung vom Wagen zur Tür und die leere
+ * Karre zurück. Eigene, breitere Leinwand (die Karre steht vor ihm), Füße wie bei den Figuren `footY` px unter der
+ * Oberkante; Frames 0 = Stehen, 1/2 = Laufen, Varianten `courier-<Kartons>` mit 0 bis `maxBoxes` Kartons.
+ */
+export const COURIER = {
+  sprite: { w: 44, h: 62, footY: 51 },
+  frames: [0, 1, 2],
+  maxBoxes: 3,
+  /** Kartons je Lieferung nach Gramm: bis 500 g einer, bis 2 kg zwei, darüber drei. */
+  boxGrams: [500, 2000],
+  /** Tempo (Kacheln je Sekunde), Pause an der Tür, Ein- und Ausblenden am Wagen. */
+  tilesPerSec: 1.25,
+  doorMs: 900,
+  fadeMs: 250,
+  /** Versatz neben dem Wagen (Richtung Gehweg) und vor der Tür (Kacheln). */
+  fromVan: 0.9,
+  beforeDoor: 0.45,
+} as const;
+
+/** Gesprächsblasen und Emotes über Figuren (`emote-<id>`, `scripts/art/sprites.ts`). */
+export type EmoteId =
+  'heart' | 'note' | 'star' | 'chat' | 'laugh' | 'matcha' | 'phone' | 'sun' | 'rain' | 'wave';
+
+/**
+ * Gewichte der Themen einer Sprechblase (fehlende = 0). `weather`: Sonne bzw. Regen, wie das Wetter gerade ist (bei
+ * Wolken kein Thema); `happy`: Herz, gewichtet mit der Zufriedenheit.
+ */
+export type ChatTopics = Readonly<Partial<Record<EmoteId | 'weather' | 'happy', number>>>;
+
+/**
+ * Gespräche der Gäste (kosmetisch, `scenes/agents/chatter.ts`): Zu zweit am Tisch oder nebeneinander auf den
+ * Barhockern reden Gäste abwechselnd, allein schauen sie ab und zu aufs Handy, in der Schlange plaudern Nachbarn.
+ * Zeiten in Sekunden; `weather` ersetzt Sonne bzw. Regen nach dem Wetter, `happy` wächst mit der Zufriedenheit.
+ */
+export const CHATTER: {
+  readonly bubbleSec: number;
+  readonly maxBubbles: number;
+  readonly turnGap: { readonly min: number; readonly max: number };
+  readonly longPause: { readonly chance: number; readonly min: number; readonly max: number };
+  readonly firstWait: { readonly min: number; readonly max: number };
+  readonly soloGap: { readonly min: number; readonly max: number };
+  readonly queueGap: { readonly min: number; readonly max: number };
+  readonly queueReply: number;
+  readonly pairTopics: ChatTopics;
+  readonly soloTopics: ChatTopics;
+  readonly queueTopics: ChatTopics;
+  readonly seatedDrop: number;
+  readonly sideOffset: number;
+  readonly popSec: number;
+  readonly fadeSec: number;
+} = {
+  bubbleSec: 1.7,
+  /** Blasen gleichzeitig (über alle Figuren), damit es nicht wimmelt. */
+  maxBubbles: 6,
+  /** Pause zwischen zwei Beiträgen eines Gesprächs; ab und zu eine längere. */
+  turnGap: { min: 1.2, max: 2.6 },
+  longPause: { chance: 0.22, min: 3.5, max: 7 },
+  /** Bis zur ersten Blase nach dem Hinsetzen bzw. bis zur nächsten eines Gasts allein. */
+  firstWait: { min: 1.2, max: 4 },
+  soloGap: { min: 12, max: 24 },
+  /** Ein Plausch in der Schlange (zwei Beiträge) alle so viele Sekunden, Antwort nach `queueReply`. */
+  queueGap: { min: 6, max: 13 },
+  queueReply: 0.9,
+  pairTopics: { chat: 4, laugh: 2.5, matcha: 1.5, phone: 1, note: 0.4, weather: 1, happy: 1 },
+  soloTopics: { phone: 3, matcha: 2, note: 0.8, star: 0.4, happy: 0.8 },
+  queueTopics: { chat: 3, laugh: 1, phone: 1, weather: 0.8 },
+  /** Blase über Sitzenden etwas tiefer (Kopf tiefer als im Stehen), seitlich neben dem Smiley der Schlange. */
+  seatedDrop: 7,
+  sideOffset: 8,
+  /** Aufploppen (Sekunden) und Ausblenden am Ende. */
+  popSec: 0.16,
+  fadeSec: 0.3,
+};
+
 /** Frames der Gäste: Stehen, Laufen, mit Becher/Teller/Geschirr in der Hand (Selbstbedienung); dazu die Sitzpose. */
 export const CUSTOMER_FRAMES: readonly number[] = [0, 1, 2, 5, 6, 7];
 
@@ -464,8 +539,8 @@ export function decorFrame(frame: string, decorLevel: number): string {
 
 /**
  * Lieferwagen bei jeder Matcha-Lieferung (kosmetisch): fährt auf dem Parkstreifen der rechten Straße (vor dem Café
- * frei) vor, hält auf Höhe der Tür, ein Karton geht hinein, dann fährt er weiter. Grid-Koordinaten, Tempo in
- * Kacheln je Sekunde.
+ * frei) vor, hält auf Höhe der Tür, der Lieferant bringt die Kartons auf der Sackkarre hinein (`COURIER`), dann
+ * fährt er weiter. Grid-Koordinaten, Tempo in Kacheln je Sekunde.
  */
 export const DELIVERY_VAN = {
   /** Lieferwagen im Stadt-Atlas (`car-<typ>-f|b`). */
@@ -476,8 +551,4 @@ export const DELIVERY_VAN = {
   toY: 26,
   tilesPerSec: 3,
   fadeTiles: 2,
-  waitMs: 2600,
-  unloadMs: 900,
-  /** Karton startet so weit neben dem Wagen (Richtung Gehweg). */
-  boxOffset: 0.9,
 } as const;

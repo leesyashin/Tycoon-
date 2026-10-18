@@ -2,6 +2,7 @@ import {
   CHAR_SPRITE,
   stationLookTier,
   tableLookTier,
+  type EmoteId,
   type LookTier,
   type StorageTier,
 } from '@data/art';
@@ -61,7 +62,6 @@ export const FRAME = {
   /** Geldschein (Währung, fliegt beim Bezahlen ins HUD). */
   cash: 'cash',
   leaf: 'leaf',
-  rain: 'fx-rain',
   petal: 'fx-petal',
   sparkle: 'fx-sparkle',
   steam: 'fx-steam',
@@ -102,7 +102,12 @@ export const FRAME = {
   /** Autoampel, Lichter zur Kamera (Achse u nach +x, v nach +y). */
   trafficLight: (axis: 'u' | 'v', state: 'red' | 'redYellow' | 'green' | 'yellow') =>
     `tlight-${axis}-${state}`,
-  emote: (id: 'heart' | 'note' | 'star') => `emote-${id}`,
+  emote: (id: EmoteId) => `emote-${id}`,
+  /** Lieferant mit `boxes` Kartons auf der Sackkarre (0 = leer), Ansicht und Frame wie bei den Figuren. */
+  courier: (boxes: number, dir: 'front' | 'back', frame: number) =>
+    `courier-${String(boxes)}-${dir}-${String(frame)}`,
+  /** Regenschirm eines Gasts draußen (`WEATHER_FX.umbrellaColors` Farben). */
+  umbrella: (n: number) => `umbrella-${String(n)}`,
 } as const;
 
 /** URLs relativ zu `BASE_URL`. */

@@ -22,7 +22,7 @@ export interface EventEffect {
 export interface EventOverlay {
   color: number;
   alpha: number;
-  particles?: 'rain' | 'petals' | 'sparkle';
+  particles?: 'petals' | 'sparkle';
 }
 
 export interface RandomEventDef {
@@ -100,7 +100,8 @@ export const RANDOM_EVENTS: readonly RandomEventDef[] = [
     weight: 1,
     effect: { spawnMult: 0.7, tipMult: 2 },
     reward: 3,
-    overlay: { color: 0x4060a0, alpha: 0.18, particles: 'rain' },
+    // Regen und Grau kommen vom Wetter (`WEATHER.eventWeather`): hier nur ein Hauch Blau.
+    overlay: { color: 0x4060a0, alpha: 0.06 },
   },
 ];
 

@@ -16,3 +16,4 @@ export * from './events';
 export * from './leaves';
 export * from './monetization';
 export * from './tutorial';
+export * from './weather';

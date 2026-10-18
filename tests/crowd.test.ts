@@ -26,6 +26,7 @@ import {
 import { CafeNav, pathLength } from '@scenes/agents/nav';
 import { carPath, parkSec, polylineLength } from '@scenes/agents/parking';
 import { PARKING_CROWD, PARKING_LOT, parkingSlotsAt } from '@data/parking';
+import { REGULAR_FX, regularsOf } from '@data/regulars';
 import { CUSTOMER_LOOKS, SUPPLY_ITEMS, storageLookTier, type StorageTier } from '@data/art';
 import { FRAME } from '@scenes/art';
 
@@ -1192,5 +1193,97 @@ describe('Szene beeinflusst keine Einnahmen', () => {
     expect(visiblePurchases).toBeGreaterThan(0);
     expect(serialize(withScene.getState())).toBe(serialize(without.getState()));
     expect(getLocation(withScene.getState(), 'berlin').coins.gt(0)).toBe(true);
+  });
+});
+
+describe('Leben in der Szene: Stammgäste und Regen (kosmetisch)', () => {
+  const layout = getLayout('berlin');
+  const DAY = 24 * 60;
+
+  it('zur Stunde eines Stammgasts ist der nächste neue Gast er – einmal am Tag, mit seinem Aussehen', () => {
+    const regulars = regularsOf('berlin');
+    const first = regulars[0];
+    if (!first) throw new Error('keine Stammgäste');
+    const crowd = new CustomerCrowd(layout, 'berlin', lcg(71));
+    const clock = DAY + first.hour * 60 + 5;
+    const greeted: { regular: number; type: string; look: string; inside: boolean }[] = [];
+    let seen = 0;
+    for (let t = 0; t < 60 * 60; t++) {
+      const r = crowd.update(1 / 60, input({ served: 1, clock: clock + t / 60 }));
+      for (const a of r.greetings)
+        greeted.push({
+          regular: a.regular,
+          type: a.type,
+          look: a.look,
+          inside: inRoom(layout, Math.round(a.x), Math.round(a.y)),
+        });
+      seen = Math.max(seen, crowd.agents.filter((a) => a.active && a.regular === 0).length);
+    }
+    // Genau eine Figur ist der Stammgast; sie trägt sein Aussehen und winkt, sobald sie drin ist.
+    expect(seen).toBe(1);
+    expect(greeted).toEqual([{ regular: 0, type: first.type, look: first.look, inside: true }]);
+    expect(CUSTOMER_LOOKS[first.type]).toContain(first.look);
+    // Am selben Tag kommt er nicht noch einmal, am nächsten Tag wieder.
+    const again = new CustomerCrowd(layout, 'berlin', lcg(72));
+    let visits = 0;
+    for (const day of [1, 1, 2]) {
+      for (let t = 0; t < 30 * 60; t++) {
+        const r = again.update(
+          1 / 60,
+          input({ served: 1, clock: day * DAY + first.hour * 60 + 1 + t / 60 }),
+        );
+        visits += r.greetings.filter((a) => a.regular === 0).length;
+      }
+    }
+    expect(visits).toBe(2);
+  });
+
+  it('ohne Uhr, außerhalb des Zeitfensters und für Wartende beim Szenenstart gibt es keine Stammgäste', () => {
+    const first = regularsOf('berlin')[0];
+    if (!first) throw new Error('keine Stammgäste');
+    const none = new CustomerCrowd(layout, 'berlin', lcg(73));
+    run(none, input({ served: 2 }), 30);
+    expect(none.agents.some((a) => a.regular >= 0)).toBe(false);
+    const late = new CustomerCrowd(layout, 'berlin', lcg(74));
+    const after = DAY + first.hour * 60 + REGULAR_FX.windowMin + 1;
+    for (let t = 0; t < 20 * 60; t++)
+      late.update(1 / 60, input({ served: 2, clock: after + t / 600 }));
+    expect(late.agents.some((a) => a.regular === 0)).toBe(false);
+    // Szenenstart mit Kasse: die ersten stehen schon an – keiner davon ist ein Stammgast.
+    const warm = new CustomerCrowd(layout, 'berlin', lcg(75));
+    warm.update(
+      1 / 60,
+      input({ served: 1, clock: DAY + first.hour * 60, till: { payments: 0, progress: 0.5 } }),
+    );
+    const queued = warm.agents.filter((a) => a.active && a.phase === 'queue');
+    expect(queued.length).toBeGreaterThan(0);
+    expect(queued.every((a) => a.regular === -1)).toBe(true);
+  });
+
+  it('bei Regen setzt sich niemand neu auf die Terrasse; trocken schon', () => {
+    const outside = layout.tables.flatMap((t, i) => (t.outside ? [i] : []));
+    expect(outside.length).toBeGreaterThan(0);
+    const seatedOutside = (rain: boolean): number => {
+      const crowd = new CustomerCrowd(layout, 'berlin', lcg(76));
+      let n = 0;
+      for (let t = 0; t < 120 * 60; t++) {
+        crowd.update(1 / 60, input({ served: 2, tables: 1, terrace: 3, rain }));
+        n += crowd.agents.filter((a) => a.active && outside.includes(a.table)).length;
+      }
+      return n;
+    };
+    expect(seatedOutside(true)).toBe(0);
+    expect(seatedOutside(false)).toBeGreaterThan(0);
+  });
+
+  it('die sichtbare Schlange: nur Wartende, vorn zuerst, höchstens so viele wie Plätze', () => {
+    const crowd = new CustomerCrowd(layout, 'berlin', lcg(77));
+    run(crowd, input({ served: 6, orderCap: 0.2 }), 20);
+    const q = crowd.visibleQueue();
+    expect(q.length).toBeGreaterThan(1);
+    expect(q.length).toBeLessThanOrEqual(CROWD.maxQueue);
+    expect(q.every((a) => a.phase === 'queue')).toBe(true);
+    const idx = q.map((a) => crowd.queueIndex(a));
+    expect([...idx].sort((x, y) => x - y)).toEqual(idx);
   });
 });

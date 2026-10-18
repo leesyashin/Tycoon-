@@ -1,9 +1,10 @@
 import Phaser from 'phaser';
 import { CITY_SPRITE } from '@data/city';
-import { DELIVERY_VAN, SCENE_FX } from '@data/art';
+import { CHAR_WALK, COURIER, DELIVERY_VAN, SCENE_FX } from '@data/art';
 import type { CafeLayout } from '@data/layouts';
 import { UI_THEME } from '@data/ui';
 import { ART_SCALE, ATLAS, FRAME } from './art';
+import { facing, type Look } from './facing';
 import { isoDepth, toScreen } from './iso/iso';
 
 /** Uhrzeit einer vollen Stunde in der Sprache des Spiels („18:00“ bzw. „6:00 PM“). */
@@ -15,20 +16,29 @@ export function formatHour(hour: number, lang: string): string {
   }).format(Date.UTC(2000, 0, 1, hour % 24, 0));
 }
 
+/** Kartons auf der Sackkarre für eine Lieferung dieser Größe (`COURIER.boxGrams`). */
+export function boxesFor(grams: number): number {
+  const steps = COURIER.boxGrams.filter((g) => grams > g).length;
+  return Math.min(COURIER.maxBoxes, 1 + steps);
+}
+
 /**
  * Was vor der Tür passiert (kosmetisch): das Schild „Geöffnet/Geschlossen“ über der Tür und der Lieferwagen, der bei
- * jeder Matcha-Lieferung am Bordstein hält; ein Karton geht durch die Tür ins Café.
+ * jeder Matcha-Lieferung am Bordstein hält. Der Lieferant steigt aus, schiebt die Kartons auf der Sackkarre zur Tür
+ * und die leere Karre zurück, dann fährt der Wagen weiter.
  */
 export class CafeStreet {
   private readonly signBg: Phaser.GameObjects.Graphics;
   private readonly signText: Phaser.GameObjects.Text;
   private shownSign = '';
   private readonly van: Phaser.GameObjects.Image;
-  private readonly box: Phaser.GameObjects.Image;
-  /** Lieferungen, die noch vorfahren sollen (kommen sie schneller, fährt der Wagen nacheinander). */
-  private pending = 0;
+  private readonly courier: Phaser.GameObjects.Image;
+  /** Kartons je Lieferung, die noch vorfahren soll (kommen sie schneller, fährt der Wagen nacheinander). */
+  private readonly pending: number[] = [];
   private driving = false;
   private readonly door: { x: number; y: number };
+  /** Tür in Grid-Koordinaten (Mitte der Türkachel an der Fassade). */
+  private readonly doorGrid: { x: number; y: number };
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -43,6 +53,7 @@ export class CafeStreet {
       layout.entranceSide === 'v'
         ? { x: layout.gridSize, y: e.y + 0.5 }
         : { x: e.x + 0.5, y: layout.gridSize };
+    this.doorGrid = doorGrid;
     this.door = toScreen(doorGrid.x, doorGrid.y);
     this.signBg = scene.add.graphics().setDepth(depth);
     // Klein wie ein Schild an der Tür; der farbige Grund trägt die Schrift, ohne Kontur wie die anderen Labels.
@@ -58,10 +69,10 @@ export class CafeStreet {
       .setScale(ART_SCALE)
       .setOrigin(ox, oy)
       .setVisible(false);
-    this.box = scene.add
-      .image(0, 0, ATLAS.furniture, FRAME.supply('crate'))
+    this.courier = scene.add
+      .image(0, 0, ATLAS.common, FRAME.courier(0, 'front', 0))
       .setScale(ART_SCALE)
-      .setOrigin(0.5, 0.8)
+      .setOrigin(0.5, COURIER.sprite.footY / COURIER.sprite.h)
       .setVisible(false);
   }
 
@@ -96,18 +107,21 @@ export class CafeStreet {
     this.shownSign = '';
   }
 
-  /** Eine Lieferung ist angekommen: der Wagen fährt vor (nacheinander, falls schon einer unterwegs ist). */
-  deliver(count = 1): void {
-    this.pending += Math.max(0, count);
+  /**
+   * Lieferungen sind angekommen (je Eintrag die Kartons auf der Karre): der Wagen fährt vor, nacheinander, falls
+   * schon einer unterwegs ist.
+   */
+  deliver(boxes: readonly number[]): void {
+    this.pending.push(...boxes);
     if (!this.driving) this.next();
   }
 
   private next(): void {
-    if (this.pending <= 0) {
+    const boxes = this.pending.shift();
+    if (boxes === undefined) {
       this.driving = false;
       return;
     }
-    this.pending--;
     this.driving = true;
     const d = DELIVERY_VAN;
     const at = (y: number) => {
@@ -134,7 +148,7 @@ export class CafeStreet {
       },
       onComplete: () => {
         this.van.setAlpha(1);
-        this.unload(stopY, () => {
+        this.unload(stopY, boxes, () => {
           this.scene.tweens.add({
             targets: pos,
             y: d.toY,
@@ -160,32 +174,73 @@ export class CafeStreet {
     return DELIVERY_VAN.stopY;
   }
 
-  /** Karton vom Wagen zur Tür, dort verschwindet er im Café. */
-  private unload(stopY: number, done: () => void): void {
-    const d = DELIVERY_VAN;
-    const from = toScreen(d.laneX - d.boxOffset, stopY);
-    this.box
-      .setPosition(from.x, from.y)
-      .setDepth(isoDepth(d.laneX - d.boxOffset - 0.5, stopY - 0.5, 6))
-      .setAlpha(1)
-      .setVisible(true);
-    this.scene.tweens.add({
-      targets: this.box,
-      x: this.door.x,
-      y: this.door.y,
-      duration: d.unloadMs,
-      delay: d.waitMs / 3,
-      ease: 'Sine.InOut',
-      onComplete: () => {
+  /**
+   * Der Lieferant steigt neben dem Wagen aus, schiebt die Sackkarre mit `boxes` Kartons zur Tür, gibt sie ab
+   * („Matcha geliefert!“), schiebt die leere Karre zurück und steigt wieder ein; dann `done` (der Wagen fährt).
+   */
+  private unload(stopY: number, boxes: number, done: () => void): void {
+    const c = COURIER;
+    const from = { x: DELIVERY_VAN.laneX - c.fromVan, y: stopY };
+    const to = { x: this.doorGrid.x + c.beforeDoor, y: this.doorGrid.y };
+    const pos = { ...from };
+    let load = Math.min(c.maxBoxes, Math.max(1, Math.round(boxes)));
+    let look: Look = facing(to.x - from.x, to.y - from.y);
+    let walked = 0;
+    const place = (frame: number): void => {
+      const p = toScreen(pos.x, pos.y);
+      const name = FRAME.courier(load, look.dir, frame);
+      if (this.courier.frame.name !== name) this.courier.setFrame(name);
+      this.courier
+        .setFlipX(look.flip)
+        .setPosition(p.x, p.y)
+        .setDepth(isoDepth(pos.x - 0.5, pos.y - 0.5, 6));
+    };
+    // Schritte im Lauf-Zyklus der Figuren, mit der schweren Karre etwas gemächlicher.
+    const step = (): number => {
+      const cycle = CHAR_WALK.cycle;
+      return cycle[Math.floor(walked / (CHAR_WALK.stepSec * 1.3)) % cycle.length] ?? 0;
+    };
+    const walk = (target: { x: number; y: number }, then: () => void): void => {
+      const dist = Math.hypot(target.x - pos.x, target.y - pos.y);
+      this.scene.tweens.add({
+        targets: pos,
+        x: target.x,
+        y: target.y,
+        duration: (dist / c.tilesPerSec) * 1000,
+        onUpdate: (tw: Phaser.Tweens.Tween) => {
+          walked = (tw.elapsed ?? 0) / 1000;
+          place(step());
+        },
+        onComplete: () => {
+          place(0);
+          then();
+        },
+      });
+    };
+    place(0);
+    this.courier.setAlpha(0).setVisible(true);
+    this.scene.tweens.add({ targets: this.courier, alpha: 1, duration: c.fadeMs });
+    walk(to, () => {
+      // An der Tür: Kartons abgeben, umdrehen, leer zurück.
+      this.scene.time.delayedCall(c.doorMs / 2, () => {
+        load = 0;
+        place(0);
         this.onArrive(this.door.x, this.door.y);
-        this.scene.tweens.add({
-          targets: this.box,
-          alpha: 0,
-          duration: 250,
-          onComplete: () => this.box.setVisible(false),
+        this.scene.time.delayedCall(c.doorMs / 2, () => {
+          look = facing(from.x - to.x, from.y - to.y);
+          walk(from, () => {
+            this.scene.tweens.add({
+              targets: this.courier,
+              alpha: 0,
+              duration: c.fadeMs,
+              onComplete: () => {
+                this.courier.setVisible(false);
+                done();
+              },
+            });
+          });
         });
-      },
+      });
     });
-    this.scene.time.delayedCall(d.waitMs, done);
   }
 }

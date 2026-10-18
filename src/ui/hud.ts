@@ -3,6 +3,8 @@ import { getLocation, type GameState } from '@core/GameState';
 import { computeLocationRates, mood } from '@core/customers';
 import { getBoostRemaining, isFreeBoostReady } from '@core/events';
 import { getCafeClock } from '@core/time/dayCycle';
+import { currentWeather, type Weather } from '@core/weather';
+import { WEATHER } from '@data/weather';
 import { isOpenAt, nextOpeningAt } from '@core/time/clock';
 import { gradeInUse, stockDays } from '@core/supply';
 import { ledgerProfit } from '@core/economy/ledger';
@@ -34,6 +36,22 @@ const CASH_IN_MS = 450;
 const CLEANLINESS_HINT_BELOW = 70;
 /** Matcha-Hinweis, wenn der Vorrat für weniger Öffnungstage reicht. */
 const MATCHA_HINT_BELOW_DAYS = 1;
+/** Himmel im HUD: Wetter aus `core` (kosmetisch), bei klarem Himmel Sonne bzw. nachts Mond. */
+type Sky = 'sun' | 'clear' | 'clouds' | 'rain';
+const SKY_ICON: Record<Sky, IconName> = {
+  sun: 'sun',
+  clear: 'moon',
+  clouds: 'cloud',
+  rain: 'cloud-rain',
+};
+
+function skyOf(w: Weather, night: number): Sky {
+  const h = WEATHER.hud;
+  if (w.rain >= h.rainFrom) return 'rain';
+  if (w.clouds >= h.cloudsFrom) return 'clouds';
+  return night >= h.nightFrom ? 'clear' : 'sun';
+}
+
 const MOOD_ICON: Record<string, IconName> = {
   happy: 'smiley',
   neutral: 'smiley-meh',
@@ -75,7 +93,8 @@ export function createHud(actions: HudActions): View {
   const pill = h('div', { class: 'hud-pill' }, coins.el, leaves.el, leafShop);
 
   // Uhr antippbar → Betrieb (Öffnungszeiten).
-  const clockIcon = icon('clock');
+  const clockIcon = icon('sun');
+  clockIcon.setAttribute('data-testid', 'hud-sky');
   const clock = h('span', { 'data-testid': 'hud-clock' });
   const openState = h('span', { class: 'hud-open', 'data-testid': 'hud-open' });
   const clockBtn = h(
@@ -236,7 +255,14 @@ export function createHud(actions: HudActions): View {
       const c = getCafeClock(s.clock);
       setText(clock, t('hud.clock', { day: c.day + 1, time: fmtClock(c.hour, c.minute) }));
       const open = isOpenAt(loc, s.clock);
-      setIcon(clockIcon, c.night > 0.5 ? 'moon' : 'clock');
+      const sky = skyOf(currentWeather(s), c.night);
+      if (clockIcon.getAttribute('data-sky') !== sky) {
+        setIcon(clockIcon, SKY_ICON[sky]);
+        clockIcon.setAttribute('data-sky', sky);
+        const label = t('hud.hoursWeather', { weather: t(`hud.sky.${sky}`) });
+        clockBtn.setAttribute('aria-label', label);
+        clockBtn.setAttribute('title', label);
+      }
       setText(
         openState,
         open
