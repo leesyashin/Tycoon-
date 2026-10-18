@@ -3,10 +3,8 @@ import type { Weather } from '@core/weather';
 import { UI_THEME } from '@data/ui';
 import { WEATHER_FX } from '@data/weather';
 
-const RAIN_KEY = 'weather-rain';
+const DROP_KEY = 'weather-drop';
 const SHADOW_KEY = 'weather-shadow';
-/** Kantenlänge der Regen-Textur: Zweierpotenz, damit sie sich in WebGL wiederholen lässt. */
-const RAIN_TEX = 128;
 const SHADOW_TEX = 128;
 
 /** `rgba(…)` aus einer Token-Farbe (die Leinwand-Texturen brauchen CSS-Farben mit Deckkraft). */
@@ -17,31 +15,20 @@ function rgba(color: number, alpha: number): string {
   return `rgba(${String(r)}, ${String(g)}, ${String(b)}, ${String(alpha)})`;
 }
 
-/** Regenstreifen (schräg, wie der Wind sie treibt) und ein weicher Schattenfleck, einmal je Spiel erzeugt. */
+/** Ein Regentropfen-Streifen (oben durchsichtig, unten hell) und ein weicher Schattenfleck, einmal je Spiel. */
 function ensureTextures(scene: Phaser.Scene): void {
   const fx = WEATHER_FX;
-  if (!scene.textures.exists(RAIN_KEY)) {
-    const tex = scene.textures.createCanvas(RAIN_KEY, RAIN_TEX, RAIN_TEX);
+  if (!scene.textures.exists(DROP_KEY)) {
+    const w = Math.ceil(fx.rainStreakWidth) + 2;
+    const h = fx.rainStreakLen;
+    const tex = scene.textures.createCanvas(DROP_KEY, w, h);
     const ctx = tex?.getContext();
     if (tex && ctx) {
-      // Feste Verteilung (Goldener Schnitt) statt Zufall: dieselben Streifen bei jedem Start.
-      const slope = fx.rainDrift / fx.rainSpeed;
-      ctx.lineCap = 'round';
-      ctx.lineWidth = fx.rainStreakWidth;
-      for (let i = 0; i < fx.rainStreaks; i++) {
-        const x = ((i * 0.618034) % 1) * RAIN_TEX;
-        const y = ((i * 0.381966 + (i % 3) * 0.29) % 1) * RAIN_TEX;
-        const len = fx.rainStreakLen * (0.7 + ((i * 7) % 5) * 0.12);
-        ctx.strokeStyle = rgba(UI_THEME.surface, 0.55 + ((i * 3) % 4) * 0.12);
-        // Streifen, die über den Rand reichen, auch auf der anderen Seite zeichnen (nahtlose Kachel).
-        for (const dx of [-RAIN_TEX, 0, RAIN_TEX])
-          for (const dy of [-RAIN_TEX, 0, RAIN_TEX]) {
-            ctx.beginPath();
-            ctx.moveTo(x + dx, y + dy);
-            ctx.lineTo(x + dx + slope * len, y + dy + len);
-            ctx.stroke();
-          }
-      }
+      const g = ctx.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0, rgba(UI_THEME.surface, 0));
+      g.addColorStop(1, rgba(UI_THEME.surface, 0.95));
+      ctx.fillStyle = g;
+      ctx.fillRect((w - fx.rainStreakWidth) / 2, 0, fx.rainStreakWidth, h);
       tex.refresh();
     }
   }
@@ -61,26 +48,32 @@ function ensureTextures(scene: Phaser.Scene): void {
   }
 }
 
+/** Deckkraft des grauen Filters bei diesem Wetter (die Szene mischt ihn mit dem Nachtfilter). */
+export function gloomOf(w: Weather): number {
+  return WEATHER_FX.cloudsGloom * w.clouds + WEATHER_FX.rainGloom * w.rain;
+}
+
 export interface WeatherDepths {
-  /** Wolkenschatten und grauer Filter liegen über der Welt, Regen darüber, alles unter den Labels. */
+  /** Wolkenschatten über der Welt, Regen darüber, beides unter den Labels. */
   shadows: number;
-  gloom: number;
   rain: number;
 }
 
 /**
- * Wetter in der Szene (rein kosmetisch, GAME_DESIGN § 12.1, UI_STYLE § 4 „Wetter“): grauer Multiply-Filter bei
- * Wolken und Regen, Regenstreifen in zwei Ebenen über dem ganzen erreichbaren Viertel (Streifen in jeder Zoomstufe
- * gleich groß auf dem Bildschirm) und Wolkenschatten, die an bewölkten Tagen über die Dächer ziehen. Bei „weniger
- * Bewegung“ steht alles still.
+ * Wetter in der Szene (rein kosmetisch, GAME_DESIGN § 12.1, UI_STYLE § 4 „Wetter“): Regentropfen als Partikel – nur
+ * die Streifen werden gezeichnet, keine bildschirmfüllende Ebene – und Wolkenschatten, die an bewölkten Tagen über
+ * die Dächer ziehen. Der Regen lebt in Bildschirm-Pixeln (Emitter ohne Scroll, Maßstab 1/Zoom): Tropfen sind in
+ * jeder Zoomstufe gleich groß und gleich dicht. Bei „weniger Bewegung“ fällt kein Regen und die Schatten stehen; den
+ * grauen Himmel mischt die Szene in den Nachtfilter (`gloomOf`).
  */
 export class WeatherView {
-  private readonly gloom: Phaser.GameObjects.Rectangle;
-  private readonly near: Phaser.GameObjects.TileSprite;
-  private readonly far: Phaser.GameObjects.TileSprite;
+  private readonly rain: Phaser.GameObjects.Particles.ParticleEmitter;
+  /** Ausschnitt oberhalb des Bildschirms, aus dem die Tropfen fallen (lokale Koordinaten = Bildschirm-Pixel). */
+  private readonly zone = new Phaser.Geom.Rectangle(0, 0, 1, 1);
   private readonly shadows: Phaser.GameObjects.Image[] = [];
-  private zoom = 0;
-  private alphaKey = '';
+  private viewKey = '';
+  private shadowAlpha = -1;
+  private raining = false;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -88,26 +81,27 @@ export class WeatherView {
     depth: WeatherDepths,
   ) {
     ensureTextures(scene);
+    const fx = WEATHER_FX;
+    this.rain = scene.add
+      .particles(0, 0, DROP_KEY, {
+        emitting: false,
+        emitZone: { type: 'random', source: this.zone, quantity: 1 },
+        speedX: { min: fx.rainDrift * 1.1, max: fx.rainDrift * 0.9 },
+        speedY: { min: fx.rainSpeed * 0.85, max: fx.rainSpeed * 1.15 },
+        // Streifen in Fallrichtung gedreht.
+        rotate: Phaser.Math.RadToDeg(Math.atan2(-fx.rainDrift, fx.rainSpeed)),
+        scale: { min: 0.7, max: 1.15 },
+        alpha: { start: 1, end: 0.55 },
+        tint: UI_THEME.rain,
+        lifespan: 1000,
+      })
+      .setScrollFactor(0)
+      .setDepth(depth.rain);
     const b = bounds;
-    this.gloom = scene.add
-      .rectangle(b.centerX, b.centerY, b.width, b.height, UI_THEME.overcast, 1)
-      .setBlendMode(Phaser.BlendModes.MULTIPLY)
-      .setDepth(depth.gloom)
-      .setAlpha(0)
-      .setVisible(false);
-    const rain = (d: number) =>
-      scene.add
-        .tileSprite(b.x, b.y, b.width, b.height, RAIN_KEY)
-        .setOrigin(0, 0)
-        .setDepth(d)
-        .setAlpha(0)
-        .setVisible(false);
-    this.far = rain(depth.rain);
-    this.near = rain(depth.rain + 0.5);
-    const s = WEATHER_FX.shadowSize;
-    for (let i = 0; i < WEATHER_FX.shadows; i++) {
+    const s = fx.shadowSize;
+    for (let i = 0; i < fx.shadows; i++) {
       // Gleichmäßig über das Viertel verteilt, leicht versetzt in der Höhe.
-      const x = b.x + ((i + 0.5) / WEATHER_FX.shadows) * b.width;
+      const x = b.x + ((i + 0.5) / fx.shadows) * b.width;
       const y = b.y + (((i * 0.618034) % 1) * 0.8 + 0.1) * b.height;
       this.shadows.push(
         scene.add
@@ -121,49 +115,72 @@ export class WeatherView {
     }
   }
 
+  /** Fallen gerade Tropfen? (Tests, Szene.) */
+  isRaining(): boolean {
+    return this.raining;
+  }
+
   /**
-   * Ein Frame: Deckkraft aus Regenstärke, Bewölkung und Nacht (0..1), Bewegung von Regen und Schatten.
-   * `still`: weniger Bewegung (Streifen und Schatten stehen).
+   * Ein Frame: Regenstärke, Bewölkung und Nacht (0..1) bestimmen Tropfen und Schatten. `still`: weniger Bewegung.
    */
   update(dt: number, w: Weather, night: number, still: boolean): void {
     const fx = WEATHER_FX;
-    const zoom = this.scene.cameras.main.zoom;
-    if (zoom !== this.zoom) {
-      // Streifen behalten ihre Bildschirmgröße: herausgezoomt wird die Kachel in der Welt größer.
-      this.zoom = zoom;
-      this.near.setTileScale(1 / zoom);
-      this.far.setTileScale(fx.rainFar.scale / zoom);
+    this.fitRain(w.rain);
+    const rain = still ? 0 : w.rain;
+    const on = rain > 0.02;
+    if (on !== this.raining) {
+      this.raining = on;
+      if (on) this.rain.start();
+      else this.rain.stop();
     }
-    const rainAlpha = w.rain * Phaser.Math.Linear(fx.rainAlpha, fx.rainNightAlpha, night);
-    const gloom = fx.cloudsGloom * w.clouds + fx.rainGloom * w.rain;
-    // Wolkenschatten nur, solange es nicht regnet (bei Regen ist alles gleichmäßig grau).
+    if (on) this.rain.setAlpha(rain * Phaser.Math.Linear(fx.rainAlpha, fx.rainNightAlpha, night));
+    // Wolkenschatten nur, solange es nicht regnet (bei Regen ist alles gleichmäßig grau), nachts nicht.
     const shadow = fx.shadowAlpha * w.clouds * (1 - w.rain) * (1 - night);
-    const key = `${rainAlpha.toFixed(3)}:${gloom.toFixed(3)}:${shadow.toFixed(3)}`;
-    if (key !== this.alphaKey) {
-      this.alphaKey = key;
-      this.near.setAlpha(rainAlpha).setVisible(rainAlpha > 0.005);
-      this.far.setAlpha(rainAlpha * fx.rainFar.alpha).setVisible(rainAlpha > 0.005);
-      this.gloom.setAlpha(gloom).setVisible(gloom > 0.002);
+    if (Math.abs(shadow - this.shadowAlpha) > 0.002) {
+      this.shadowAlpha = shadow;
       for (const s of this.shadows) s.setAlpha(shadow).setVisible(shadow > 0.002);
     }
-    if (still) return;
-    if (this.near.visible) {
-      // Kachel-Koordinaten = Bildschirm-Pixel (Kachel-Maßstab 1/Zoom), die Ebenen fallen also gleich schnell.
-      this.near.tilePositionY -= fx.rainSpeed * dt;
-      this.near.tilePositionX -= fx.rainDrift * dt;
-      this.far.tilePositionY -= (fx.rainSpeed * fx.rainFar.speed * dt) / fx.rainFar.scale;
-      this.far.tilePositionX -= (fx.rainDrift * fx.rainFar.speed * dt) / fx.rainFar.scale;
+    if (still || !this.shadows[0]?.visible) return;
+    const b = this.bounds;
+    const hw = fx.shadowSize.w / 2;
+    const hh = fx.shadowSize.h / 2;
+    for (const s of this.shadows) {
+      s.x += fx.shadowWind.x * dt;
+      s.y += fx.shadowWind.y * dt;
+      // Rechts bzw. unten hinaus, links bzw. oben wieder herein.
+      if (s.x - hw > b.right) s.x = b.left - hw;
+      if (s.y - hh > b.bottom) s.y = b.top - hh;
     }
-    if (this.shadows[0]?.visible) {
-      const b = this.bounds;
-      const half = fx.shadowSize.w / 2;
-      for (const s of this.shadows) {
-        s.x += fx.shadowWind.x * dt;
-        s.y += fx.shadowWind.y * dt;
-        // Rechts bzw. unten hinaus, links bzw. oben wieder herein.
-        if (s.x - half > b.right) s.x = b.left - half;
-        if (s.y - fx.shadowSize.h / 2 > b.bottom) s.y = b.top - fx.shadowSize.h / 2;
-      }
-    }
+  }
+
+  /**
+   * Emitter auf Bildschirm-Pixel bringen (bei Zoom- oder Größenänderung) und die Tropfen-Menge an Fläche und
+   * Regenstärke anpassen: so dicht wie `rainDensity` je Pixel bei vollem Regen.
+   */
+  private fitRain(strength: number): void {
+    const cam = this.scene.cameras.main;
+    const level = Math.round(Phaser.Math.Clamp(strength, 0, 1) * 10);
+    const key = `${String(cam.width)}x${String(cam.height)}@${String(cam.zoom)}:${String(level)}`;
+    if (key === this.viewKey) return;
+    this.viewKey = key;
+    const fx = WEATHER_FX;
+    const z = cam.zoom;
+    // Ohne Scroll wirkt nur noch der Zoom um die Bildmitte: so liegt lokal (0, 0) oben links im Bild.
+    this.rain
+      .setScale(1 / z)
+      .setPosition((cam.width / 2) * (1 - 1 / z), (cam.height / 2) * (1 - 1 / z));
+    const margin = fx.rainStreakLen * 2;
+    const lifespan = ((cam.height + margin * 3) / (fx.rainSpeed * 0.85)) * 1000;
+    // Der Wind trägt die Tropfen seitlich: sie starten entsprechend weiter gegen den Wind.
+    const drift = fx.rainDrift * (lifespan / 1000);
+    const left = Math.min(0, -drift) - margin;
+    const right = Math.max(0, -drift) + cam.width + margin;
+    this.zone.setTo(left, -margin * 2, right - left, margin);
+    this.rain.setParticleLifespan(lifespan);
+    // Gleiche Dichte im Bild, obwohl die Tropfen auf einer breiteren Front starten.
+    const drops = fx.rainDensity * (right - left) * cam.height * Math.max(0.15, level / 10);
+    const perSec = drops / (lifespan / 1000);
+    const quantity = Math.max(1, Math.ceil(perSec / 60));
+    this.rain.setFrequency((1000 * quantity) / Math.max(1, perSec), quantity);
   }
 }

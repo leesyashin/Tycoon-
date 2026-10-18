@@ -83,7 +83,7 @@ import { ParkingView } from './city/ParkingView';
 import { TILE_H, TILE_W, isoDepth, toGrid, toScreen } from './iso/iso';
 import { ART_SCALE, ATLAS, CHAR_FOOT_ORIGIN_Y, CHAR_OVERLAY_Y, FRAME, atlasUrls } from './art';
 import { REGISTRY, UI_EVENTS, getSceneCover, getStore } from './registry';
-import { WeatherView } from './weatherView';
+import { WeatherView, gloomOf } from './weatherView';
 import { facing, walkFacing, type Look } from './facing';
 import { Chatter } from './agents/chatter';
 
@@ -196,6 +196,17 @@ const reducedMotion = (): boolean => motionQuery.matches;
 /** Rate pro Spielstunde → je echter Sekunde (geöffnet vergeht eine Spielminute je Sekunde). */
 const perRealSec = (perHour: number): number => (perHour * TIME.openMinutesPerSec) / 60;
 
+/** Farbe zwischen `a` (t = 0) und `b` (t = 1), je Kanal linear. */
+function mixColor(a: number, b: number, t: number): number {
+  const k = Phaser.Math.Clamp(t, 0, 1);
+  const ch = (shift: number) => {
+    const x = (a >> shift) & 0xff;
+    const y = (b >> shift) & 0xff;
+    return Math.round(x + (y - x) * k) << shift;
+  };
+  return ch(16) | ch(8) | ch(0);
+}
+
 /** Lager-Stufe 1..3 aus einer Mindest-Stufe des Grundrisses. */
 function storageTierAt(tier: number): StorageTier {
   return Math.min(3, Math.max(1, Math.trunc(tier))) as StorageTier;
@@ -287,7 +298,7 @@ export class CafeScene extends Phaser.Scene {
   private eventTint!: Phaser.GameObjects.Rectangle;
   private nightTint!: Phaser.GameObjects.Rectangle;
   private glows: Phaser.GameObjects.Image[] = [];
-  private shownNight = -1;
+  private shownNight = '';
   private board: { text: Phaser.GameObjects.Text; bg: Phaser.GameObjects.Graphics } | null = null;
   private shownQueue = -1;
   private walkClock = 0;
@@ -359,7 +370,7 @@ export class CafeScene extends Phaser.Scene {
     this.shownTables = -1;
     this.moodSprites = [];
     this.glows = [];
-    this.shownNight = -1;
+    this.shownNight = '';
     this.board = null;
     this.shownQueue = -1;
     this.walkClock = 0;
@@ -487,7 +498,6 @@ export class CafeScene extends Phaser.Scene {
     this.createNight();
     this.weather = new WeatherView(this, CityView.viewLimits(), {
       shadows: DEPTH.label - 9,
-      gloom: DEPTH.label - 8,
       rain: DEPTH.label - 7,
     });
     const startLoc = getLocation(state, this.locationId);
@@ -1025,7 +1035,7 @@ export class CafeScene extends Phaser.Scene {
     }
     this.refreshRoomLook(decor, !first);
     if (!first) this.plop(this.ambienceImages[this.ambienceImages.length - 1]);
-    this.shownNight = -1;
+    this.shownNight = '';
   }
 
   /** Warmer Lichtkegel auf dem Boden unter einer Pendelleuchte (additiv, Stärke folgt der Tageszeit). */
@@ -1129,7 +1139,7 @@ export class CafeScene extends Phaser.Scene {
   /** Nach Sprachwechsel alle Stations-Texte neu setzen. */
   private relabel(): void {
     this.matchaOut?.setText(t('scene.matchaOut'));
-    this.shownNight = -1;
+    this.shownNight = '';
     for (const v of this.stations) v.shownLevel = -1;
     this.refreshStations(this.store.getState(), false);
   }
@@ -1387,12 +1397,23 @@ export class CafeScene extends Phaser.Scene {
         : t('scene.sign.closed', { time: formatHour(loc.hours.open, lang) }),
     );
     const night = Math.round(getCafeClock(state.clock).night * 100) / 100;
-    const key = night + (open ? 10 : 0);
+    const gloom = Math.round(gloomOf(this.weatherNow) * 100) / 100;
+    const key = `${String(night)}:${String(gloom)}:${open ? 'o' : 'c'}`;
     if (key === this.shownNight) return;
     this.shownNight = key;
-    // Multiply mit Alpha mischt Richtung Indigo; 0 = Tag.
-    this.nightTint.setAlpha(night * DAY_CYCLE.nightAlpha);
-    this.nightTint.setVisible(night > 0);
+    // Ein Multiply-Filter für Nacht (Indigo) und grauen Himmel (Wolken, Regen): zwei Filter übereinander kosten am
+    // Handy eine zweite bildschirmfüllende Fläche. 0 = klarer Tag.
+    const nightAlpha = night * DAY_CYCLE.nightAlpha;
+    const alpha = 1 - (1 - nightAlpha) * (1 - gloom);
+    const color = mixColor(
+      UI_THEME.overcast,
+      UI_THEME.night,
+      nightAlpha / Math.max(1e-6, nightAlpha + gloom),
+    );
+    this.nightTint
+      .setFillStyle(color, 1)
+      .setAlpha(alpha)
+      .setVisible(alpha > 0.002);
     // Nach Ladenschluss ist drinnen das Licht aus (nur ein Rest brennt).
     const lit = open ? 1 : SCENE_FX.closedLight;
     for (const g of this.glows) g.setAlpha(night * 0.8 * lit);

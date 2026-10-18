@@ -116,7 +116,8 @@ identisch aussehen. Kein Hex-Wert außerhalb dieser beiden Stellen.
 | `--c-glass` | `rgba(12, 16, 35, 0.72)` | HUD-/Status-Pillen | Transluzente Pillen über der Szene (Blur 6 px). |
 | `--c-scrim` | `rgba(1, 23, 71, 0.6)` | hinter Dialogen | Dialog-Backdrop. |
 | `--c-night` | `#3a3f8f` | Nacht-Tönung | Szene-Overlay nachts (Phaser, Multiply 35 %). |
-| `--c-overcast` | `#8a96ad` | – | Szene-Overlay bei Wolken und Regen (Phaser, Multiply 10–24 %, § 4 „Wetter“). |
+| `--c-overcast` | `#8a96ad` | – | Szene-Overlay bei Wolken und Regen (Phaser, Multiply 10–24 %, mit `--c-night` in einem Filter gemischt, § 4 „Wetter“). |
+| `--c-rain` | `#9db8dc` | – | Regentropfen in der Szene (Partikel, § 4 „Wetter“): auf Asphalt heller, auf hellen Böden dunkler. |
 
 Kontrast-Regel (unverändert aus S3): Text/Hintergrund ≥ 4.5:1. Gemessen:
 `--c-primary` auf Weiß 4.6:1 (ok, weißer Text auf Blau ebenfalls 4.6:1). `--c-success` auf Weiß 2.3:1 und Weiß

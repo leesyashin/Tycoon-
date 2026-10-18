@@ -37,21 +37,18 @@ export const WEATHER = {
 
 /** Optik in der Szene (`scenes/weatherView.ts`). */
 export const WEATHER_FX = {
-  /** Grauer Multiply-Filter (`--c-overcast`): Deckkraft bei voller Bewölkung und zusätzlich bei vollem Regen. */
+  /** Grauer Multiply-Filter (`--c-overcast`, mit dem Nachtfilter gemischt): bei voller Bewölkung, plus bei Regen. */
   cloudsGloom: 0.1,
   rainGloom: 0.14,
-  /** Regenstreifen: Deckkraft bei vollem Regen (nachts etwas weniger), Fall in Bildschirm-Pixeln je Sekunde. */
-  rainAlpha: 0.5,
-  rainNightAlpha: 0.32,
+  /** Tropfen: Deckkraft bei vollem Regen (nachts etwas weniger), Fall und Wind in Bildschirm-Pixeln je Sekunde. */
+  rainAlpha: 0.75,
+  rainNightAlpha: 0.5,
   rainSpeed: 620,
   rainDrift: -110,
-  /** Textur der Streifen: Kachelgröße (Pixel), Anzahl, Länge und Breite eines Streifens. */
-  rainTile: 160,
-  rainStreaks: 30,
-  rainStreakLen: 14,
-  rainStreakWidth: 1.2,
-  /** Zweite, langsamere Ebene (Tiefe): Anteil von Tempo und Deckkraft, Kachel-Maßstab. */
-  rainFar: { speed: 0.62, alpha: 0.55, scale: 0.7 },
+  /** Streifen eines Tropfens (Pixel) und Tropfen je Bildschirm-Pixel bei vollem Regen (390×844 ≈ 300). */
+  rainStreakLen: 18,
+  rainStreakWidth: 1.6,
+  rainDensity: 0.0009,
   /** Wolkenschatten an bewölkten Tagen: Anzahl, Größe (Welt-Pixel), Deckkraft, Wind (Welt-Pixel je Sekunde). */
   shadows: 4,
   shadowSize: { w: 1100, h: 560 },
