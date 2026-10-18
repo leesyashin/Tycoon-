@@ -162,14 +162,14 @@ test('Parkplatz-Ausbau: Kamera schwenkt kurz zum Parkplatz und dann zurück an d
     () => (window as Win).__mceGame?.scene.getScene('CafeScene')?.sys.settings.status === 5,
   );
   await page.waitForTimeout(500);
-  // Wo steht die Mitte des Parkplatzes auf dem Bildschirm, läuft gerade ein Schwenk?
+  // Wo steht die Mitte des Parkplatzes auf dem Bildschirm, in welchem Abschnitt ist der Schwenk?
   const lot = () =>
     page.evaluate(() => {
       const scene = (window as Win).__mceGame?.scene.getScene('CafeScene');
       if (!scene) throw new Error('keine Szene');
       const s = scene as unknown as {
         parking: { center(): { x: number; y: number } };
-        controls: { touring(): boolean };
+        controls: { touring(): boolean; tourPhase(): string | null };
       };
       const c = scene.cameras.main;
       const p = s.parking.center();
@@ -177,6 +177,7 @@ test('Parkplatz-Ausbau: Kamera schwenkt kurz zum Parkplatz und dann zurück an d
         x: (p.x - c.worldView.x) * c.zoom,
         y: (p.y - c.worldView.y) * c.zoom,
         touring: s.controls.touring(),
+        phase: s.controls.tourPhase(),
       };
     });
   const start = await camera(page);
@@ -192,15 +193,14 @@ test('Parkplatz-Ausbau: Kamera schwenkt kurz zum Parkplatz und dann zurück an d
   await page.getByTestId('panel-close').click();
 
   // Dann: hin, bis der Parkplatz mitten im freien Bild steht, und etwas heran …
-  await expect.poll(async () => (await lot()).touring).toBe(true);
-  await page.waitForTimeout(1300);
+  await expect.poll(async () => (await lot()).phase, { timeout: 10_000 }).toBe('hold');
   const shown = await lot();
   expect(shown.touring).toBe(true);
   expect(shown.x).toBeGreaterThan(120);
   expect(shown.x).toBeLessThan(270);
   expect((await camera(page)).zoom).toBeGreaterThan(start.zoom);
   // … und zurück an Ausschnitt und Zoom von vorher.
-  await expect.poll(async () => (await lot()).touring, { timeout: 6000 }).toBe(false);
+  await expect.poll(async () => (await lot()).touring, { timeout: 10_000 }).toBe(false);
   const end = await camera(page);
   expect(end.zoom).toBeCloseTo(start.zoom, 6);
   expect(end.cx).toBeCloseTo(start.cx, 3);

@@ -16,6 +16,7 @@ export class CameraControls {
   private tour: {
     back: { x: number; y: number; zoom: number };
     timer: Phaser.Time.TimerEvent | null;
+    phase: 'to' | 'hold' | 'back';
   } | null = null;
 
   constructor(
@@ -43,6 +44,11 @@ export class CameraControls {
   /** Läuft gerade ein Schwenk (hin, Pause oder zurück)? */
   touring(): boolean {
     return this.tour !== null;
+  }
+
+  /** Abschnitt des laufenden Schwenks: hin, am Ziel stehen, zurück; `null` ohne Schwenk. */
+  tourPhase(): 'to' | 'hold' | 'back' | null {
+    return this.tour?.phase ?? null;
   }
 
   /**
@@ -80,15 +86,21 @@ export class CameraControls {
       p.y + (cam.height / 2 - view.centerY) / zoom,
       zoom,
     );
-    const tour = { back, timer: null as Phaser.Time.TimerEvent | null };
+    const tour = {
+      back,
+      timer: null as Phaser.Time.TimerEvent | null,
+      phase: 'to' as 'to' | 'hold' | 'back',
+    };
     this.tour = tour;
     const ease = 'Sine.easeInOut';
     cam.zoomTo(zoom, t.panMs, ease, true);
     cam.pan(target.x, target.y, t.panMs, ease, true, (_c: unknown, progress: number) => {
       if (progress < 1 || this.tour !== tour) return;
+      tour.phase = 'hold';
       onArrive();
       tour.timer = this.scene.time.delayedCall(t.holdMs, () => {
         if (this.tour !== tour) return;
+        tour.phase = 'back';
         cam.zoomTo(back.zoom, t.backMs, ease, true);
         cam.pan(back.x, back.y, t.backMs, ease, true, (_c2: unknown, done: number) => {
           if (done >= 1 && this.tour === tour) this.tour = null;
