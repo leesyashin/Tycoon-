@@ -1345,3 +1345,34 @@ describe('Lager: Matcha-Vorrat und Lieferant (kosmetisch)', () => {
     for (const x of crossings(store, back)) expect(Math.abs(x - gap.x)).toBeLessThan(0.5);
   });
 });
+
+describe('Geräusche: Türglocke (kosmetisch)', () => {
+  const layout = getLayout('berlin');
+
+  it('zählt jeden Gast, der durch die Tür kommt – nicht die, die beim Szenenstart schon anstehen', () => {
+    const crowd = new CustomerCrowd(layout, 'berlin', lcg(91));
+    const inp = input({ served: 1.5, till: { payments: 0, progress: 0.6 } });
+    const first = crowd.update(1 / 60, inp);
+    // Szenenstart: Wer schon ansteht, ist drin, ohne dass die Glocke klingt.
+    expect(crowd.agents.filter((a) => a.active && a.phase === 'queue').length).toBeGreaterThan(0);
+    expect(first.entered).toBe(0);
+    let entered = 0;
+    let walkedIn = 0;
+    const seen = new Set<number>();
+    for (let t = 0; t < 40 * 60; t++) {
+      const r = crowd.update(1 / 60, {
+        ...inp,
+        till: { payments: t % 300 === 0 ? 1 : 0, progress: 0.6 },
+      });
+      entered += r.entered;
+      for (const a of crowd.agents)
+        if (a.active && a.phase === 'walkIn' && !seen.has(a.id)) {
+          seen.add(a.id);
+          walkedIn++;
+        }
+    }
+    expect(entered).toBeGreaterThan(0);
+    // Höchstens einmal je hereinkommendem Gast.
+    expect(entered).toBeLessThanOrEqual(walkedIn);
+  });
+});

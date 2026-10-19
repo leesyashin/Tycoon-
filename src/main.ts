@@ -132,6 +132,7 @@ whenIdle(() => {
       store,
       debugSpawn: Number(query.get('debugSpawn') ?? 0),
       onSfx: (id) => audio.play(id),
+      onAmbient: (levels) => audio.setAmbient(levels),
       onOpenStation: (id) => openStation(id),
       onReady: hideSplash,
       sceneCover: () => sceneCover(),

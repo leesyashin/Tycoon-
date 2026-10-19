@@ -34,6 +34,8 @@ export const UI_EVENTS = {
   langChanged: 'ui:langChanged',
   /** Szene meldet einen Klang (Münze, Tap); die Audio-Schicht spielt ihn ab. */
   sfx: 'scene:sfx',
+  /** Szene meldet, wie laut Regen und Gemurmel gerade sein sollen (`AmbientLevels`). */
+  ambient: 'scene:ambient',
 } as const;
 
 export function getStore(scene: Phaser.Scene): Store {

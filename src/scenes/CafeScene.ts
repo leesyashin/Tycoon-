@@ -24,6 +24,7 @@ import {
   figureOffset,
   workStepAt,
   type WorkPose,
+  type WorkStep,
   CUSTOMER_LOOKS,
   DECOR_BIG,
   DECOR_BIG_FRAMES,
@@ -51,6 +52,7 @@ import {
   type TinFill,
 } from '@data/art';
 import type { StaffRoleId } from '@data/staff';
+import { AMBIENT_SOUND, STEAM_POSES, murmurLevel, type AmbientLevels } from '@data/audio';
 import { DAY_CYCLE, UI_THEME } from '@data/ui';
 import { getLocation, type GameState, type LocationState, type SupplyOrder } from '@core/GameState';
 import type { Store } from '@core/store';
@@ -254,6 +256,11 @@ export class CafeScene extends Phaser.Scene {
   /** Objekt, dessen Panel offen ist und auf das die Kamera schaut (`followPanel`), und Zeit seit der letzten Frage. */
   private focusObject: string | null = null;
   private focusAge = 0;
+  /** Arbeitsschritt je Barista beim letzten Frame (der Milchschäumer zischt beim Wechsel in den Schritt). */
+  private baristaSteps: (WorkStep | null)[] = [];
+  /** Zuletzt gemeldete Geräusch-Stärken und Zeit seit der letzten Meldung. */
+  private ambientSent: AmbientLevels = { rain: -1, murmur: -1 };
+  private ambientAge = 0;
   /** Ware in der Hand der Baristas, die aus dem Lager kommen (je Barista ein Sprite). */
   private supplySprites: Phaser.GameObjects.Image[] = [];
   private sparkles!: Phaser.GameObjects.Particles.ParticleEmitter;
@@ -351,6 +358,9 @@ export class CafeScene extends Phaser.Scene {
     this.inboundGrams = 0;
     this.focusObject = null;
     this.focusAge = 0;
+    this.baristaSteps = [];
+    this.ambientSent = { rain: -1, murmur: -1 };
+    this.ambientAge = 0;
     this.supplySprites = [];
     this.agentSprites = [];
     this.agentPrev = [];
@@ -622,7 +632,7 @@ export class CafeScene extends Phaser.Scene {
     // Mit Debug-Spawn kommen mehr Figuren, als `core` bucht: dann bezahlen sie im eigenen Takt (nur Optik).
     const till = this.tillInput(loc);
     const open = isOpenAt(loc, state.clock);
-    const { purchases, orders, payments, greetings } = this.crowd.update(dt, {
+    const { purchases, orders, payments, greetings, entered } = this.crowd.update(dt, {
       served: this.visibleServed(this.rates),
       orderCap: perRealSec(this.rates.stages.order),
       waiters: getStaffLevel(loc, 'waiter'),
@@ -641,6 +651,7 @@ export class CafeScene extends Phaser.Scene {
       clock: state.clock,
     });
     for (const a of greetings) this.greet(a);
+    if (entered > 0) this.game.events.emit(UI_EVENTS.sfx, 'doorBell');
     this.chatter.update(dt, this.crowd.agents, this.crowd.visibleQueue(), {
       weather:
         this.weatherNow.rain >= WEATHER_FX.umbrellaFrom
@@ -672,6 +683,11 @@ export class CafeScene extends Phaser.Scene {
     this.syncDrawer();
     this.updateAmbientFx(dt);
     for (const a of purchases) this.onServed(a);
+    this.ambientAge += deltaMs;
+    if (this.ambientAge >= AMBIENT_SOUND.sceneUpdateMs) {
+      this.ambientAge = 0;
+      this.reportAmbient();
+    }
     const hidden = this.crowd.hiddenCount;
     this.moreText.setVisible(hidden > 0);
     if (hidden > 0) this.moreText.setText(t('scene.crowd.more', { count: hidden }));
@@ -1761,6 +1777,10 @@ export class CafeScene extends Phaser.Scene {
       } else if (b.phase === 'work') {
         const step = workStepAt(b.station, b.workTotal > 0 ? 1 - b.timer / b.workTotal : 0);
         frame = this.poseFrame(step.pose, i * 0.5);
+        // Milch aufschäumen: Zischen beim Wechsel in den Schritt (die Audio-Schicht hält Abstand bei vielen Baristas).
+        if (step !== this.baristaSteps[i] && STEAM_POSES[b.station] === step.pose)
+          this.game.events.emit(UI_EVENTS.sfx, 'steam');
+        this.baristaSteps[i] = step;
       } else if (b.phase === 'fetch') {
         // Greift ins Regal an der linken Wand.
         look = facing(-1, 0);
@@ -2560,6 +2580,22 @@ export class CafeScene extends Phaser.Scene {
     this.time.delayedCall(REGULAR_FX.replySec * 1000, () => {
       if (this.crowd.cashiers[0]?.active) this.chatter.say(-1, 'heart');
     });
+  }
+
+  /**
+   * Wie laut Regen und Gemurmel gerade sein sollen (Audio-Schicht): Regen nach dem Wetter, Gemurmel nach den Gästen
+   * im Raum. Gemeldet wird nur, was sich merklich geändert hat.
+   */
+  private reportAmbient(): void {
+    let inside = 0;
+    for (const a of this.crowd.agents)
+      if (a.active && inRoom(this.layout, Math.round(a.x), Math.round(a.y))) inside++;
+    const levels: AmbientLevels = { rain: this.weatherNow.rain, murmur: murmurLevel(inside) };
+    const sent = this.ambientSent;
+    if (Math.abs(levels.rain - sent.rain) < 0.02 && Math.abs(levels.murmur - sent.murmur) < 0.02)
+      return;
+    this.ambientSent = levels;
+    this.game.events.emit(UI_EVENTS.ambient, levels);
   }
 
   /** Gast-Emote nach dem Bedienen: Herz, Note oder Stern in einer Sprechblase. */
