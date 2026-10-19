@@ -34,6 +34,7 @@ import {
   SCENE_FX,
   STOOL_SEAT_LIFT,
   STATION_FX,
+  STORAGE_TINS,
   SUPPLY_CANVAS,
   SUPPLY_ITEMS,
   counterLookTier,
@@ -44,8 +45,10 @@ import {
   stationLookTier,
   storageLookTier,
   tableLookTier,
+  tinFill,
   type LookTier,
   type StorageTier,
+  type TinFill,
 } from '@data/art';
 import type { StaffRoleId } from '@data/staff';
 import { DAY_CYCLE, UI_THEME } from '@data/ui';
@@ -63,7 +66,7 @@ import { currentWeather, type Weather } from '@core/weather';
 import { WEATHER_FX } from '@data/weather';
 import { REGULAR_FX, regularsOf } from '@data/regulars';
 import { isOpenAt } from '@core/time/clock';
-import { gradeInUse } from '@core/supply/stock';
+import { dailyMatchaNeed, gradeInUse, totalStock } from '@core/supply';
 import type { EventOverlay } from '@data/events';
 import { Decimal } from '@core/math/bignum';
 import { getLang, t } from '@i18n/index';
@@ -75,7 +78,7 @@ import {
   type WaiterPhase,
 } from './agents/crowd';
 import { CafeItems, ITEM_ORIGIN_Y } from './cafeItems';
-import { CafeStreet, boxesFor, formatHour } from './cafeStreet';
+import { CafeStreet, boxesFor, formatHour, type DeliveryLoad } from './cafeStreet';
 import { CameraControls } from './cameraControls';
 import { TAP_TARGET_KEY, ambienceTarget, pickTapTarget, tableTarget } from './tapTarget';
 import { CityView } from './city/CityView';
@@ -241,6 +244,13 @@ export class CafeScene extends Phaser.Scene {
   private storage: StorageView[] = [];
   /** Gezeigte Lager-Stufe (0 bis zum ersten Zeichnen). */
   private shownStorageTier = 0;
+  /** Gezeigter Füllstand der Matcha-Dosen (−1 bis zum ersten Zeichnen). */
+  private shownTinFill: TinFill | -1 = -1;
+  /** Matcha-Bedarf eines Öffnungstags (g), alle `STORAGE_TINS.recheckMs` neu gerechnet. */
+  private matchaNeed = 0;
+  private matchaNeedAge = 0;
+  /** Gramm auf der Sackkarre, die noch nicht im Lager sind: das Regal zeigt sie erst nach dem Abladen. */
+  private inboundGrams = 0;
   /** Ware in der Hand der Baristas, die aus dem Lager kommen (je Barista ein Sprite). */
   private supplySprites: Phaser.GameObjects.Image[] = [];
   private sparkles!: Phaser.GameObjects.Particles.ParticleEmitter;
@@ -332,6 +342,10 @@ export class CafeScene extends Phaser.Scene {
     this.shownCounterTier = 0;
     this.storage = [];
     this.shownStorageTier = 0;
+    this.shownTinFill = -1;
+    this.matchaNeed = 0;
+    this.matchaNeedAge = 0;
+    this.inboundGrams = 0;
     this.supplySprites = [];
     this.agentSprites = [];
     this.agentPrev = [];
@@ -509,7 +523,11 @@ export class CafeScene extends Phaser.Scene {
       this.layout,
       (size, color) => this.makeText(size, color),
       DEPTH.label - 4,
-      (x, y) => this.textPopup(x, y, t('scene.delivery'), UI_THEME.textCss),
+      {
+        store: this.layout.storage.fetchSpot,
+        path: (from, to) => this.crowd.courierPath(from, to),
+      },
+      (load, x, y) => this.onStored(load, x, y),
     );
     this.createMatchaOut();
     this.createStationFx();
@@ -544,6 +562,7 @@ export class CafeScene extends Phaser.Scene {
       window.removeEventListener('keydown', onKey);
     });
     this.refreshCounter(state, false);
+    this.matchaNeed = dailyMatchaNeed(state, this.locationId);
     this.refreshStorage(state, false);
     this.refreshStations(state, false);
     this.refreshTables(state, false);
@@ -563,7 +582,16 @@ export class CafeScene extends Phaser.Scene {
     this.walkClock += dt;
     this.city.update(dt, reducedMotion());
     this.scaleLabels();
+    // Vor dem Auffrischen des Lagers: eine neue Lieferung zählt sofort als „noch auf der Karre“, sonst zeigte das
+    // Regal sie einen Moment zu früh.
+    const loc = getLocation(state, this.locationId);
+    this.watchSupplyAndBills(loc);
     this.ratesAge += deltaMs;
+    this.matchaNeedAge += deltaMs;
+    if (this.matchaNeedAge >= STORAGE_TINS.recheckMs) {
+      this.matchaNeedAge = 0;
+      this.matchaNeed = dailyMatchaNeed(state, this.locationId);
+    }
     if (!this.rates || this.ratesAge >= RATES_REFRESH_MS) {
       this.rates = computeLocationRates(state, this.locationId);
       this.ratesAge = 0;
@@ -581,8 +609,6 @@ export class CafeScene extends Phaser.Scene {
     if (this.parkingReveal) this.revealParking();
     this.weatherNow = currentWeather(state, this.locationId);
     this.weather.update(dt, this.weatherNow, getCafeClock(state.clock).night, reducedMotion());
-    const loc = getLocation(state, this.locationId);
-    this.watchSupplyAndBills(loc);
     // Mit Debug-Spawn kommen mehr Figuren, als `core` bucht: dann bezahlen sie im eigenen Takt (nur Optik).
     const till = this.tillInput(loc);
     const open = isOpenAt(loc, state.clock);
@@ -902,23 +928,35 @@ export class CafeScene extends Phaser.Scene {
 
   /**
    * Das Lager füllt sich mit der Zahl gekaufter Geräte der Barista-Theke (`STORAGE_LOOK_DEVICES`); neue Regale
-   * ploppen dazu. Rein kosmetisch.
+   * ploppen dazu. Die Matcha-Dosen in den Regalen zeigen den echten Vorrat (`tinFill`, ohne die Gramm, die der
+   * Lieferant noch bringt); füllen sie sich nach dem Abladen, ploppen die Regale. Rein kosmetisch.
    */
   private refreshStorage(state: GameState, animate: boolean): void {
     const loc = getLocation(state, this.locationId);
     const devices = PRODUCT_LINES.filter((l) => (loc.stations[l.id]?.level ?? 0) > 0).length;
     const tier: StorageTier = storageLookTier(devices);
-    if (tier === this.shownStorageTier) return;
+    const fill = tinFill(Math.max(0, totalStock(loc.supply) - this.inboundGrams), this.matchaNeed);
+    if (tier === this.shownStorageTier && fill === this.shownTinFill) return;
     const upgrade = animate && this.shownStorageTier > 0 && tier > this.shownStorageTier;
+    const refill = animate && this.shownTinFill >= 0 && fill > this.shownTinFill;
     this.shownStorageTier = tier;
+    this.shownTinFill = fill;
     for (const v of this.storage) {
       const show = tier >= v.minTier;
       const appears = show && !v.sprite.visible;
       // Nicht sichtbare Teile behalten ihr Bild (das Seitenregal gibt es erst ab Stufe 2).
-      if (show) v.sprite.setFrame(FRAME.storage(v.piece, tier, v.facesX));
+      if (show) v.sprite.setFrame(FRAME.storage(v.piece, tier, v.facesX, fill));
       v.sprite.setVisible(show);
-      if (upgrade && show) this.plop(v.sprite, appears ? SCENE_FX.counterWaveMs * 4 : 0);
+      if ((upgrade || (refill && v.piece !== 'stock')) && show)
+        this.plop(v.sprite, appears ? SCENE_FX.counterWaveMs * 4 : 0);
     }
+  }
+
+  /** Der Lieferant hat im Lager abgeladen: „Matcha geliefert!“ über der Karre, das Regal zeigt den neuen Vorrat. */
+  private onStored(load: DeliveryLoad, x: number, y: number): void {
+    this.inboundGrams = Math.max(0, this.inboundGrams - load.grams);
+    this.textPopup(x, y - STATION_TOP, t('scene.delivery'), UI_THEME.textCss);
+    this.refreshStorage(this.store.getState(), true);
   }
 
   private createStations(): void {
@@ -1462,9 +1500,13 @@ export class CafeScene extends Phaser.Scene {
     if (delivered > this.lastDelivered) {
       const arrived = this.lastOrders.filter((o) => !loc.supply.orders.includes(o));
       const count = Math.min(MAX_VANS_AT_ONCE, delivered - this.lastDelivered);
-      this.street.deliver(
-        Array.from({ length: count }, (_, i) => boxesFor(arrived[i]?.grams ?? 0)),
-      );
+      const loads = Array.from({ length: count }, (_, i): DeliveryLoad => {
+        const grams = arrived[i]?.grams ?? 0;
+        return { boxes: boxesFor(grams), grams };
+      });
+      // Bis der Lieferant im Lager ist, zeigt das Regal den alten Vorrat.
+      this.inboundGrams += loads.reduce((sum, l) => sum + l.grams, 0);
+      this.street.deliver(loads);
       this.lastDelivered = delivered;
     }
     this.lastOrders = loc.supply.orders;

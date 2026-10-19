@@ -77,6 +77,8 @@ interface ScenePatch {
   terrace?: number;
   /** Lieferung in so vielen Spielminuten. */
   delivery?: { grams: number; inMinutes: number };
+  /** Matcha im Lager (Gramm je Sorte). */
+  stock?: number[];
 }
 
 /** Spielstand ändern und neu laden (Szene steht danach). */
@@ -91,7 +93,7 @@ async function reloadWith(page: Page, patch: ScenePatch): Promise<void> {
       activeEvents: unknown[];
       locations: Record<
         string,
-        { ambience: Record<string, number>; supply: { orders: unknown[] } }
+        { ambience: Record<string, number>; supply: { orders: unknown[]; stock: number[] } }
       >;
     };
     const b = save.locations['berlin'];
@@ -107,6 +109,7 @@ async function reloadWith(page: Page, patch: ScenePatch): Promise<void> {
         },
       ];
     if (p.terrace !== undefined) b.ambience = { ...b.ambience, terrace: p.terrace };
+    if (p.stock) b.supply.stock = p.stock;
     if (p.delivery)
       b.supply.orders = [
         {
@@ -154,31 +157,63 @@ test('Wetter: Regen mit Schirmen draußen, das HUD zeigt Regen; der erste Tag is
   expect(errors).toEqual([]);
 });
 
-test('Stammgast kommt zu seiner Stunde, winkt und die Kasse grüßt zurück; der Lieferant bringt die Kartons', async ({
+test('Stammgast kommt zu seiner Stunde, winkt und die Kasse grüßt zurück; der Lieferant bringt die Kartons ins Lager', async ({
   page,
 }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(90_000);
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('?lang=de&tutorial=0');
-  // Tag 2 um 8 Uhr (Lena kommt um 8), 1 kg Matcha ist gleich da (zwei Kartons).
-  await reloadWith(page, { clock: 24 * 60 + 8 * 60, delivery: { grams: 1000, inMinutes: 1 } });
-  const scene = () =>
-    page.evaluate(() => {
-      const s = (window as Win).__mceGame?.scene.getScene('CafeScene') as unknown as {
+  // Tag 2 um 8 Uhr (Lena kommt um 8), das Lager ist leer, 1 kg Matcha kommt gleich (zwei Kartons) – mit ein paar
+  // Spielminuten Vorlauf, damit die Szene schon läuft, wenn der Wagen vorfahren soll.
+  await reloadWith(page, {
+    clock: 24 * 60 + 8 * 60,
+    stock: [0, 0, 0, 0, 0, 0, 0],
+    delivery: { grams: 1000, inMinutes: 5 },
+  });
+  // Namensschild und Gruß sind nur kurz zu sehen: die Seite merkt sich, was zu sehen war.
+  await page.evaluate(() => {
+    const w = window as Win & { __life?: { label: string; heart: boolean } };
+    const life = { label: '', heart: false };
+    w.__life = life;
+    window.setInterval(() => {
+      const s = w.__mceGame?.scene.getScene('CafeScene') as unknown as {
         regularLabels: { text: { visible: boolean; text: string } }[];
         chatter: { bubbles: { agent: number; kind: string }[] };
-        street: { courier: { visible: boolean; frame: { name: string } } };
+      };
+      const label = s.regularLabels.find((l) => l.text.visible)?.text.text;
+      if (label) life.label = label;
+      if (s.chatter.bubbles.some((b) => b.agent === -1 && b.kind === 'heart')) life.heart = true;
+    }, 50);
+  });
+  const scene = () =>
+    page.evaluate(() => {
+      const w = window as Win & { __life?: { label: string; heart: boolean } };
+      const s = w.__mceGame?.scene.getScene('CafeScene') as unknown as {
+        street: {
+          courier: { visible: boolean; frame: { name: string } };
+          isIndoors(): boolean;
+        };
+        storage: { piece: string; sprite: { frame: { name: string } } }[];
       };
       return {
-        label: s.regularLabels.find((l) => l.text.visible)?.text.text ?? '',
-        cashierHeart: s.chatter.bubbles.some((b) => b.agent === -1 && b.kind === 'heart'),
+        label: w.__life?.label ?? '',
+        cashierHeart: w.__life?.heart ?? false,
         courier: s.street.courier.visible ? s.street.courier.frame.name : '',
+        indoors: s.street.isIndoors(),
+        shelf: s.storage.find((v) => v.piece === 'corner')?.sprite.frame.name ?? '',
       };
     });
+  // Leeres Regal, bis der Lieferant mit der vollen Karre im Café ist …
   await expect
-    .poll(async () => (await scene()).courier, { timeout: 15_000 })
+    .poll(async () => (await scene()).courier, { timeout: 20_000 })
     .toMatch(/^courier-2-/);
+  expect((await scene()).shelf).toMatch(/-0$/);
+  await expect.poll(async () => (await scene()).indoors, { timeout: 15_000 }).toBe(true);
+  expect((await scene()).shelf).toMatch(/-0$/);
+  // … im Lager lädt er ab: die Dosen stehen im Regal, er schiebt die leere Karre zurück.
+  await expect.poll(async () => (await scene()).shelf, { timeout: 30_000 }).toMatch(/-3$/);
+  expect((await scene()).courier).toMatch(/^courier-0-/);
   await expect.poll(async () => (await scene()).label, { timeout: 40_000 }).toBe('Stammgast Lena');
   await expect.poll(async () => (await scene()).cashierHeart, { timeout: 5_000 }).toBe(true);
   expect(errors).toEqual([]);

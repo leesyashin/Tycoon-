@@ -591,6 +591,14 @@ export class CustomerCrowd {
   }
 
   /**
+   * Weg des Lieferanten mit der Sackkarre durch das Café: darf wie eine Bedienung überall hin (durch den
+   * Personal-Durchgang ins Lager) und geht um stehende Figuren herum, wenn es geht.
+   */
+  courierPath(from: GridPos, to: GridPos): GridPos[] {
+    return this.nav.path('staff', from, to, this.standing);
+  }
+
+  /**
    * Stammgast, der jetzt dran ist (Index), sonst −1: seine Stunde hat begonnen, ist höchstens
    * `REGULAR_FX.windowMin` Spielminuten her, und heute war er noch nicht da. Er gilt damit als gekommen.
    */

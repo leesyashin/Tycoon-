@@ -5,6 +5,7 @@ import {
   type EmoteId,
   type LookTier,
   type StorageTier,
+  type TinFill,
 } from '@data/art';
 
 /**
@@ -44,13 +45,21 @@ export const FRAME = {
   /** Thekenmodul in der Stufe des Cafés mit Deko-Variante (`COUNTER_PROPS`): gerade, quer oder Eckmodul. */
   counter: (tier: LookTier, variant: number, kind: 'a' | 'b' | 'corner') =>
     `counter-${String(tier)}-${String(variant)}-${kind}`,
-  /** Lager (`scripts/art/storage.ts`): Eckregal, Seitenregal (quer = „b“), Palette; Stufe nach Geräten. */
-  storage: (piece: 'corner' | 'rack' | 'stock', tier: StorageTier, facesX: boolean) =>
+  /**
+   * Lager (`scripts/art/storage.ts`): Eckregal, Seitenregal (quer = „b“), Palette; Stufe nach Geräten, Matcha-Dosen
+   * in den Regalen nach Vorrat (`TinFill`).
+   */
+  storage: (
+    piece: 'corner' | 'rack' | 'stock',
+    tier: StorageTier,
+    facesX: boolean,
+    fill: TinFill = 3,
+  ) =>
     piece === 'stock'
       ? 'storage-stock'
       : piece === 'corner'
-        ? `storage-corner-${String(tier)}`
-        : `storage-rack-${String(tier)}-${facesX ? 'b' : 'a'}`,
+        ? `storage-corner-${String(tier)}-${String(fill)}`
+        : `storage-rack-${String(tier)}-${facesX ? 'b' : 'a'}-${String(fill)}`,
   /** Ware, die ein Barista aus dem Lager trägt (`SUPPLY_ITEMS`). */
   supply: (id: string) => `supply-${id}`,
   ambience: (id: string) => `ambience-${id}`,
