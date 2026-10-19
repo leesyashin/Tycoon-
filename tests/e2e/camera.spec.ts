@@ -242,3 +242,94 @@ test('Schwenk zum Parkplatz endet, sobald der Spieler die Kamera selbst zieht', 
   expect(later.cy).toBeCloseTo(dragged.cy, 3);
   expect(later.zoom).toBeCloseTo(dragged.zoom, 6);
 });
+
+/** Bildschirm-Mitte eines Geräts (Leinwand-Pixel) und ob die Kamera gerade auf ein Objekt schaut. */
+async function stationOnScreen(
+  page: Page,
+  id: string,
+): Promise<{ x: number; y: number; focused: boolean }> {
+  return page.evaluate((stationId) => {
+    const scene = (window as Win).__mceGame?.scene.getScene('CafeScene');
+    if (!scene) throw new Error('keine Szene');
+    const s = scene as unknown as {
+      stations: { id: string; sprite: { getBounds(): { centerX: number; centerY: number } } }[];
+      controls: { focused(): boolean };
+    };
+    const v = s.stations.find((x) => x.id === stationId);
+    if (!v) throw new Error(`kein Gerät ${stationId}`);
+    const c = scene.cameras.main;
+    const b = v.sprite.getBounds();
+    return {
+      x: (b.centerX - c.worldView.x) * c.zoom,
+      y: (b.centerY - c.worldView.y) * c.zoom,
+      focused: s.controls.focused(),
+    };
+  }, id);
+}
+
+test('Antippen eines Geräts: die Kamera fährt es über das Panel und beim Schließen zurück', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await ready(page);
+  const start = await camera(page);
+  const tapAt = await stationOnScreen(page, 'matchaStation');
+  await page.mouse.click(tapAt.x, tapAt.y);
+  const sheet = page.getByTestId('panel-station');
+  await expect(sheet).toBeVisible();
+  const top = (await sheet.boundingBox())?.y ?? 0;
+  const hudBottom = await page.evaluate(
+    () => document.querySelector('.hud-slot')?.getBoundingClientRect().bottom ?? 0,
+  );
+  // Das Gerät steht mitten im freien Teil zwischen HUD und Sheet, die Kamera ist heran gefahren.
+  await expect
+    .poll(
+      async () => {
+        const p = await stationOnScreen(page, 'matchaStation');
+        return p.focused && p.y > hudBottom + 10 && p.y < top - 10 && p.x > 60 && p.x < 330;
+      },
+      { timeout: 5_000 },
+    )
+    .toBe(true);
+  // Die Fahrt läuft in Spielzeit (auf langsamen Rechnern länger): auf ihr Ende warten statt auf eine feste Zeit.
+  await expect
+    .poll(async () => (await camera(page)).zoom, { timeout: 5_000 })
+    .toBeGreaterThanOrEqual(1 - 1e-6);
+  // Schließen: zurück an Ausschnitt und Zoom von vorher.
+  await page.getByTestId('panel-close').click();
+  await expect
+    .poll(
+      async () => {
+        const c = await camera(page);
+        return (
+          Math.abs(c.cx - start.cx) + Math.abs(c.cy - start.cy) + Math.abs(c.zoom - start.zoom)
+        );
+      },
+      { timeout: 5_000 },
+    )
+    .toBeLessThan(0.01);
+  expect((await stationOnScreen(page, 'matchaStation')).focused).toBe(false);
+});
+
+test('Zieht der Spieler bei offenem Panel, bleibt die Kamera beim Schließen, wo er sie hingezogen hat', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await ready(page);
+  const tapAt = await stationOnScreen(page, 'matchaStation');
+  await page.mouse.click(tapAt.x, tapAt.y);
+  await expect(page.getByTestId('panel-station')).toBeVisible();
+  await page.waitForTimeout(800);
+  // Über dem Sheet ziehen.
+  await page.mouse.move(200, 260);
+  await page.mouse.down();
+  for (let i = 1; i <= 10; i++) await page.mouse.move(200 - i * 10, 260);
+  await page.mouse.up();
+  const dragged = await camera(page);
+  await page.getByTestId('panel-close').click();
+  await page.waitForTimeout(1000);
+  const later = await camera(page);
+  expect(later.cx).toBeCloseTo(dragged.cx, 3);
+  expect(later.cy).toBeCloseTo(dragged.cy, 3);
+  expect(later.zoom).toBeCloseTo(dragged.zoom, 6);
+});

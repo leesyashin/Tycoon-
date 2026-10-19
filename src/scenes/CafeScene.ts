@@ -11,7 +11,7 @@ import {
   type TablePlacement,
 } from '@data/layouts';
 import { STATIONS, REGISTER_ID, PRODUCT_LINES, getStationDef } from '@data/stations';
-import { CROWD } from '@data/layouts';
+import { CAMERA, CROWD } from '@data/layouts';
 import {
   CHAR_CARRY,
   CHAR_FRAMES,
@@ -85,7 +85,7 @@ import { CityView } from './city/CityView';
 import { ParkingView } from './city/ParkingView';
 import { TILE_H, TILE_W, isoDepth, toGrid, toScreen } from './iso/iso';
 import { ART_SCALE, ATLAS, CHAR_FOOT_ORIGIN_Y, CHAR_OVERLAY_Y, FRAME, atlasUrls } from './art';
-import { REGISTRY, UI_EVENTS, getSceneCover, getStore } from './registry';
+import { REGISTRY, UI_EVENTS, getSceneCover, getStore, type SceneCover } from './registry';
 import { WeatherView, gloomOf } from './weatherView';
 import { facing, walkFacing, type Look } from './facing';
 import { Chatter } from './agents/chatter';
@@ -251,6 +251,9 @@ export class CafeScene extends Phaser.Scene {
   private matchaNeedAge = 0;
   /** Gramm auf der Sackkarre, die noch nicht im Lager sind: das Regal zeigt sie erst nach dem Abladen. */
   private inboundGrams = 0;
+  /** Objekt, dessen Panel offen ist und auf das die Kamera schaut (`followPanel`), und Zeit seit der letzten Frage. */
+  private focusObject: string | null = null;
+  private focusAge = 0;
   /** Ware in der Hand der Baristas, die aus dem Lager kommen (je Barista ein Sprite). */
   private supplySprites: Phaser.GameObjects.Image[] = [];
   private sparkles!: Phaser.GameObjects.Particles.ParticleEmitter;
@@ -346,6 +349,8 @@ export class CafeScene extends Phaser.Scene {
     this.matchaNeed = 0;
     this.matchaNeedAge = 0;
     this.inboundGrams = 0;
+    this.focusObject = null;
+    this.focusAge = 0;
     this.supplySprites = [];
     this.agentSprites = [];
     this.agentPrev = [];
@@ -607,6 +612,11 @@ export class CafeScene extends Phaser.Scene {
       this.refreshBoard();
     }
     if (this.parkingReveal) this.revealParking();
+    this.focusAge += deltaMs;
+    if (this.focusAge >= CAMERA.focus.pollMs) {
+      this.focusAge = 0;
+      this.followPanel();
+    }
     this.weatherNow = currentWeather(state, this.locationId);
     this.weather.update(dt, this.weatherNow, getCafeClock(state.clock).night, reducedMotion());
     // Mit Debug-Spawn kommen mehr Figuren, als `core` bucht: dann bezahlen sie im eigenen Takt (nur Optik).
@@ -1477,16 +1487,65 @@ export class CafeScene extends Phaser.Scene {
     const cover = getSceneCover(this);
     if (!c || cover.full) return;
     this.parkingReveal = null;
+    this.controls.showAndReturn(c, this.freeView(cover), () =>
+      this.sparkles.explode(SCENE_FX.newLookSparkles, c.x, c.y - 10),
+    );
+  }
+
+  /** Freier Teil des Bilds (Bildschirm-Pixel) neben HUD, Leiste und Panel. */
+  private freeView(cover: SceneCover): Phaser.Geom.Rectangle {
     const cam = this.cameras.main;
-    const view = new Phaser.Geom.Rectangle(
+    return new Phaser.Geom.Rectangle(
       0,
       cover.top,
       Math.max(1, cam.width - cover.right),
       Math.max(1, cam.height - cover.top - cover.bottom),
     );
-    this.controls.showAndReturn(c, view, () =>
-      this.sparkles.explode(SCENE_FX.newLookSparkles, c.x, c.y - 10),
-    );
+  }
+
+  /**
+   * Die Kamera folgt dem offenen Objekt-Panel (Antippen, Shop, Pfeile im Panel): Das Objekt fährt in den freien
+   * Bildteil über dem Sheet bzw. links der Seitenkarte, beim Schließen geht es zurück (`CameraControls.focusOn`,
+   * `unfocus`). Ein Vollbild-Screen zählt wie ein geschlossenes Panel.
+   */
+  private followPanel(): void {
+    const cover = getSceneCover(this);
+    const object = cover.full ? null : cover.object;
+    if (object === this.focusObject) return;
+    this.focusObject = object;
+    const p = object ? this.objectPoint(object) : null;
+    if (p) this.controls.focusOn(p, this.freeView(cover), reducedMotion());
+    else this.controls.unfocus(reducedMotion());
+  }
+
+  /**
+   * Mitte (Welt) eines Objekts: das Gerät (auch als Bauplatz), die sichtbaren Tische drinnen bzw. auf der Terrasse,
+   * Deko-, Musik- und WLAN-Ecke, der Parkplatz; `null`, wenn es nichts zu zeigen gibt.
+   */
+  private objectPoint(target: string): { x: number; y: number } | null {
+    if (target === ambienceTarget('parking')) return this.parking.center();
+    const station = this.stations.find((v) => v.id === target);
+    const all = station
+      ? [station.sprite]
+      : [
+          ...this.tables.filter((v) => tableTarget(v.placement) === target).map((v) => v.sprite),
+          ...this.ambienceImages.filter((img) => img.getData(TAP_TARGET_KEY) === target),
+        ];
+    const shown = all.filter((img) => img.visible);
+    const imgs = shown.length > 0 ? shown : all;
+    if (imgs.length === 0) return null;
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    for (const img of imgs) {
+      const b = img.getBounds();
+      x0 = Math.min(x0, b.left);
+      y0 = Math.min(y0, b.top);
+      x1 = Math.max(x1, b.right);
+      y1 = Math.max(y1, b.bottom);
+    }
+    return { x: (x0 + x1) / 2, y: (y0 + y1) / 2 };
   }
 
   /**
