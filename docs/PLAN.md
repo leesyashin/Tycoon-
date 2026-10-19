@@ -716,7 +716,7 @@ und kein Save-Feld ändert sich.
 - [x] Objekt-Panel offen (Antippen, Shop, Pfeile): Die Kamera fährt das Objekt zwischen HUD und Sheet bzw. links der Seitenkarte, Zoom ≥ 1,0; Schließen → zurück; Ziehen bei offenem Panel → die Kamera bleibt (e2e).
 - [x] Geräusche: Türglocke (nicht beim Szenenstart, höchstens alle 3,5 s), Milchschäumer (höchstens alle 4 s), Regen nach Regenstärke, Gemurmel nach Gästen im Raum; alles am Effekte-Regler, stumm ohne Effekte (Unit-Tests mit nachgebautem AudioContext).
 - [x] Sprites selbst gezeichnet (CC0, ASSETS.md), Klänge synthetisiert, alle Werte in `src/data/*`, keine neuen Texte, keine neue Abhängigkeit, Save-Schema unverändert.
-- [x] `pnpm check` grün (581 Unit-Tests), 46 e2e grün, `pnpm build` grün.
+- [x] `pnpm check` grün (581 Unit-Tests), 47 e2e grün, `pnpm build` grün.
 - [ ] Vincent hört und spielt: Lautstärke von Glocke, Zischen, Regen und Gemurmel, Fahrt der Kamera am Handy.
 
 

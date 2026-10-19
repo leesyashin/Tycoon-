@@ -123,9 +123,11 @@ export class CameraControls {
    */
   focusOn(p: { x: number; y: number }, view: Phaser.Geom.Rectangle, instant: boolean): void {
     const cam = this.scene.cameras.main;
+    // Mitten im Parkplatz-Schwenk zählt der Ausschnitt, zu dem er zurückgekehrt wäre, nicht der halbe Schwenk.
+    const touredFrom = this.tour?.back;
     this.cancelTour();
     const now = this.center();
-    if (!this.focus || this.focus.moved) this.focus = { back: now, moved: false };
+    if (!this.focus || this.focus.moved) this.focus = { back: touredFrom ?? now, moved: false };
     const f = CAMERA.focus;
     const zoom = Phaser.Math.Clamp(Math.max(cam.zoom, f.minZoom), this.minZoom(), CAMERA.maxZoom);
     const sx = (p.x - now.x) * cam.zoom + cam.width / 2;

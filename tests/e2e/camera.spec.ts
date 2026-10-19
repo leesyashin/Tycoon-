@@ -333,3 +333,44 @@ test('Zieht der Spieler bei offenem Panel, bleibt die Kamera beim Schließen, wo
   expect(later.cy).toBeCloseTo(dragged.cy, 3);
   expect(later.zoom).toBeCloseTo(dragged.zoom, 6);
 });
+
+test('Panel mitten im Parkplatz-Schwenk: beim Schließen zurück an den Ausschnitt vor dem Schwenk', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await ready(page);
+  const start = await camera(page);
+  // Neue Parkplatz-Stufe wie nach einem Kauf: Der Schwenk beginnt.
+  await page.evaluate(() => {
+    const scene = (window as Win).__mceGame?.scene.getScene('CafeScene') as unknown as {
+      parkingReveal: { x: number; y: number } | null;
+      parking: { center(): { x: number; y: number } };
+    };
+    scene.parkingReveal = scene.parking.center();
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const scene = (window as Win).__mceGame?.scene.getScene('CafeScene') as unknown as {
+          controls: { tourPhase(): string | null };
+        };
+        return scene.controls.tourPhase();
+      }),
+    )
+    .toBe('hold');
+  await page.evaluate(() => (window as Win).__mceGame?.events.emit('ui:openStation', 'register'));
+  await expect(page.getByTestId('panel-station')).toBeVisible();
+  await expect.poll(async () => (await stationOnScreen(page, 'register')).focused).toBe(true);
+  await page.getByTestId('panel-close').click();
+  await expect
+    .poll(
+      async () => {
+        const c = await camera(page);
+        return (
+          Math.abs(c.cx - start.cx) + Math.abs(c.cy - start.cy) + Math.abs(c.zoom - start.zoom)
+        );
+      },
+      { timeout: 6_000 },
+    )
+    .toBeLessThan(0.01);
+});
