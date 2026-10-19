@@ -4,12 +4,21 @@
  * darauf Matcha-Dosen, Kaffeebohnen-Säcke, Milch- und Hafermilch-Kartons, Sirup-Flaschen, Becher-Stapel, Zucker,
  * Mehlsäcke und Croissant-Kisten. Drei Stufen nach Zahl gekaufter Geräte (`STORAGE_LOOK_DEVICES`): (1) Eckregal
  * mit dem Nötigsten, (2) volle Regale und ein zweites an der Seitenwand, (3) dazu Säcke und Kisten auf einer
- * Palette. Dazu kleine Einzelbilder der Ware, die ein Barista ans Gerät trägt (`SUPPLY_ITEMS`). Selbst gezeichnet,
- * CC0. Platzierung: `storage` in `src/data/layouts.ts`.
+ * Palette. Die Matcha-Dosen gibt es je Regal in vier Füllständen (`STORAGE_TINS`): sie zeigen den echten Vorrat.
+ * Dazu kleine Einzelbilder der Ware, die ein Barista ans Gerät trägt (`SUPPLY_ITEMS`). Selbst gezeichnet, CC0.
+ * Platzierung: `storage` in `src/data/layouts.ts`.
  *
  * Koordinaten wie `equipment.ts` (Theken-Koordinaten): x entlang der Wand, y Tiefe (0 = Wand), z Höhe in Pixeln.
  */
-import { SUPPLY_CANVAS, SUPPLY_ITEMS, type StorageTier } from '@data/art';
+import {
+  STORAGE_TINS,
+  SUPPLY_CANVAS,
+  SUPPLY_ITEMS,
+  TIN_FILLS,
+  tinsShown,
+  type StorageTier,
+  type TinFill,
+} from '@data/art';
 import { LAYOUTS } from '@data/layouts';
 import { FacingCanvas, type Facing } from './equipment';
 import { IsoCanvas, shade, tint } from './iso';
@@ -156,9 +165,18 @@ function crate(c: FacingCanvas, x: number, y: number, z: number, w: number, d: n
   }
 }
 
-/** Reihe gleicher Stücke auf einem Boden. */
-function row(c: FacingCanvas, item: Item, x0: number, x1: number, y: number, z: number, n: number) {
-  for (let i = 0; i < n; i++) item(c, x0 + ((x1 - x0) * (i + 0.5)) / n, y, z);
+/** Reihe gleicher Stücke auf einem Boden; `count` < `n`: nur die ersten (die übrigen Plätze bleiben frei). */
+function row(
+  c: FacingCanvas,
+  item: Item,
+  x0: number,
+  x1: number,
+  y: number,
+  z: number,
+  n: number,
+  count = n,
+) {
+  for (let i = 0; i < Math.min(n, count); i++) item(c, x0 + ((x1 - x0) * (i + 0.5)) / n, y, z);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -189,9 +207,13 @@ function rack(c: FacingCanvas, x0: number, x1: number, fill: readonly ((z: numbe
   fill[BOARDS.length]?.(RACK_H);
 }
 
-/** Ware im Eckregal an der hinteren Wand (lange Seite) je Stufe: unten Säcke, Mitte Dosen, oben Becher. */
-function cornerBack(c: FacingCanvas, tier: StorageTier): ((z: number) => void)[] {
+/**
+ * Ware im Eckregal an der hinteren Wand (lange Seite) je Stufe: unten Säcke, Mitte Matcha-Dosen (so viele, wie der
+ * Vorrat hergibt), oben Becher.
+ */
+function cornerBack(c: FacingCanvas, tier: StorageTier, fill: TinFill): ((z: number) => void)[] {
   const y = 0.14;
+  const tins = STORAGE_TINS.corner[tier - 1] ?? 3;
   return [
     (z) => {
       beanSack(c, 0.04, 0.08, z);
@@ -200,7 +222,7 @@ function cornerBack(c: FacingCanvas, tier: StorageTier): ((z: number) => void)[]
       else sugar(c, 0.62, 0.12, z);
     },
     (z) => {
-      row(c, tin, 0.06, tier >= 2 ? 0.94 : 0.56, y + 0.04, z, tier >= 2 ? 6 : 3);
+      row(c, tin, 0.06, tier >= 2 ? 0.94 : 0.56, y + 0.04, z, tins, tinsShown(tins, fill));
     },
     (z) => {
       row(c, blueCups, 0.06, 0.52, y + 0.04, z, tier >= 2 ? 3 : 2);
@@ -249,15 +271,15 @@ function sideShelf(
 }
 
 /** Eckregal: lange Seite an der hinteren Wand, kurze Seite an der linken (quer gezeichnet). */
-function corner(tier: StorageTier): string {
+function corner(tier: StorageTier, fill: TinFill): string {
   const c = new FacingCanvas('a');
-  rack(c, 0, 1, cornerBack(c, tier));
+  rack(c, 0, 1, cornerBack(c, tier, fill));
   c.turned(() => rack(c, RACK_D, 1, sideShelf(c, tier, RACK_D, 1)));
   return c.svg();
 }
 
-/** Zweites Regal an der Seitenwand (ab Stufe 2), Front zur Raummitte: Mehl, Milch, Sirup, Kisten. */
-function sideRack(tier: StorageTier, facing: Facing): string {
+/** Zweites Regal an der Seitenwand (ab Stufe 2), Front zur Raummitte: Mehl, Milch, Sirup, Matcha-Dosen, Kisten. */
+function sideRack(tier: StorageTier, facing: Facing, fill: TinFill): string {
   const c = new FacingCanvas(facing);
   rack(c, 0, 1, [
     (z) => {
@@ -271,7 +293,7 @@ function sideRack(tier: StorageTier, facing: Facing): string {
     },
     (z) => {
       row(c, syrup(C.sakura), 0.04, 0.42, 0.19, z, 3);
-      row(c, tin, 0.48, 0.96, 0.18, z, 3);
+      row(c, tin, 0.48, 0.96, 0.18, z, STORAGE_TINS.rack, tinsShown(STORAGE_TINS.rack, fill));
     },
     (z) => {
       crate(c, 0.06, 0.06, z, 0.4, 0.24);
@@ -334,17 +356,22 @@ export function storageRackFacings(): Facing[] {
 }
 
 /**
- * Lager-Sprites: `storage-corner-<stufe>` (Eckregal), `storage-rack-<stufe>-<a|b>` (Seitenregal),
- * `storage-stock` (Palette, Stufe 3), `supply-<ware>` (getragene Ware). `rackFacings` = gebrauchte Richtungen.
+ * Lager-Sprites: `storage-corner-<stufe>-<füllstand>` (Eckregal), `storage-rack-<stufe>-<a|b>-<füllstand>`
+ * (Seitenregal), `storage-stock` (Palette, Stufe 3), `supply-<ware>` (getragene Ware). Füllstand der Matcha-Dosen
+ * `TinFill` (0 leer … 3 voll); `rackFacings` = gebrauchte Richtungen.
  */
 export function storageSprites(rackFacings: readonly Facing[] = storageRackFacings()): SpriteDef[] {
   const out: SpriteDef[] = [];
-  for (const tier of STORAGE_TIERS) {
-    out.push({ name: `storage-corner-${String(tier)}`, svg: corner(tier) });
-    if (tier >= 2)
-      for (const f of rackFacings)
-        out.push({ name: `storage-rack-${String(tier)}-${f}`, svg: sideRack(tier, f) });
-  }
+  for (const tier of STORAGE_TIERS)
+    for (const fill of TIN_FILLS) {
+      out.push({ name: `storage-corner-${String(tier)}-${String(fill)}`, svg: corner(tier, fill) });
+      if (tier >= 2)
+        for (const f of rackFacings)
+          out.push({
+            name: `storage-rack-${String(tier)}-${f}-${String(fill)}`,
+            svg: sideRack(tier, f, fill),
+          });
+    }
   out.push({ name: 'storage-stock', svg: stock() });
   for (const id of new Set(Object.values(SUPPLY_ITEMS)))
     out.push({ name: `supply-${id}`, svg: supply(id) });
@@ -368,8 +395,8 @@ export function storagePreview(tier: StorageTier): string {
       `<image x="${(px - ox).toFixed(1)}" y="${(py - oy).toFixed(1)}" width="${String(w)}" height="${String(h)}" href="data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}"/>`,
     );
   };
-  part(corner(tier), 0, 0, 64, 104, 32, 72);
-  if (tier >= 2) part(sideRack(tier, 'b'), 0, 1, 64, 104, 32, 72);
+  part(corner(tier, 3), 0, 0, 64, 104, 32, 72);
+  if (tier >= 2) part(sideRack(tier, 'b', 3), 0, 1, 64, 104, 32, 72);
   if (tier >= 3) part(stock(), 2, 2, 64, 104, 32, 72);
   return c.svg();
 }

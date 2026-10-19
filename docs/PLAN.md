@@ -691,7 +691,33 @@ unverändert, bis Vincent getestet hat; der Feinschliff nach seinem Test ist die
 - [x] Lieferant schiebt die Kartons der Lieferung (1–3 nach Gramm) auf der Sackkarre zur Tür und die leere Karre zurück (e2e).
 - [x] Sprites selbst gezeichnet (CC0, ASSETS.md), Farben über Tokens (`--c-overcast`, `--c-rain`), alle Texte DE/EN, kein Balancing-Wert im Code, keine neue Abhängigkeit, Save-Schema unverändert (Wetter ohne Zustand).
 - [x] `pnpm check` grün (572 Unit-Tests), 44 e2e grün, `pnpm build` grün; „weniger Bewegung“ ohne Regen-Partikel und Schwenk.
-- [ ] Vincent testet (Tempo, Gefühl am Handy) – danach Feinschliff.
+- [x] Vincent testet (Tempo, Gefühl am Handy) – Antwort 2026-10-19: Tempo „Passt so“ (Phase 3c).
+
+### Phase 3c – Lager, Kamera zum Objekt, Geräusche (Folgerunde, 2026-10-19)
+
+> PR #26 ist gemergt (`28f57c8`) und live. Vincents Antworten (Pop-up nach seiner Frage „Hast du eine Frage?“; über das
+> Büro-Fenster kam vorher „1. Leichte Wirkung 1 Matcha-Vorrat im Lager 3 passt so“, bestätigt hat er im Pop-up): Wetter
+> „Nur Optik“ (keine Wirkung auf Gäste und Bestellungen); als Nächstes „Matcha-Vorrat im Lager (Empfohlen)“, „Kamera zum
+> Objekt“ und „Geräusche“; Tempo „Passt so“.
+
+Branch `claude/cafe-game-optimization-1xjrap`, neu ab `main` mit PR #26 (`28f57c8`), PR #28. Keine Rate, kein Balancing-Wert
+und kein Save-Feld ändert sich.
+
+| Commit | Bereich | Inhalt |
+|---|---|---|
+| `fd01273` feat(scene) | Daten, Sprites, Szene, Tests | Matcha-Dosen im Lager nach Vorrat (`STORAGE_TINS`, vier Füllstände je Regal), Lieferant schiebt die Karre durch den Personal-Durchgang bis ins Lager (`courierPath`), das Regal zeigt die Lieferung erst nach dem Abladen |
+| `92c2ab6` feat(scene) | UI-Brücke, Kamera, Szene, Tests | Kamera fährt das Objekt eines offenen Panels in den freien Bildteil (Zoom ≥ 1,0) und beim Schließen zurück (`SceneCover.object`, `CameraControls.focusOn`/`unfocus`) |
+| `da590e1` feat(audio) | Audio, Daten, Szene, Tests | Türglocke, Milchschäumer, Regenrauschen und Gemurmel per Web Audio (`AMBIENT_SOUND`, `UI_EVENTS.ambient`) |
+
+### Abnahme-Checkliste (Phase 3c)
+
+- [x] Wetter bleibt reine Optik (Vincents Wahl), Tempo unverändert (1 Spielstunde = 1 Minute).
+- [x] Die Matcha-Dosen im Lager zeigen den Vorrat (leer, wenig < 0,5, halb < 1, voll ab 1 Öffnungstag), der Lieferant schiebt die Kartons bis ins Lager; bis er ablädt, zeigt das Regal den alten Vorrat (Unit-Tests, e2e).
+- [x] Objekt-Panel offen (Antippen, Shop, Pfeile): Die Kamera fährt das Objekt zwischen HUD und Sheet bzw. links der Seitenkarte, Zoom ≥ 1,0; Schließen → zurück; Ziehen bei offenem Panel → die Kamera bleibt (e2e).
+- [x] Geräusche: Türglocke (nicht beim Szenenstart, höchstens alle 3,5 s), Milchschäumer (höchstens alle 4 s), Regen nach Regenstärke, Gemurmel nach Gästen im Raum; alles am Effekte-Regler, stumm ohne Effekte (Unit-Tests mit nachgebautem AudioContext).
+- [x] Sprites selbst gezeichnet (CC0, ASSETS.md), Klänge synthetisiert, alle Werte in `src/data/*`, keine neuen Texte, keine neue Abhängigkeit, Save-Schema unverändert.
+- [x] `pnpm check` grün (581 Unit-Tests), 47 e2e grün, `pnpm build` grün.
+- [ ] Vincent hört und spielt: Lautstärke von Glocke, Zischen, Regen und Gemurmel, Fahrt der Kamera am Handy.
 
 
 ## 4. Übergabe-Protokoll zwischen Sessions

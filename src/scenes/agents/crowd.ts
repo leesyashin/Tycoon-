@@ -88,7 +88,7 @@ export interface Agent {
   vehicle: number;
   /** Stammgast (Index in `regularsOf(standort)`), sonst −1. */
   regular: number;
-  /** Stammgast hat an der Tür schon gewinkt. */
+  /** Ist schon durch die Tür gekommen (Türglocke; ein Stammgast hat dabei gewinkt). */
   greeted: boolean;
 }
 
@@ -275,6 +275,8 @@ export interface CrowdUpdate {
   spawned: number;
   /** Stammgäste, die gerade durch die Tür gekommen sind (winken, Name über dem Kopf). */
   greetings: Agent[];
+  /** Gäste, die in diesem Schritt durch die Tür gekommen sind (Türglocke). */
+  entered: number;
 }
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
@@ -553,17 +555,18 @@ export class CustomerCrowd {
       till && this.totalRate > 0 ? Math.max(0, 1 - till.progress) / this.totalRate : Infinity;
     this.replans = CROWD.replansPerFrame;
     const greetings: Agent[] = [];
+    let entered = 0;
     for (const a of this.agents) {
       if (!a.active) continue;
       this.advance(a, step * a.pace, dt, input.orderCap, purchases, orders, !!till);
       if (
-        a.regular >= 0 &&
         !a.greeted &&
         (a.phase === 'walkIn' || a.phase === 'queue') &&
         inRoom(this.layout, Math.round(a.x), Math.round(a.y))
       ) {
         a.greeted = true;
-        greetings.push(a);
+        entered++;
+        if (a.regular >= 0) greetings.push(a);
       }
     }
     // Gebuchte Zahlungen: Wer an der Kasse steht, hat bezahlt (es steht immer nur einer dort); weitere Zahlungen
@@ -582,12 +585,20 @@ export class CustomerCrowd {
     this.updateCashiers(dt, onDuty ? (input.cashiers ?? 0) : 0);
     this.ageDishes(dt);
     this.first = false;
-    return { purchases, orders, payments, spawned, greetings };
+    return { purchases, orders, payments, spawned, greetings, entered };
   }
 
   /** Die sichtbaren Wartenden in der Schlange, vorn zuerst (Plausch in der Schlange). */
   visibleQueue(): Agent[] {
     return this.queue.slice(0, CROWD.maxQueue).filter((a) => a.phase === 'queue');
+  }
+
+  /**
+   * Weg des Lieferanten mit der Sackkarre durch das Café: darf wie eine Bedienung überall hin (durch den
+   * Personal-Durchgang ins Lager) und geht um stehende Figuren herum, wenn es geht.
+   */
+  courierPath(from: GridPos, to: GridPos): GridPos[] {
+    return this.nav.path('staff', from, to, this.standing);
   }
 
   /**
@@ -847,6 +858,8 @@ export class CustomerCrowd {
       free.path = [];
       free.phase = 'queue';
       free.fade = 1;
+      // Steht schon drin: keine Türglocke beim Szenenstart.
+      free.greeted = true;
       return true;
     }
     free.path = this.nav.path('guest', free, slot, this.standing);

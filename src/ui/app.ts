@@ -42,6 +42,7 @@ import type { OfflineResult } from '@core/economy';
 import { UI_CONFIG } from '@data/ui';
 import type { SfxId } from '@data/audio';
 import type { SceneCover } from '@scenes/registry';
+import { panelTarget } from '@scenes/tapTarget';
 
 export interface AppOptions {
   root: HTMLElement;
@@ -544,7 +545,7 @@ export function startApp(o: AppOptions): App {
    * Panel – im Hochformat als Sheet über die ganze Breite (unten), ab Tablet-Breite als Karte rechts.
    */
   const sceneCover = (): SceneCover => {
-    const full = { full: true, top: 0, right: 0, bottom: 0 };
+    const full = { full: true, top: 0, right: 0, bottom: 0, object: null };
     if (root.querySelector('dialog[open], .panel--screen')) return full;
     const w = window.innerWidth;
     const hgt = window.innerHeight;
@@ -557,7 +558,7 @@ export function startApp(o: AppOptions): App {
       if (panel.left <= 1 && panel.right >= w - 1) bottom = Math.max(bottom, hgt - panel.top);
       else right = Math.max(0, w - panel.left);
     }
-    return { full: false, top, right, bottom };
+    return { full: false, top, right, bottom, object: panelTarget(panels.current()?.key) };
   };
 
   return {

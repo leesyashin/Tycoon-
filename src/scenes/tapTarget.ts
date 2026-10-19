@@ -10,6 +10,16 @@ export function ambienceTarget(id: string): string {
   return `ambience:${id}`;
 }
 
+/**
+ * Objekt eines offenen Objekt-Panels (Panel-Schlüssel `station:<id>` bzw. `station:ambience-<id>`) als Ziel wie beim
+ * Antippen (`<id>` bzw. `ambience:<id>`): darauf schaut die Kamera. Andere Panels zeigen kein Objekt (`null`).
+ */
+export function panelTarget(key: string | undefined): string | null {
+  if (!key?.startsWith('station:')) return null;
+  const id = key.slice('station:'.length);
+  return id.startsWith('ambience-') ? ambienceTarget(id.slice('ambience-'.length)) : id;
+}
+
 /** Tische drinnen kommen mit „Tische“, Terrassen-Tische mit der Terrasse. */
 export function tableTarget(p: TablePlacement): string {
   return ambienceTarget(p.outside ? 'terrace' : 'seats');
