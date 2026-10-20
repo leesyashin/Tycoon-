@@ -9,6 +9,9 @@
 > Was ersetzt wurde, steht je Abschnitt in einer Zeile „Bis Phase 2“. PLAN.md „Phase 3“ erklärt den Wechsel.
 > Phase 3b (2026-10-18, Leben in der Szene): Abwesenheit 2 Spieltage, mit Filialleiter bis 6 (§ 6, § 14); neu § 7.8 (Gespräche,
 > Stammgäste, Lieferant) und § 12.4 (Wetter) – alles kosmetisch, keine Rate ändert sich.
+> Phase 3c (2026-10-19, Vincents Antworten nach PR #26): Wetter bleibt reine Optik, das Tempo „passt so“; der Lieferant bringt
+> die Kartons bis ins Lager, die Matcha-Dosen im Regal zeigen den Vorrat, die Kamera fährt zum Objekt eines offenen Panels,
+> Geräusche (§ 7.8). Weiterhin keine Rate geändert.
 > Code-Bezeichner sind englisch, Spieltexte kommen aus `de.json`/`en.json`.
 
 ---
@@ -424,9 +427,18 @@ Die Figuren bleiben Optik; gerechnet wird nur im Rate-Modell (§ 7.2). Was die S
   Stunde ein neuer Gast, ist es der Stammgast – höchstens einmal am Spieltag und nur, wenn das Café dann geöffnet hat. An der
   Tür winkt er, „Stammgast Lena“ steht 3 s über ihm, die Kasse grüßt mit einem Herz zurück. Wer beim Szenenstart schon ansteht,
   ist kein Stammgast (er soll sichtbar hereinkommen).
-- **Lieferant mit Sackkarre** (`COURIER`): Bei jeder Matcha-Lieferung steigt der Fahrer aus dem Lieferwagen, schiebt die Kartons
-  (bis 500 g einer, bis 2 kg zwei, darüber drei) auf der Sackkarre zur Tür, gibt sie ab („Matcha geliefert!“) und schiebt die
-  leere Karre zurück; dann fährt der Wagen weiter.
+- **Lieferant mit Sackkarre** (`COURIER`): Bei jeder Matcha-Lieferung steigt der Fahrer aus dem Lieferwagen und schiebt die
+  Kartons (bis 500 g einer, bis 2 kg zwei, darüber drei) auf der Sackkarre durch die Tür, vor der Theke entlang und durch den
+  Personal-Durchgang bis ans Lager-Regal (Phase 3c; vorher nur bis zur Tür), lädt dort ab („Matcha geliefert!“) und schiebt die
+  leere Karre zurück; dann fährt der Wagen weiter. Sein Weg nutzt die Wegsuche der Figuren wie eine Bedienung.
+- **Matcha-Vorrat im Lager** (Phase 3c, `STORAGE_TINS`): Die Matcha-Dosen in Eck- und Seitenregal zeigen den Vorrat, gemessen
+  wie der Matcha-Hinweis im HUD in Öffnungstagen: ab 1 Tag voll, ab 0,5 halb, darunter wenig (mindestens eine Dose), ohne
+  Matcha leer. Eine neue Lieferung zeigt das Regal erst, wenn der Lieferant sie abgeladen hat; dann ploppen die Regale. Die
+  übrige Ware (Milch, Bohnen, Becher …) folgt weiter der Zahl der Geräte.
+- **Geräusche** (Phase 3c, `data/audio.ts`, alles zur Laufzeit erzeugt): ein Glöckchen, wenn ein Gast durch die Tür kommt
+  (höchstens alle 3,5 s), das Zischen des Milchschäumers, wenn ein Barista an Matcha-Station oder Kaffeemaschine die Milch
+  eingießt (höchstens alle 4 s), Regenrauschen so laut wie der Regen und leises Stimmengemurmel, das mit den Gästen im Raum
+  wächst (voll ab 16). Alles hängt am Effekte-Regler der Einstellungen.
 
 ## 8. Matcha-Einkauf und Sorten (Phase 3)
 
@@ -457,7 +469,8 @@ die Nachfrage sinkt auf 40 %, die Zufriedenheit um 12 (HUD-Chip, Toast, „Match
   fehlen, als normale Lieferung. Reicht das Geld nicht, bestellt sie, was das Konto hergibt – weniger oder kleinere Packungen,
   notfalls eine günstigere Sorte – und zeigt einen Hinweis (`reorderFailed`), damit die Bar nicht ganz leer läuft.
 - Lieferengpass-Event (§ 12): Die Sorte wirkt eine Stufe schlechter.
-- Szene: Bei jeder Lieferung hält ein Lieferwagen vor der Tür und ein Karton geht hinein (UI_STYLE § 4).
+- Szene: Bei jeder Lieferung hält ein Lieferwagen vor der Tür, der Lieferant schiebt die Kartons bis ins Lager, und die
+  Matcha-Dosen im Regal zeigen, wie lange der Vorrat reicht (§ 7.8, UI_STYLE § 4).
 
 > Bis Phase 2: Qualitätsstufen 1–6 einmal mit Münzen kaufen (5 000 … 5e12), je Stufe Preis ×1,5 und +4 Zufriedenheit, kein Vorrat.
 
@@ -595,6 +608,8 @@ Spielminuten sanft einsetzt und aufhört; davor und danach ist es bewölkt. Der 
 Wetter fest: Beim Regentag regnet es durchgehend, bei der Hitzewelle scheint die Sonne. Das Wetter ändert **keine Rate** – die
 Wirkung des Regentags bleibt beim Event (§ 12.1). Die Szene zeigt Regentropfen, grauen Himmel, Wolkenschatten, Schirme für Gäste
 draußen und lässt bei Regen niemanden neu auf die Terrasse; das HUD zeigt Sonne, Mond, Wolke oder Regen (UI_STYLE § 4).
+Vincent (2026-10-19, nach PR #26): Das Wetter bleibt **reine Optik** („Nur Optik“ statt leichter oder deutlicher Wirkung auf
+Gäste und Bestellungen). Dazu Regenrauschen (§ 7.8).
 
 ---
 

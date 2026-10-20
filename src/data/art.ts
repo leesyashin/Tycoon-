@@ -63,6 +63,39 @@ export function storageLookTier(devices: number): StorageTier {
   return tierFor(devices, STORAGE_LOOK_DEVICES) as StorageTier;
 }
 
+/** Füllstand der Matcha-Dosen im Lager: 0 leer, 1 wenig, 2 halb, 3 voll. */
+export type TinFill = 0 | 1 | 2 | 3;
+
+export const TIN_FILLS: readonly TinFill[] = [0, 1, 2, 3];
+
+/**
+ * Matcha-Dosen im Lager zeigen den echten Vorrat (Vorgabe Vincent: „Dosen im Lagerregal zeigen den echten Vorrat“),
+ * gemessen wie der Matcha-Hinweis im HUD in Öffnungstagen: ab `fullDays` voll, ab `halfDays` halb, darunter wenig,
+ * ohne Matcha leer. Dosen je Regal bei vollem Vorrat: Eckregal je Lager-Stufe, Seitenregal.
+ */
+export const STORAGE_TINS = {
+  halfDays: 0.5,
+  fullDays: 1,
+  corner: [3, 6, 6],
+  rack: 3,
+  /** So oft rechnet die Szene den Tagesbedarf neu (er hängt an Raten und Öffnungszeiten). */
+  recheckMs: 2000,
+} as const;
+
+/** Füllstand für `grams` im Regal bei einem Tagesbedarf von `need` Gramm (ohne Bedarf: voll, solange etwas da ist). */
+export function tinFill(grams: number, need: number): TinFill {
+  if (!(grams > 0)) return 0;
+  const days = need > 0 ? grams / need : Infinity;
+  if (days >= STORAGE_TINS.fullDays) return 3;
+  return days >= STORAGE_TINS.halfDays ? 2 : 1;
+}
+
+/** Wie viele von `max` Dosen bei diesem Füllstand im Regal stehen (wenig = mindestens eine). */
+export function tinsShown(max: number, fill: TinFill): number {
+  if (fill === 0) return 0;
+  return Math.max(1, Math.round((max * fill) / 3));
+}
+
 /** Leinwand der getragenen Ware in logischen Pixeln; Bodenpunkt (u = v = z = 0) bei (ox, oy). */
 export const SUPPLY_CANVAS = { w: 24, h: 26, ox: 12, oy: 20 } as const;
 

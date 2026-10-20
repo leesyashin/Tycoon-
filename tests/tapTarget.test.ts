@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { LAYOUTS } from '@data/layouts';
 import { AMBIENCE } from '@data/ambience';
 import { STATIONS } from '@data/stations';
-import { ambienceTarget, pickTapTarget, tableTarget } from '@scenes/tapTarget';
+import { ambienceTarget, panelTarget, pickTapTarget, tableTarget } from '@scenes/tapTarget';
 
 describe('Antippen in der Szene', () => {
   it('nimmt das oberste Objekt, das unter dem Finger sichtbar ist', () => {
@@ -50,5 +50,15 @@ describe('Antippen in der Szene', () => {
         } else expect(stations.has(target), target).toBe(true);
       }
     }
+  });
+});
+
+describe('Kamera folgt dem offenen Objekt-Panel', () => {
+  it('ein Objekt-Panel nennt dasselbe Ziel wie das Antippen, andere Panels keins', () => {
+    for (const d of STATIONS) expect(panelTarget(`station:${d.id}`)).toBe(d.id);
+    for (const a of AMBIENCE)
+      expect(panelTarget(`station:ambience-${a.id}`)).toBe(ambienceTarget(a.id));
+    for (const key of [undefined, 'shop', 'shop:ambience', 'staff', 'supply', 'stats', 'settings'])
+      expect(panelTarget(key)).toBeNull();
   });
 });

@@ -18,6 +18,11 @@ export class CameraControls {
     timer: Phaser.Time.TimerEvent | null;
     phase: 'to' | 'hold' | 'back';
   } | null = null;
+  /**
+   * Fokus auf das Objekt eines offenen Panels (`focusOn`): Ausschnitt und Zoom des Spielers davor und ob er die
+   * Kamera seitdem selbst bewegt hat – dann bleibt sie beim Schließen, wo sie ist.
+   */
+  private focus: { back: { x: number; y: number; zoom: number }; moved: boolean } | null = null;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -36,7 +41,7 @@ export class CameraControls {
     });
     scene.input.on('wheel', (p: Phaser.Input.Pointer, _objs: unknown, _dx: number, dy: number) => {
       this.moved = true;
-      this.cancelTour();
+      this.takeOver();
       this.zoomAt(cam.zoom * (1 - dy * CAMERA.wheelStep), p.x, p.y);
     });
   }
@@ -108,6 +113,84 @@ export class CameraControls {
       });
     });
     return true;
+  }
+
+  /**
+   * Objekt-Panel offen: fährt den Weltpunkt `p` mitten in den freien Bildteil `view` (Bildschirm-Pixel ohne HUD und
+   * Panel) und zoomt dabei mindestens auf `CAMERA.focus.minZoom`. Beim ersten Fokus (oder nachdem der Spieler die
+   * Kamera bewegt hat) merkt sie sich Ausschnitt und Zoom von jetzt für `unfocus`. Steht `p` schon gut im Bild und
+   * reicht der Zoom, bleibt die Kamera stehen. `instant`: ohne Fahrt (weniger Bewegung).
+   */
+  focusOn(p: { x: number; y: number }, view: Phaser.Geom.Rectangle, instant: boolean): void {
+    const cam = this.scene.cameras.main;
+    // Mitten im Parkplatz-Schwenk zählt der Ausschnitt, zu dem er zurückgekehrt wäre, nicht der halbe Schwenk.
+    const touredFrom = this.tour?.back;
+    this.cancelTour();
+    const now = this.center();
+    if (!this.focus || this.focus.moved) this.focus = { back: touredFrom ?? now, moved: false };
+    const f = CAMERA.focus;
+    const zoom = Phaser.Math.Clamp(Math.max(cam.zoom, f.minZoom), this.minZoom(), CAMERA.maxZoom);
+    const sx = (p.x - now.x) * cam.zoom + cam.width / 2;
+    const sy = (p.y - now.y) * cam.zoom + cam.height / 2;
+    const inner = new Phaser.Geom.Rectangle(
+      view.x + f.marginPx,
+      view.y + f.marginPx,
+      view.width - 2 * f.marginPx,
+      view.height - 2 * f.marginPx,
+    );
+    if (zoom === cam.zoom && inner.width > 0 && inner.height > 0 && inner.contains(sx, sy)) return;
+    const target = this.clampCenter(
+      p.x + (cam.width / 2 - view.centerX) / zoom,
+      p.y + (cam.height / 2 - view.centerY) / zoom,
+      zoom,
+    );
+    this.moveTo(target.x, target.y, zoom, instant ? 0 : f.panMs);
+  }
+
+  /** Panel zu: zurück an Ausschnitt und Zoom von vor dem Fokus, außer der Spieler hat die Kamera inzwischen bewegt. */
+  unfocus(instant: boolean): void {
+    const f = this.focus;
+    this.focus = null;
+    if (!f || f.moved) return;
+    this.cancelTour();
+    this.moveTo(f.back.x, f.back.y, f.back.zoom, instant ? 0 : CAMERA.focus.backMs);
+  }
+
+  /** Liegt gerade ein Fokus auf einem Objekt (Tests)? */
+  focused(): boolean {
+    return this.focus !== null;
+  }
+
+  /** Bildmitte (Welt) und Zoom. */
+  private center(): { x: number; y: number; zoom: number } {
+    const cam = this.scene.cameras.main;
+    return { x: cam.scrollX + cam.width / 2, y: cam.scrollY + cam.height / 2, zoom: cam.zoom };
+  }
+
+  /** Fährt Bildmitte und Zoom in `ms` dorthin (0 = sofort). */
+  private moveTo(x: number, y: number, zoom: number, ms: number): void {
+    const cam = this.scene.cameras.main;
+    cam.panEffect.reset();
+    cam.zoomEffect.reset();
+    if (ms <= 0) {
+      cam.setZoom(zoom);
+      cam.centerOn(x, y);
+      this.clamp();
+      return;
+    }
+    const ease = 'Sine.easeInOut';
+    cam.zoomTo(zoom, ms, ease, true);
+    cam.pan(x, y, ms, ease, true);
+  }
+
+  /** Der Spieler zieht oder zoomt: Schwenk und Fokus-Fahrt enden, die Kamera gehört ab da ihm. */
+  private takeOver(): void {
+    this.cancelTour();
+    if (!this.focus || this.focus.moved) return;
+    this.focus.moved = true;
+    const cam = this.scene.cameras.main;
+    cam.panEffect.reset();
+    cam.zoomEffect.reset();
   }
 
   /**
@@ -209,7 +292,7 @@ export class CameraControls {
     if (a && b) {
       this.dragged = true;
       this.moved = true;
-      this.cancelTour();
+      this.takeOver();
       const dist = Phaser.Math.Distance.Between(a.x, a.y, b.x, b.y);
       if (this.pinchDist === 0) {
         this.pinchDist = dist;
@@ -224,7 +307,7 @@ export class CameraControls {
     }
     if (this.dragged) {
       this.moved = true;
-      this.cancelTour();
+      this.takeOver();
       cam.scrollX -= (p.x - p.prevPosition.x) / cam.zoom;
       cam.scrollY -= (p.y - p.prevPosition.y) / cam.zoom;
       this.clamp();

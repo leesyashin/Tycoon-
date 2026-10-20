@@ -87,7 +87,13 @@ gameEl?.setAttribute('aria-label', t('scene.label'));
 let game: GameHandle | null = null;
 const root = document.getElementById('ui');
 let openStation: (id: string) => void = () => undefined;
-let sceneCover: () => SceneCover = () => ({ full: false, top: 0, right: 0, bottom: 0 });
+let sceneCover: () => SceneCover = () => ({
+  full: false,
+  top: 0,
+  right: 0,
+  bottom: 0,
+  object: null,
+});
 if (root) {
   const app = startApp({
     root,
@@ -126,6 +132,7 @@ whenIdle(() => {
       store,
       debugSpawn: Number(query.get('debugSpawn') ?? 0),
       onSfx: (id) => audio.play(id),
+      onAmbient: (levels) => audio.setAmbient(levels),
       onOpenStation: (id) => openStation(id),
       onReady: hideSplash,
       sceneCover: () => sceneCover(),

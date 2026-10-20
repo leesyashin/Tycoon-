@@ -27,7 +27,16 @@ import { CafeNav, pathLength } from '@scenes/agents/nav';
 import { carPath, parkSec, polylineLength } from '@scenes/agents/parking';
 import { PARKING_CROWD, PARKING_LOT, parkingSlotsAt } from '@data/parking';
 import { REGULAR_FX, regularsOf } from '@data/regulars';
-import { CUSTOMER_LOOKS, SUPPLY_ITEMS, storageLookTier, type StorageTier } from '@data/art';
+import {
+  CUSTOMER_LOOKS,
+  STORAGE_TINS,
+  SUPPLY_ITEMS,
+  TIN_FILLS,
+  storageLookTier,
+  tinFill,
+  tinsShown,
+  type StorageTier,
+} from '@data/art';
 import { FRAME } from '@scenes/art';
 
 /** Deterministischer Zufall für reproduzierbare Tests. */
@@ -366,10 +375,11 @@ describe('Wege im kompakten Grundriss', () => {
       frames: Record<string, unknown>;
     };
     for (const p of layout.storage.pieces)
-      for (let tier = Math.max(1, p.minTier); tier <= 3; tier++) {
-        const frame = FRAME.storage(p.piece, tier as StorageTier, p.facesX);
-        expect(furniture.frames[frame], frame).toBeDefined();
-      }
+      for (let tier = Math.max(1, p.minTier); tier <= 3; tier++)
+        for (const fill of TIN_FILLS) {
+          const frame = FRAME.storage(p.piece, tier as StorageTier, p.facesX, fill);
+          expect(furniture.frames[frame], frame).toBeDefined();
+        }
     for (const id of Object.values(SUPPLY_ITEMS))
       expect(furniture.frames[FRAME.supply(id)], id).toBeDefined();
     expect(storageLookTier(1)).toBe(1);
@@ -1285,5 +1295,84 @@ describe('Leben in der Szene: Stammgäste und Regen (kosmetisch)', () => {
     expect(q.every((a) => a.phase === 'queue')).toBe(true);
     const idx = q.map((a) => crowd.queueIndex(a));
     expect([...idx].sort((x, y) => x - y)).toEqual(idx);
+  });
+});
+
+describe('Lager: Matcha-Vorrat und Lieferant (kosmetisch)', () => {
+  const layout = getLayout('berlin');
+
+  it('die Dosen zeigen den Vorrat in Öffnungstagen: leer, wenig, halb, voll', () => {
+    const need = 100;
+    expect(tinFill(0, need)).toBe(0);
+    expect(tinFill(-5, need)).toBe(0);
+    expect(tinFill(need * 0.3, need)).toBe(1);
+    expect(tinFill(need * STORAGE_TINS.halfDays, need)).toBe(2);
+    expect(tinFill(need * 0.99, need)).toBe(2);
+    expect(tinFill(need * STORAGE_TINS.fullDays, need)).toBe(3);
+    // Ohne Verbrauch (geschlossen, keine Matcha-Produkte) reicht jeder Vorrat.
+    expect(tinFill(1, 0)).toBe(3);
+    // Wenig heißt mindestens eine Dose, voll alle.
+    expect(TIN_FILLS.map((f) => tinsShown(6, f))).toEqual([0, 2, 4, 6]);
+    expect(TIN_FILLS.map((f) => tinsShown(STORAGE_TINS.rack, f))).toEqual([0, 1, 2, 3]);
+    expect(STORAGE_TINS.corner).toHaveLength(3);
+  });
+
+  it('der Lieferant schiebt die Karre von der Tür durch den Personal-Durchgang ins Lager und zurück', () => {
+    const crowd = new CustomerCrowd(layout, 'berlin', lcg(81));
+    run(crowd, input({ served: 1, tables: 6 }), 5);
+    const door = layout.entrance;
+    const store = layout.storage.fetchSpot;
+    const gap = layout.staffArea.door;
+    const crossings = (from: GridPos, path: readonly GridPos[]): number[] => {
+      // Wo der Weg die Thekenzeile kreuzt (x an der Kreuzung).
+      const xs: number[] = [];
+      let a = from;
+      for (const b of path) {
+        if ((a.y - gap.y) * (b.y - gap.y) < 0)
+          xs.push(a.x + ((b.x - a.x) * (gap.y - a.y)) / (b.y - a.y));
+        a = b;
+      }
+      return xs;
+    };
+    const there = crowd.courierPath(door, store);
+    expect(there[there.length - 1]).toEqual(store);
+    const xs = crossings(door, there);
+    expect(xs.length).toBeGreaterThan(0);
+    for (const x of xs) expect(Math.abs(x - gap.x)).toBeLessThan(0.5);
+    expect(pathLength(door, there)).toBeLessThan(16);
+    const back = crowd.courierPath(store, door);
+    expect(back[back.length - 1]).toEqual(door);
+    for (const x of crossings(store, back)) expect(Math.abs(x - gap.x)).toBeLessThan(0.5);
+  });
+});
+
+describe('Geräusche: Türglocke (kosmetisch)', () => {
+  const layout = getLayout('berlin');
+
+  it('zählt jeden Gast, der durch die Tür kommt – nicht die, die beim Szenenstart schon anstehen', () => {
+    const crowd = new CustomerCrowd(layout, 'berlin', lcg(91));
+    const inp = input({ served: 1.5, till: { payments: 0, progress: 0.6 } });
+    const first = crowd.update(1 / 60, inp);
+    // Szenenstart: Wer schon ansteht, ist drin, ohne dass die Glocke klingt.
+    expect(crowd.agents.filter((a) => a.active && a.phase === 'queue').length).toBeGreaterThan(0);
+    expect(first.entered).toBe(0);
+    let entered = 0;
+    let walkedIn = 0;
+    const seen = new Set<number>();
+    for (let t = 0; t < 40 * 60; t++) {
+      const r = crowd.update(1 / 60, {
+        ...inp,
+        till: { payments: t % 300 === 0 ? 1 : 0, progress: 0.6 },
+      });
+      entered += r.entered;
+      for (const a of crowd.agents)
+        if (a.active && a.phase === 'walkIn' && !seen.has(a.id)) {
+          seen.add(a.id);
+          walkedIn++;
+        }
+    }
+    expect(entered).toBeGreaterThan(0);
+    // Höchstens einmal je hereinkommendem Gast.
+    expect(entered).toBeLessThanOrEqual(walkedIn);
   });
 });

@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { Store } from '@core/store';
 import { UI_CONFIG, UI_THEME } from '@data/ui';
-import type { SfxId } from '@data/audio';
+import type { AmbientLevels, SfxId } from '@data/audio';
 import { BootScene } from '@scenes/BootScene';
 import { CafeScene } from '@scenes/CafeScene';
 import { REGISTRY, UI_EVENTS, type SceneCover } from '@scenes/registry';
@@ -15,6 +15,8 @@ export interface GameOptions {
   store: Store;
   debugSpawn: number;
   onSfx(id: SfxId): void;
+  /** Laufende Geräusche der Szene (Regen, Gemurmel). */
+  onAmbient(levels: AmbientLevels): void;
   onOpenStation(id: string): void;
   /** Die Café-Szene steht (Atlas geladen). */
   onReady(): void;
@@ -79,6 +81,7 @@ export function startGame(o: GameOptions): GameHandle {
     game.scene.getScene('CafeScene').events.once(Phaser.Scenes.Events.CREATE, o.onReady);
   });
   game.events.on(UI_EVENTS.sfx, (id: SfxId) => o.onSfx(id));
+  game.events.on(UI_EVENTS.ambient, (levels: AmbientLevels) => o.onAmbient(levels));
   game.events.on(UI_EVENTS.openStation, (id: string) => o.onOpenStation(id));
   return { langChanged: () => game.events.emit(UI_EVENTS.langChanged) };
 }

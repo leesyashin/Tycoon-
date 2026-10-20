@@ -340,6 +340,13 @@ export const CAMERA = {
    * innerhalb des freien Bildausschnitts, bleibt die Kamera stehen.
    */
   tour: { panMs: 900, holdMs: 1500, backMs: 1000, marginPx: 40, minZoom: 0.75 },
+  /**
+   * Objekt-Panel offen (Antippen, Shop, Pfeile im Panel): Die Kamera fährt das Objekt mitten in den freien Teil über
+   * dem Sheet bzw. links der Seitenkarte und zoomt dabei mindestens auf `minZoom` (Vorgabe Vincent: „schwenkt die
+   * Kamera, damit das Objekt über dem Panel steht; beim Schließen zurück“). Steht es schon `marginPx` innerhalb, bleibt
+   * sie stehen. `pollMs`: so oft fragt die Szene die UI, welches Panel offen ist.
+   */
+  focus: { panMs: 450, backMs: 450, marginPx: 24, minZoom: 1, pollMs: 120 },
 } as const;
 
 /** Vordere Fassaden (Ecke an der Kreuzung, wie im 12×12-Grundriss) und hintere Raumecke. */

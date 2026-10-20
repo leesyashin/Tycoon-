@@ -4,6 +4,15 @@ Alle nennenswerten Änderungen an Matcha Café Empire. Format angelehnt an [Keep
 
 ## [Unreleased]
 
+### Matcha-Vorrat im Lager, Kamera zum Objekt, Geräusche (2026-10-19)
+
+Vincents Antworten nach dem Test-Merge: Das Wetter bleibt reine Optik, das Tempo passt so; als Nächstes Matcha-Vorrat im
+Lager, Kamera zum Objekt und Geräusche.
+
+- **Matcha-Vorrat im Lager:** Die grünen Matcha-Dosen im Lagerregal zeigen jetzt, wie lange dein Vorrat reicht – voll, halb, wenig oder leer. Bei einer Lieferung schiebt der Lieferant die Kartons auf der Sackkarre durch den Laden und den Personal-Durchgang bis ins Lager; erst wenn er dort ablädt, füllt sich das Regal.
+- **Kamera zum Objekt:** Tippst du ein Gerät, die Tische oder die Deko an (oder öffnest sie aus dem Shop), fährt die Kamera das Objekt über das Panel, damit du siehst, was du ausbaust. Beim Schließen geht sie zurück an deinen Ausschnitt; schiebst du sie zwischendurch selbst, bleibt sie dort.
+- **Geräusche:** Ein Glöckchen, wenn Gäste hereinkommen, das Zischen des Milchschäumers, Regenrauschen bei Regen und leises Stimmengemurmel, das mit den Gästen lauter wird – alles über den Effekte-Regler in den Einstellungen.
+
 ### Leben in der Szene: Wetter, Gespräche, Stammgäste, Lieferant (2026-10-18)
 
 Vincents Antworten auf die Rückfragen: Abwesenheit „2 Spieltage Basis“, Kamera nach dem Parkplatz-Ausbau „kurz hin und
